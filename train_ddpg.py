@@ -19,11 +19,11 @@ GAMMA = 0.9  # q值更新系数
 TAU = 0.01  # 软更新参数
 EPSILON = 0.5  # epsilon-greedy
 BUFFER_SIZE = 20000
-MINIMAL_SIZE = 10000
+MINIMAL_SIZE = 5000
 BATCH_SIZE = 128
 REPLACE_A = 500
 REPLACE_C = 300
-TOTAL_EPISODE = 5000
+TOTAL_EPISODE = 1000
 SIGMA_DECAY = 0.9999
 TTC_threshold = 4.001
 base_name = f'origin_{TTC_threshold}_NOCA'
@@ -42,7 +42,7 @@ def main():
     truncated = False
 
     random.seed(0)
-    torch.manual_seed(1)
+    torch.manual_seed(8)
     s_dim = env.get_observation_space()
     a_bound = env.get_action_bound()
     a_dim = 2
@@ -111,7 +111,7 @@ def main():
                             score_e += info['Efficiency']
                             score_c += info['Comfort']
 
-                            if env.total_step > 20000 and env.is_effective_action() and env.RL_switch:
+                            if env.rl_control_step > 20000 and env.is_effective_action() and env.RL_switch:
                                 globals()['SIGMA'] *= SIGMA_DECAY
                                 agent.set_sigma(SIGMA)
 
@@ -139,7 +139,7 @@ def main():
                         if (i_episode + 1) % 10 == 0:
                             pbar.set_postfix({
                                 'episodes': '%d' % (TOTAL_EPISODE / 10 * i + i_episode + 1),
-                                'score': '%.2f' % (score)
+                                'score': '%.2f' % score
                             })
                         pbar.update(1)
 
