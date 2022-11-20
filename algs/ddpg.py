@@ -53,9 +53,10 @@ class PolicyNet(torch.nn.Module):
         # concat the first layer output and input to second layer
         self.fc_out = nn.Linear(128, 2)
 
-        # torch.nn.init.normal_(self.fc1_1.weight.data,0,0.01)
-        # torch.nn.init.normal_(self.fc1_2.weight.data,0,0.01)
-        # torch.nn.init.normal_(self.fc_out.weight.data,0,0.01)
+        torch.nn.init.normal_(self.fc1_1.weight.data,0,0.01)
+        torch.nn.init.normal_(self.fc1_2.weight.data,0,0.01)
+        torch.nn.init.normal_(self.fc_out.weight.data,0,0.01)
+        torch.nn.init.normal_(self.fc_out.weight.data,0,0.01)
         # torch.nn.init.xavier_normal_(self.fc1_1.weight.data)
         # torch.nn.init.xavier_normal_(self.fc1_2.weight.data)
         # torch.nn.init.xavier_normal_(self.fc_out.weight.data)

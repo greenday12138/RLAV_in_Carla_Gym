@@ -205,21 +205,21 @@ class CarlaEnv:
         # speed state switch
         if not self.debug:
             if self.total_step < 20000:
-                self.RL_switch=True
-                # if self.RL_switch:
-                #     if self.rl_control_episode == self.SWITCH_THRESHOLD:
-                #         self.RL_switch = False
-                #         self.rl_control_episode = 0
-                #         self.world.debug.draw_point(self.spawn_waypoint.transform.location, size=0.2, life_time=0)
-                #     else:
-                #         self.rl_control_episode += 1
-                #         # self.local_planner.set_global_plan(self.global_planner.get_route(
-                #         #     self.map.get_waypoint(self.ego_vehicle.get_location())))
-                # elif not self.RL_switch:
-                #     self.RL_switch = True
-                #     self.rl_control_episode += 1
-                #     # self.local_planner.set_global_plan(self.global_planner.get_route(
-                #     #     self.map.get_waypoint(self.ego_vehicle.get_location())))
+                # self.RL_switch=True
+                if self.RL_switch:
+                    if self.rl_control_episode == self.SWITCH_THRESHOLD:
+                        self.RL_switch = False
+                        self.rl_control_episode = 0
+                        self.world.debug.draw_point(self.spawn_waypoint.transform.location, size=0.2, life_time=0)
+                    else:
+                        self.rl_control_episode += 1
+                        # self.local_planner.set_global_plan(self.global_planner.get_route(
+                        #     self.map.get_waypoint(self.ego_vehicle.get_location())))
+                elif not self.RL_switch:
+                    self.RL_switch = True
+                    self.rl_control_episode += 1
+                    # self.local_planner.set_global_plan(self.global_planner.get_route(
+                    #     self.map.get_waypoint(self.ego_vehicle.get_location())))
             else:
                 self.RL_switch = True
                 # self.local_planner.set_global_plan(self.global_planner.get_route(
@@ -271,7 +271,8 @@ class CarlaEnv:
         else:
             brake = 0
             throttle = self.throttle_brake
-        control = carla.VehicleControl(steer=float(steer), throttle=float(throttle), brake=float(brake))
+        control = carla.VehicleControl(steer=float(steer), throttle=float(throttle), brake=float(brake),hand_brake=False,
+                                       reverse=False,manual_gear_shift=True,gear=1)
 
         # Only use RL controller after ego vehicle speed reach 10 m/s
         # Use DFA to caaulate different speed state transition
@@ -439,7 +440,7 @@ class CarlaEnv:
         """Attention:
         Upon initializing, there are some bugs in the theta_v and theta_a, which could be greater than 90,
         this might be caused by carla."""
-        return {'waypoints': wps, 'ego_vehicle': [v_s, v_t, a_s, a_t, t, yaw_diff_ego], 'vehicle_front': vfl}
+        return {'waypoints': wps, 'ego_vehicle': [v_s/10, v_t/10, a_s/3, a_t/3, t, yaw_diff_ego], 'vehicle_front': vfl}
 
     def _get_reward(self):
         """Calculate the step reward:
@@ -501,7 +502,7 @@ class CarlaEnv:
         #     lane_center.road_id,lane_center.lane_id,yaw_diff,sep='\t')
 
         self.reward_info = {'TTC': fTTC, 'Comfort': fCom, 'Efficiency': fEff, 'Lane_center': fLcen, 'Yaw': fYaw}
-        return fTTC + fEff + fCom + fLcen + fYaw - self.penalty * self._truncated()
+        return fTTC + fEff*2 + fCom + fLcen + fYaw - self.penalty * self._truncated()
 
     def _speed_switch(self, cont):
         """cont: the control command of RL agent"""
@@ -612,7 +613,7 @@ class CarlaEnv:
                 The possible route instructions are 'Left', 'Right', 'Straight'.
                 The traffic manager only need this instruction when faces with a junction."""
             self.traffic_manager.set_route(self.ego_vehicle,
-                                           ['Straight', 'Straight', 'Straight', 'Straight', 'Straight'])
+                                            ['Straight', 'Straight', 'Straight', 'Straight', 'Straight'])
 
     def _sensor_callback(self, sensor_data, sensor_queue):
         array = np.frombuffer(sensor_data.raw_data, dtype=np.dtype('uint8'))

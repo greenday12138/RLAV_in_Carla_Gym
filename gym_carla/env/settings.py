@@ -122,7 +122,7 @@ ARGS.add_argument(
     help='TTC threshold')
 ARGS.add_argument(
     '--penalty', type=float,
-    default=2,
+    default=10,
     help='reward penalty for simulation terminated early on account of collision and lane invasion')
 ARGS.add_argument(
     '--speed_limit', type=float,
