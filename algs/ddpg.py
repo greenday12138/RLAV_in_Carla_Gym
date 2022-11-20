@@ -1,0 +1,313 @@
+import random, collections
+import numpy as np
+import torch
+from torch import nn
+import torch.nn.functional as F
+
+
+class ReplayBuffer:
+    """经验回放池"""
+
+    def __init__(self, capacity) -> None:
+        self.buffer = collections.deque(maxlen=capacity)  # 队列，先进先出
+
+    def add(self, state, action, reward, next_state, truncated, done):
+        # first compress state info, then add
+        state = self._compress(state)
+        next_state = self._compress(next_state)
+        self.buffer.append((state, action, reward, next_state, truncated, done))
+
+    def sample(self, batch_size):  # 从buffer中采样数据,数量为batch_size
+        transition = random.sample(self.buffer, batch_size)
+        state, action, reward, next_state, truncated, done = zip(*transition)
+        return state, action, reward, next_state, truncated, done
+
+    def size(self):
+        return len(self.buffer)
+
+    def _compress(self, state):
+        """return state : waypoints info+ vehicle_front info, shape: 1*22, 
+        first 20 elements are waypoints info, the rest are vehicle info"""
+        wps = np.array(state['waypoints'], dtype=np.float32).reshape((1, -1))
+        ev = np.array(state['ego_vehicle'],dtype=np.float32).reshape((1,-1))
+        vf = np.array(state['vehicle_front'], dtype=np.float32).reshape((1, -1))
+        state_ = np.concatenate((wps, ev, vf), axis=1)
+
+        return state_
+
+
+class PolicyNet(torch.nn.Module):
+    def __init__(self, state_dim, action_bound, train=True) -> None:
+        # the action bound and state_dim here are dicts
+        super().__init__()
+        self.state_dim = state_dim
+        self.action_bound = action_bound
+        self.train = train
+        # self.layer_norm=nn.LayerNorm(128)
+        # self.batch_norm=nn.BatchNorm2d(128)
+        self.dropout = nn.Dropout(0.2)
+
+        self.fc1_1 = nn.Linear(state_dim['waypoints'], 64)
+        self.fc1_2 = nn.Linear(state_dim['ego_vehicle'],32)
+        self.fc1_3 = nn.Linear(state_dim['vehicle_front'], 32)
+        # concat the first layer output and input to second layer
+        self.fc_out = nn.Linear(128, 2)
+
+        # torch.nn.init.normal_(self.fc1_1.weight.data,0,0.01)
+        # torch.nn.init.normal_(self.fc1_2.weight.data,0,0.01)
+        # torch.nn.init.normal_(self.fc_out.weight.data,0,0.01)
+        # torch.nn.init.xavier_normal_(self.fc1_1.weight.data)
+        # torch.nn.init.xavier_normal_(self.fc1_2.weight.data)
+        # torch.nn.init.xavier_normal_(self.fc_out.weight.data)
+
+    def forward(self, state):
+        # state : waypoints info+ vehicle_front info, shape: batch_size*22, first 20 elements are waypoints info,
+        # the rest are vehicle info
+        state_wp = state[:, :20]
+        state_ev = state[:,-8:-2]
+        state_vf = state[:, -2:]
+        state_wp = F.relu(self.fc1_1(state_wp))
+        state_ev=F.relu((self.fc1_2(state_ev)))
+        state_vf = F.relu(self.fc1_3(state_vf))
+        state_ = torch.cat((state_wp,state_ev, state_vf), dim=1)
+        action = torch.tanh(self.fc_out(state_))
+        # steer,throttle_brake=torch.split(out,split_size_or_sections=[1,1],dim=1)
+        # steer=steer.clone()
+        # throttle_brake=throttle_brake.clone()
+        # steer*=self.action_bound['steer']
+        # throttle=throttle_brake.clone()
+        # brake=throttle_brake.clone()
+        # for i in range(throttle.shape[0]):
+        #     if throttle[i][0]<0:
+        #         throttle[i][0]=0
+        #     if brake[i][0]>0:
+        #         brake[i][0]=0
+        # throttle*=self.action_bound['throttle']
+        # brake*=self.action_bound['brake']
+
+        return action
+
+
+class QValueNet(torch.nn.Module):
+    def __init__(self, state_dim, action_dim) -> None:
+        # parameter state_dim here is a dict
+        super().__init__()
+
+        #self.state_dim = state_dim['waypoints'] + state_dim['ego_vehicle']+state_dim['vehicle_front']
+        self.state_dim=state_dim
+
+        self.action_dim = action_dim
+        self.layer_norm = nn.LayerNorm(128)
+        self.batch_norm = nn.BatchNorm1d(128)
+        self.dropout = nn.Dropout(0.2)
+
+
+        #self.fc1 = nn.Linear(self.state_dim + action_dim, 64)
+
+        self.fc1_1=nn.Linear(self.state_dim['waypoints'],32)
+        self.fc1_2=nn.Linear(self.state_dim['ego_vehicle'],32)
+        self.fc1_3=nn.Linear(self.state_dim['vehicle_front'],32)
+        self.fc1_4=nn.Linear(self.action_dim,32)
+        self.fc_out = nn.Linear(128, 1)
+
+        # torch.nn.init.normal_(self.fc1.weight.data,0,0.01)
+        # torch.nn.init.normal_(self.fc_out.weight.data,0,0.01)
+        # torch.nn.init.xavier_normal_(self.fc1.weight.data)
+        # torch.nn.init.xavier_normal_(self.fc_out.weight.data)
+
+    def forward(self, state, action):
+
+        # state : waypoints info+ vehicle_front info, shape: batch_size*22, first 20 elements are waypoints info,
+        # the rest are vehicle info
+        state_wp = state[:, :20]
+        state_ev = state[:, -8:-2]
+        state_vf = state[:, -2:]
+        state_wp=F.relu(self.fc1_1(state_wp))
+        state_ev=F.relu(self.fc1_2(state_ev))
+        state_vf=F.relu(self.fc1_3(state_vf))
+        state_ac=F.relu(self.fc1_4(action))
+        state = torch.cat((state_wp,state_ev,state_vf, state_ac), dim=1)
+        out = self.fc_out(state)
+
+        return out
+
+
+class DDPG:
+    def __init__(self, state_dim, action_dim, action_bound, gamma, tau, sigma, theta, epsilon,
+                 buffer_size, batch_size, actor_lr, critic_lr, device) -> None:
+        self.learn_time = 0
+        self.replace_a = 0
+        self.replace_c = 0
+        self.train = True
+        self.s_dim = state_dim  # state_dim here is a dict
+        self.a_dim, self.a_bound = action_dim, action_bound
+        self.theta = theta
+        self.gamma, self.tau, self.sigma, self.epsilon = gamma, tau, sigma, epsilon  # sigma:高斯噪声的标准差，均值直接设置为0
+        self.buffer_size, self.batch_size, self.device = buffer_size, batch_size, device
+        self.actor_lr, self.critic_lr = actor_lr, critic_lr
+        self.replay_buffer = ReplayBuffer(buffer_size)
+        """self.memory=torch.tensor((buffer_size,self.s_dim*2+self.a_dim+1+1),
+            dtype=torch.float32).to(self.device)"""
+        self.pointer = 0  # serve as updating the memory data
+        self.train = True
+
+        self.actor = PolicyNet(self.s_dim, self.a_bound).to(self.device)
+        self.actor_target = PolicyNet(self.s_dim, self.a_bound).to(self.device)
+        self.critic = QValueNet(self.s_dim, self.a_dim).to(self.device)
+        self.critic_target = QValueNet(self.s_dim, self.a_dim).to(self.device)
+
+        self.actor_optimizer = torch.optim.Adam(self.actor.parameters(), lr=actor_lr)
+        self.critic_optimizer = torch.optim.Adam(self.critic.parameters(), lr=critic_lr)
+        self.loss = nn.MSELoss()
+
+        self.steer_noise = OrnsteinUhlenbeckActionNoise(self.sigma, self.theta)
+        self.tb_noise = OrnsteinUhlenbeckActionNoise(self.sigma, self.theta)
+
+    def take_action(self, state):
+        state_wps = torch.tensor(state['waypoints'], dtype=torch.float32).view(1, -1).to(self.device)
+        state_ev=torch.tensor(state['ego_vehicle'],dtype=torch.float32).view(1,-1).to(self.device)
+        state_vf = torch.tensor(state['vehicle_front'], dtype=torch.float32).view(1, -1).to(self.device)
+        state_ = torch.cat((state_wps,state_ev, state_vf), dim=1)
+        # print(state_.shape)
+        action = self.actor(state_)
+        print(f'Network Output - Steer: {action[0][0]}, Throttle_brake: {action[0][1]}')
+        if (action[0, 0].is_cuda):
+            action = np.array([action[:, 0].detach().cpu().numpy(), action[:, 1].detach().cpu().numpy()]).reshape((-1, 2))
+        else:
+            action = np.array([action[:, 0].detach().numpy(), action[:, 1].detach().numpy()]).reshape((-1, 2))
+        # if np.random.random()<self.epsilon:
+        if self.train:
+            action[:, 0] = np.clip(np.random.normal(action[:, 0], self.sigma), -1, 1)
+            action[:, 1] = np.clip(np.random.normal(action[:, 1], self.sigma), -1, 1)
+        # if self.train:
+        #     action[:,0]=np.clip(action[:,0]+self.steer_noise(),-1,1)
+        #     action[:,1]=np.clip(action[:,1]+self.tb_noise(),-1,1)
+        print(f'After noise - Steer: {action[0][0]}, Throttle_brake: {action[0][1]}')
+        # for i in range(action.shape[0]):
+        #     if action[i,1]>0:
+        #         action[i,1]+=np.clip(np.random.normal(action[i,1],self.sigma),0,self.a_bound['throttle'])
+        #     elif action[i,2]<0:
+        #         action[i,2]+=np.clip(np.random.normal(action[i,2],self.sigma),-self.a_bound['brake'],0)
+
+        return action
+
+    def learn(self):
+        self.learn_time += 1
+        self.train = True
+        if self.learn_time > 100000:
+            self.train = False
+        self.replace_a += 1
+        self.replace_c += 1
+        b_s, b_a, b_r, b_ns, b_t, b_d = self.replay_buffer.sample(self.batch_size)
+        # 此处得到的batch是否是pytorch.tensor?
+        batch_s = torch.tensor(b_s, dtype=torch.float32).view((self.batch_size, -1)).to(self.device)
+        batch_ns = torch.tensor(b_ns, dtype=torch.float32).view((self.batch_size, -1)).to(self.device)
+        batch_a = torch.tensor(b_a, dtype=torch.float32).view((self.batch_size, -1)).to(self.device)
+        batch_r = torch.tensor(b_r, dtype=torch.float32).view((self.batch_size, -1)).to(self.device)
+        batch_d = torch.tensor(b_d, dtype=torch.float32).view((self.batch_size, -1)).to(self.device)
+        batch_t = torch.tensor(b_t, dtype=torch.float32).view((self.batch_size, -1)).to(self.device)
+
+        # compute the target Q value using the information of next state
+        action_target = self.actor_target(batch_ns)
+        action_target = torch.tensor(action_target, dtype=torch.float32).to(self.device)
+        next_q_values = self.critic_target(batch_ns, action_target)
+        q_targets = batch_r + self.gamma * next_q_values * (1 - batch_t)
+        critic_loss = self.loss(self.critic(batch_s, batch_a), q_targets)
+        self.critic_optimizer.zero_grad()
+        critic_loss.backward()
+
+        # print()
+        # self._print_grad(self.critic)
+        # print()
+        self.critic_optimizer.step()
+
+        action = self.actor(batch_s)
+        action = torch.tensor(action, dtype=torch.float32).to(self.device)
+        q = self.critic(batch_s, action)
+        actor_loss = -torch.mean(q)
+        self.actor_optimizer.zero_grad()
+        actor_loss.backward()
+        self.actor_optimizer.step()
+
+        self.soft_update(self.actor, self.actor_target)
+        self.soft_update(self.critic, self.critic_target)
+
+    def _print_grad(self, model):
+        '''Print the grad of each layer'''
+        for name, parms in model.named_parameters():
+            print('-->name:', name, '-->grad_requirs:', parms.requires_grad, ' -->grad_value:', parms.grad)
+
+    def set_sigma(self, sigma):
+        self.sigma = sigma
+        self.steer_noise.set_sigma(sigma)
+        self.tb_noise.set_sigma(sigma)
+
+    def reset_noise(self):
+        self.steer_noise.reset()
+        self.tb_noise.reset()
+
+    def soft_update(self, net, target_net):
+        for param_target, param in zip(target_net.parameters(), net.parameters()):
+            param_target.data.copy_(param_target.data * (1.0 - self.tau) + param.data * self.tau)
+
+    def hard_update(self, net, target_net):
+        net.load_state_dict(target_net.state_dict())
+
+    def store_transition(self, transition_dict):  # how to store the episodic data to buffer
+        index = self.pointer % self.buffer_size
+        states = torch.tensor(transition_dict['states'],
+                              dtype=torch.float32).view(-1, 1).to(self.device)
+        actions = torch.tensor(transition_dict['actions'],
+                               dtype=torch.float32).to(self.device)
+        rewards = torch.tensor(transition_dict['rewards'],
+                               dtype=torch.float32).to(self.device)
+        states_next = torch.tensor(transition_dict['states_next'],
+                                   dtype=torch.float32).view(-1, 1).to(self.device)
+        dones = torch.tensor(transition_dict['dones'],
+                             dtype=torch.float32).to(self.device)
+        return
+
+    def save_net(self):
+        state = {
+            'actor': self.actor.state_dict(),
+            'critic': self.critic.state_dict(),
+            'actor_optimizer': self.actor_optimizer.state_dict(),
+            'critic_optimizer': self.critic_optimizer.state_dict()
+        }
+        torch.save(state, './out/ddpg.pth')
+
+    def load_net(self, state):
+        self.critic.load_state_dict(state['critic'])
+        self.actor.load_state_dict(state['actor'])
+        self.actor_optimizer.load_state_dict(state['actor_optimizer'])
+        self.critic_optimizer.load_state_dict(state['critic_optimizer'])
+
+
+class OrnsteinUhlenbeckActionNoise:
+    def __init__(self, sigma, theta=0.001, mu=np.array([0.0]), dt=1e-2, x0=None):
+        """
+        mu: The mean value of action
+        theta: The bigger the value, the faster noise get close to mu
+        sigma: Noise amplifier, the bigger the value, the more amplification of the disturbance
+        """
+        self.theta = theta
+        self.mu = mu
+        self.sigma = sigma
+        self.dt = dt
+        self.x0 = x0
+        self.reset()
+
+    def __call__(self):
+        x = self.x_prev + self.theta * (self.mu - self.x_prev) * self.dt + \
+            self.sigma * np.sqrt(self.dt) * np.random.normal(size=self.mu.shape)
+        self.x_prev = x
+        return x
+
+    def reset(self):
+        self.x_prev = self.x0 if self.x0 is not None else np.zeros_like(self.mu)
+
+    def set_sigma(self, sigma):
+        self.sigma = sigma
+
+    def __repr__(self):
+        return 'OrnsteinUhlenbeckActionNoise(mu={}, sigma={})'.format(self.mu, self.sigma)
