@@ -197,7 +197,8 @@ def is_within_distance_ahead(target_location, current_location, orientation, max
 
     forward_vector = np.array(
         [math.cos(math.radians(orientation)), math.sin(math.radians(orientation))])
-    d_angle = math.degrees(math.acos(np.dot(forward_vector, target_vector) / norm_target))
+    d_angle = math.degrees(math.acos(
+        np.clip(np.dot(forward_vector, target_vector) / norm_target,-1,1)))
 
     return d_angle < 90.0
 

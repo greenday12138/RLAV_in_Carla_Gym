@@ -205,21 +205,21 @@ class CarlaEnv:
         # speed state switch
         if not self.debug:
             if self.total_step < 20000:
-                # self.RL_switch=True
-                if self.RL_switch:
-                    if self.rl_control_episode == self.SWITCH_THRESHOLD:
-                        self.RL_switch = False
-                        self.rl_control_episode = 0
-                        self.world.debug.draw_point(self.spawn_waypoint.transform.location, size=0.2, life_time=0)
-                    else:
-                        self.rl_control_episode += 1
-                        # self.local_planner.set_global_plan(self.global_planner.get_route(
-                        #     self.map.get_waypoint(self.ego_vehicle.get_location())))
-                elif not self.RL_switch:
-                    self.RL_switch = True
-                    self.rl_control_episode += 1
-                    # self.local_planner.set_global_plan(self.global_planner.get_route(
-                    #     self.map.get_waypoint(self.ego_vehicle.get_location())))
+                self.RL_switch=True
+                # if self.RL_switch:
+                #     if self.rl_control_episode == self.SWITCH_THRESHOLD:
+                #         self.RL_switch = False
+                #         self.rl_control_episode = 0
+                #         self.world.debug.draw_point(self.spawn_waypoint.transform.location, size=0.2, life_time=0)
+                #     else:
+                #         self.rl_control_episode += 1
+                #         # self.local_planner.set_global_plan(self.global_planner.get_route(
+                #         #     self.map.get_waypoint(self.ego_vehicle.get_location())))
+                # elif not self.RL_switch:
+                #     self.RL_switch = True
+                #     self.rl_control_episode += 1
+                #     # self.local_planner.set_global_plan(self.global_planner.get_route(
+                #     #     self.map.get_waypoint(self.ego_vehicle.get_location())))
             else:
                 self.RL_switch = True
                 # self.local_planner.set_global_plan(self.global_planner.get_route(

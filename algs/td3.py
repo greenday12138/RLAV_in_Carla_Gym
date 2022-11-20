@@ -102,7 +102,6 @@ class QValueNet(torch.nn.Module):
         self.batch_norm = nn.BatchNorm1d(128)
         self.dropout = nn.Dropout(0.2)
 
-
         #self.fc1 = nn.Linear(self.state_dim + action_dim, 64)
 
         self.fc1_1=nn.Linear(self.state_dim['waypoints'],32)
@@ -133,9 +132,13 @@ class QValueNet(torch.nn.Module):
         return out
 
 
-class DDPG:
-    def __init__(self, state_dim, action_dim, action_bound, gamma, tau, sigma, theta, epsilon,
-                 buffer_size, batch_size, actor_lr, critic_lr, device) -> None:
+class TD3:
+    def __init__(self, 
+            state_dim, action_dim, action_bound, 
+            gamma, tau, sigma, theta, epsilon,
+            buffer_size, batch_size, 
+            actor_lr, critic_lr, 
+            policy_update_freq,device) -> None:
         self.learn_time = 0
         self.replace_a = 0
         self.replace_c = 0
@@ -146,21 +149,28 @@ class DDPG:
         self.gamma, self.tau, self.sigma, self.epsilon = gamma, tau, sigma, epsilon  # sigma:高斯噪声的标准差，均值直接设置为0
         self.buffer_size, self.batch_size, self.device = buffer_size, batch_size, device
         self.actor_lr, self.critic_lr = actor_lr, critic_lr
+        self.policy_update_freq=policy_update_freq
         self.replay_buffer = ReplayBuffer(buffer_size)
         """self.memory=torch.tensor((buffer_size,self.s_dim*2+self.a_dim+1+1),
             dtype=torch.float32).to(self.device)"""
         self.pointer = 0  # serve as updating the memory data
-        self.train = True
 
         self.actor = PolicyNet(self.s_dim, self.a_bound).to(self.device)
         self.actor_target = PolicyNet(self.s_dim, self.a_bound).to(self.device)
         self.actor_target.load_state_dict(self.actor.state_dict())
-        self.critic = QValueNet(self.s_dim, self.a_dim).to(self.device)
-        self.critic_target = QValueNet(self.s_dim, self.a_dim).to(self.device)
-        self.critic_target.load_state_dict(self.critic.state_dict())
+
+        self.critic1 = QValueNet(self.s_dim, self.a_dim).to(self.device)
+        self.critic1_target = QValueNet(self.s_dim, self.a_dim).to(self.device)
+        self.critic1_target.load_state_dict(self.critic1.state_dict())
+        self.critic2=QValueNet(self.s_dim,self.a_dim).to(self.device)
+        self.critic2_target=QValueNet(self.s_dim,self.a_dim).to(self.device)
+        self.critic2_target.load_state_dict(self.critic2.state_dict())
+
+        # concat critic parameters to use one optim
+        critic_parameters=list(self.critic1.parameters())+list(self.critic2.parameters())
 
         self.actor_optimizer = torch.optim.Adam(self.actor.parameters(), lr=actor_lr)
-        self.critic_optimizer = torch.optim.Adam(self.critic.parameters(), lr=critic_lr)
+        self.critic_optimizer = torch.optim.Adam(critic_parameters,lr=critic_lr)
         self.loss = nn.MSELoss()
 
         self.steer_noise = OrnsteinUhlenbeckActionNoise(self.sigma, self.theta)
@@ -197,8 +207,8 @@ class DDPG:
     def learn(self):
         self.learn_time += 1
         self.train = True
-        if self.learn_time > 100000:
-            self.train = False
+        # if self.learn_time > 100000:
+        #     self.train = False
         self.replace_a += 1
         self.replace_c += 1
         b_s, b_a, b_r, b_ns, b_t, b_d = self.replay_buffer.sample(self.batch_size)
@@ -212,28 +222,47 @@ class DDPG:
 
         # compute the target Q value using the information of next state
         action_target = self.actor_target(batch_ns)
+        if (action_target[0, 0].is_cuda):
+            action_target = np.array([action_target[:, 0].detach().cpu().numpy(), action_target[:, 1].detach().cpu().numpy()]).reshape((-1, 2))
+        else:
+            action_target = np.array([action_target[:, 0].detach().numpy(), action_target[:, 1].detach().numpy()]).reshape((-1, 2))
+        action_target[:, 0] = np.clip(np.random.normal(action_target[:, 0], self.sigma), -1, 1)
+        action_target[:, 1] = np.clip(np.random.normal(action_target[:, 1], self.sigma), -1, 1)
         action_target = torch.tensor(action_target, dtype=torch.float32).to(self.device)
-        next_q_values = self.critic_target(batch_ns, action_target)
+        
+        next_q_values_1=self.critic1_target(batch_ns,action_target)
+        next_q_values_2=self.critic2_target(batch_ns,action_target)
+        next_q_values=torch.min(next_q_values_1,next_q_values_2)
+
         q_targets = batch_r + self.gamma * next_q_values * (1 - batch_t)
-        critic_loss = self.loss(self.critic(batch_s, batch_a), q_targets)
+        critic1_loss = self.loss(self.critic1(batch_s, batch_a), q_targets.detach())
+        critic2_loss=self.loss(self.critic2(batch_s,batch_a),q_targets.detach())
+        critic_loss=critic1_loss+critic2_loss
         self.critic_optimizer.zero_grad()
         critic_loss.backward()
-
+        self.critic_optimizer.step()
+        
         # print()
         # self._print_grad(self.critic)
         # print()
-        self.critic_optimizer.step()
 
-        action = self.actor(batch_s)
-        action = torch.tensor(action, dtype=torch.float32).to(self.device)
-        q = self.critic(batch_s, action)
-        actor_loss = -torch.mean(q)
-        self.actor_optimizer.zero_grad()
-        actor_loss.backward()
-        self.actor_optimizer.step()
+        if self.learn_time%self.policy_update_freq==0:
+            #train actor
+            action = self.actor(batch_s)
+            action = torch.tensor(action, dtype=torch.float32).to(self.device)
+            q = self.critic1(batch_s, action)
+            actor_loss = -torch.mean(q)
+            self.actor_optimizer.zero_grad()
+            actor_loss.backward()
+            self.actor_optimizer.step()
+            
+            self.soft_update(self.actor, self.actor_target)
+            self.soft_update(self.critic1, self.critic1_target)
+            self.soft_update(self.critic2, self.critic2_target)
+        else:
+            actor_loss=torch.zeros(1)
 
-        self.soft_update(self.actor, self.actor_target)
-        self.soft_update(self.critic, self.critic_target)
+        return actor_loss.data,critic_loss.data
 
     def _print_grad(self, model):
         '''Print the grad of each layer'''

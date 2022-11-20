@@ -4,7 +4,7 @@ import random, collections
 import numpy as np
 import matplotlib.pyplot as plt
 from tqdm import tqdm
-from algs.ddpg import DDPG
+from algs.td3 import TD3
 from gym_carla.env.settings import ARGS
 from gym_carla.env.carla_env import CarlaEnv
 from process import start_process, kill_process
@@ -18,6 +18,7 @@ LR_CRITIC = 0.02
 GAMMA = 0.9  # q值更新系数
 TAU = 0.01  # 软更新参数
 EPSILON = 0.5  # epsilon-greedy
+POLICY_UPDATE_FREQ=5
 BUFFER_SIZE = 20000
 MINIMAL_SIZE = 5000
 BATCH_SIZE = 128
@@ -52,8 +53,8 @@ def main():
     result = []
 
     for run in [base_name]:
-        agent = DDPG(s_dim, a_dim, a_bound, GAMMA, TAU, SIGMA, THETA, EPSILON, BUFFER_SIZE, BATCH_SIZE, LR_ACTOR,
-                     LR_CRITIC, DEVICE)
+        agent = TD3(s_dim, a_dim, a_bound, GAMMA, TAU, SIGMA, THETA, EPSILON, BUFFER_SIZE, BATCH_SIZE, LR_ACTOR,
+                     LR_CRITIC, POLICY_UPDATE_FREQ,DEVICE)
 
         # training part
         max_rolling_score = np.float('-5')

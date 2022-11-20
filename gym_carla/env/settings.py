@@ -147,7 +147,7 @@ ARGS.add_argument(
     help='Throttle bound for ego vehicle controller')
 ARGS.add_argument(
     '--brake_bound', type=float,
-    default=0.3,
+    default=0.5,
     help='Brake bound for ego vehicle controller')
 ARGS.add_argument(
     '--switch_threshold', type=int,
