@@ -1,7 +1,7 @@
 """This file defines all high level parameters of carla gym environment"""
 import argparse
 
-CARLA_PATH = 'D:\ProgramFiles\Carla\WindowsNoEditor'
+CARLA_PATH = 'D:\WindowsNoEditor'
 # the following road id sets define the chosen route
 ROADS = set()
 STRAIGHT = {8, 0, 1, 2, 3, 15, 5, 6, 7}
@@ -56,7 +56,7 @@ ARGS.add_argument(
 ARGS.add_argument(
     '--filter',
     metavar='PATTERN',
-    default='vehicle.audi.a2',
+    default='vehicle.tesla.model3',
     help='Actor filter (default: "vehicle.*")')
 ARGS.add_argument(
     '-l', '--loop',
@@ -143,7 +143,7 @@ ARGS.add_argument(
     help='Steer bound for ego vehicle controller')
 ARGS.add_argument(
     '--throttle_bound', type=float,
-    default=1.0,
+    default=0.75,
     help='Throttle bound for ego vehicle controller')
 ARGS.add_argument(
     '--brake_bound', type=float,

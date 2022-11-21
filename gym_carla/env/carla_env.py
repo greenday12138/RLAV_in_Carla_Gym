@@ -258,6 +258,12 @@ class CarlaEnv:
         if self.is_effective_action():
             self.throttle_brake += jump
             self.throttle_brake = np.clip(self.throttle_brake, -0.2, 0.8)
+        if self.throttle_brake < 0:
+            brake = abs(self.throttle_brake)
+            throttle = 0
+        else:
+            brake = 0
+            throttle = self.throttle_brake
         # if action[0][1] >= 0:
         #     brake = 0
         #     throttle = action[0][1] * self.throttle_bound
@@ -265,14 +271,9 @@ class CarlaEnv:
         #     throttle = 0
         #     brake = abs(action[0][1]) * self.brake_bound
 
-        if self.throttle_brake < 0:
-            brake = abs(self.throttle_brake)
-            throttle = 0
-        else:
-            brake = 0
-            throttle = self.throttle_brake
-        control = carla.VehicleControl(steer=float(steer), throttle=float(throttle), brake=float(brake),hand_brake=False,
-                                       reverse=False,manual_gear_shift=True,gear=1)
+        # control = carla.VehicleControl(steer=float(steer), throttle=float(throttle), brake=float(brake),hand_brake=False,
+        #                                reverse=False,manual_gear_shift=True,gear=1)
+        control = carla.VehicleControl(steer=float(steer), throttle=float(throttle), brake=float(brake))
 
         # Only use RL controller after ego vehicle speed reach 10 m/s
         # Use DFA to caaulate different speed state transition
@@ -502,7 +503,7 @@ class CarlaEnv:
         #     lane_center.road_id,lane_center.lane_id,yaw_diff,sep='\t')
 
         self.reward_info = {'TTC': fTTC, 'Comfort': fCom, 'Efficiency': fEff, 'Lane_center': fLcen, 'Yaw': fYaw}
-        return fTTC + fEff*2 + fCom + fLcen + fYaw - self.penalty * self._truncated()
+        return fTTC + fEff + fCom + fLcen + fYaw - self.penalty * self._truncated()
 
     def _speed_switch(self, cont):
         """cont: the control command of RL agent"""
@@ -653,6 +654,8 @@ class CarlaEnv:
             bp.set_attribute('role_name', 'autopilot')
         else:
             bp.set_attribute('role_name', 'hero')
+
+        #bp.set_attribute('sticky_control', False)
         return bp
 
     def _init_renderer(self):
@@ -707,6 +710,16 @@ class CarlaEnv:
 
         if not overlap:
             ego_bp = self._create_vehicle_blueprint(self.ego_filter, ego=True, color='0,255,0')
+            spawn_points=self.map.get_spawn_points()
+            transform.location.z=0.3
+            # sp=None
+            # for spawn_point in spawn_points:
+            #     if transform.location.distance(spawn_point.location)<self.sampling_resolution:
+            #         sp=spawn_point
+            # if sp is None:
+            #     print("Spawn point error")
+            # else:
+            #     print(transform,sp,sep='\n')
             vehicle = self.world.try_spawn_actor(ego_bp, transform)
             if vehicle is None:
                 logging.warn("Ego vehicle generation fail")
@@ -746,7 +759,7 @@ class CarlaEnv:
             if i >= self.num_of_vehicles:
                 break
 
-            blueprint = self._create_vehicle_blueprint('vehicle.tesla.model3', number_of_wheels=[4])
+            blueprint = self._create_vehicle_blueprint('vehicle.audi.etron', number_of_wheels=[4])
             # Spawn the cars and their autopilot all together
             command_batch.append(SpawnActor(blueprint, transform).
                                  then(SetAutopilot(FutureActor, True, self.tm_port)))

@@ -302,15 +302,23 @@ class TD3:
     def save_net(self):
         state = {
             'actor': self.actor.state_dict(),
-            'critic': self.critic.state_dict(),
+            'actor_target':self.actor_target.state_dict(),
+            'critic1': self.critic1.state_dict(),
+            'critic1_target':self.critic1_target.state_dict(),
+            'critic2':self.critic2.state_dict(),
+            'critic2_target':self.critic2_target.state_dict(),
             'actor_optimizer': self.actor_optimizer.state_dict(),
             'critic_optimizer': self.critic_optimizer.state_dict()
         }
-        torch.save(state, './out/ddpg.pth')
+        torch.save(state, './out/td3.pth')
 
     def load_net(self, state):
-        self.critic.load_state_dict(state['critic'])
         self.actor.load_state_dict(state['actor'])
+        self.actor_target.load_state_dict(state['actor_target'])
+        self.critic1.load_state_dict((state['critic1_target']))
+        self.critic1_target.load_state_dict(state['critic1_target'])
+        self.critic2.load_state_dict(state['critic2'])
+        self.critic2_target.load_state_dict(state['critic2_target'])
         self.actor_optimizer.load_state_dict(state['actor_optimizer'])
         self.critic_optimizer.load_state_dict(state['critic_optimizer'])
 

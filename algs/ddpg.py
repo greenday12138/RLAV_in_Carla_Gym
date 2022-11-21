@@ -273,7 +273,9 @@ class DDPG:
     def save_net(self):
         state = {
             'actor': self.actor.state_dict(),
+            'actor_target':self.actor_target.state_dict(),
             'critic': self.critic.state_dict(),
+            'critic_target':self.critic_target.state_dict(),
             'actor_optimizer': self.actor_optimizer.state_dict(),
             'critic_optimizer': self.critic_optimizer.state_dict()
         }
@@ -281,7 +283,9 @@ class DDPG:
 
     def load_net(self, state):
         self.critic.load_state_dict(state['critic'])
+        self.critic_target.load_state_dict(state['critic_target'])
         self.actor.load_state_dict(state['actor'])
+        self.actor_target.load_state_dict(state['actor_target'])
         self.actor_optimizer.load_state_dict(state['actor_optimizer'])
         self.critic_optimizer.load_state_dict(state['critic_optimizer'])
 
