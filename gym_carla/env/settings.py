@@ -81,9 +81,9 @@ ARGS.add_argument(
     type=int)
 ARGS.add_argument(
     '-m', '--map', type=str,
-    choices=['Town01', 'Town02'],
+    choices=['Town01_Opt', 'Town02_Opt'],
     help='Choose one of the possible world maps',
-    default='Town01')
+    default='Town01_Opt')
 ARGS.add_argument(
     '-n', '--num_of_vehicles', type=int,
     help='Total vehicles number which run in simulation',

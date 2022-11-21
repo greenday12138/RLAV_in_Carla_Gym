@@ -19,7 +19,7 @@ GAMMA = 0.9  # q值更新系数
 TAU = 0.01  # 软更新参数
 EPSILON = 0.5  # epsilon-greedy
 BUFFER_SIZE = 20000
-MINIMAL_SIZE = 5000
+MINIMAL_SIZE = 10000
 BATCH_SIZE = 128
 REPLACE_A = 500
 REPLACE_C = 300
@@ -81,7 +81,7 @@ def main():
                             action = agent.take_action(state)
 
                             next_state, reward, truncated, done, info = env.step(action)
-                            if env.is_effective_action():
+                            if env.is_effective_action() and not info['Abandon']:
                                 if 'Throttle' in info:
                                     # Input the guided action to replay buffer
                                     throttle_brake = -info['Brake'] if info['Brake'] > 0 else info['Throttle']

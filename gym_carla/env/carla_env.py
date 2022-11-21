@@ -8,7 +8,7 @@ from queue import Queue
 from gym_carla.env.agent.basic_agent import BasicAgent
 from gym_carla.env.util.misc import draw_waypoints, get_speed, get_acceleration, test_waypoint, \
     compute_distance, get_actor_polygons, get_lane_center
-from gym_carla.env.sensor import CollisionSensor, LaneInvasionSensor
+from gym_carla.env.sensor import CollisionSensor, LaneInvasionSensor,SemanticTags
 from gym_carla.env.agent.route_planner import GlobalPlanner, LocalPlanner
 from gym_carla.env.agent.pid_controller import VehiclePIDController
 
@@ -59,6 +59,15 @@ class CarlaEnv:
         self.client = carla.Client(self.host, self.port)
         self.client.set_timeout(10.0)
         self.world = self.client.load_world(args.map)
+        self.world.unload_map_layer(carla.MapLayer.StreetLights)
+        self.world.unload_map_layer(carla.MapLayer.Buildings)
+        self.world.unload_map_layer(carla.MapLayer.Decals)
+        self.world.unload_map_layer(carla.MapLayer.Walls)
+        self.world.unload_map_layer(carla.MapLayer.Foliage)
+        self.world.unload_map_layer(carla.MapLayer.ParkedVehicles)
+        self.world.unload_map_layer(carla.MapLayer.Particles)
+        self.world.unload_map_layer(carla.MapLayer.Ground)
+        # self.world.unload_map_layer(carla.MapLayer.Props)
         self.map = self.world.get_map()
         self.origin_settings = self.world.get_settings()
         self.traffic_manager = None
@@ -80,7 +89,8 @@ class CarlaEnv:
         # generate ego vehicle spawn points on chosen route
         self.global_planner = GlobalPlanner(self.map, self.sampling_resolution)
         self.local_planner = None
-        self.ego_spawn_waypoints = self.global_planner.get_spawn_points()
+        self.spawn_points = self.global_planner.get_spawn_points()
+        self.ego_spawn_point=None
         # former_wp record the ego vehicle waypoint of former step
 
         # arguments for debug
@@ -147,9 +157,10 @@ class CarlaEnv:
 
         # try to spawn ego vehicle
         while self.ego_vehicle is None:
-            self.spawn_waypoint = random.choice(self.ego_spawn_waypoints)
-            self.former_wp = self.spawn_waypoint
-            self.ego_vehicle = self._try_spawn_ego_vehicle_at(self.spawn_waypoint.transform)
+            self.ego_spawn_point = random.choice(self.spawn_points)
+            self.former_wp =get_lane_center(self.map,self.ego_spawn_point.location)
+            self.ego_vehicle = self._try_spawn_ego_vehicle_at(self.ego_spawn_point)
+        # self.ego_vehicle.set_simulate_physics(False)
         self.collision_sensor = CollisionSensor(self.ego_vehicle)
         self.lane_invasion_sensor = LaneInvasionSensor(self.ego_vehicle)
         self.throttle_brake = 0.0
@@ -205,12 +216,12 @@ class CarlaEnv:
         # speed state switch
         if not self.debug:
             if self.total_step < 20000:
-                self.RL_switch=True
+                self.RL_switch = True
                 # if self.RL_switch:
                 #     if self.rl_control_episode == self.SWITCH_THRESHOLD:
                 #         self.RL_switch = False
                 #         self.rl_control_episode = 0
-                #         self.world.debug.draw_point(self.spawn_waypoint.transform.location, size=0.2, life_time=0)
+                #         self.world.debug.draw_point(self.ego_spawn_point.location, size=0.2, life_time=0)
                 #     else:
                 #         self.rl_control_episode += 1
                 #         # self.local_planner.set_global_plan(self.global_planner.get_route(
@@ -346,7 +357,7 @@ class CarlaEnv:
         """Get observation space of cureent environment
         first element: Next waypoints list length of ego vehicle,
         second element: Location (x,y) dimention of waypoint"""
-        return {'waypoints': self.buffer_size * 2,'ego_vehicle':6, 'vehicle_front': 2}
+        return {'waypoints': self.buffer_size * 2, 'ego_vehicle': 6, 'vehicle_front': 2}
 
     def get_action_bound(self):
         """Return action bound of ego vehicle controller"""
@@ -412,7 +423,7 @@ class CarlaEnv:
         # ego vehicle information
         lane_center = get_lane_center(self.map, self.ego_vehicle.get_location())
         right_lane_dis = lane_center.get_right_lane().transform.location.distance(self.ego_vehicle.get_location())
-        t = lane_center.lane_width / 2+lane_center.get_right_lane().lane_width / 2-right_lane_dis
+        t = lane_center.lane_width / 2 + lane_center.get_right_lane().lane_width / 2 - right_lane_dis
 
         yaw_diff_ego = get_yaw_diff(self.ego_vehicle.get_transform().rotation, lane_center.transform.rotation)
 
@@ -422,26 +433,27 @@ class CarlaEnv:
         #       math.cos(math.radians(lane_center.transform.rotation.yaw)),
         #       math.sin(math.radians(lane_center.transform.rotation.yaw)), sep='\t')
         # print(yaw_3d.x,yaw_3d.y,yaw_3d.z,sep='\t')
-        v_3d=self.ego_vehicle.get_velocity()
-        if v_3d.length()!=0.0:
-            theta_v = math.acos(np.clip(v_3d.dot(yaw_3d) / (v_3d.length() * yaw_3d.length()),-1,1))
+        v_3d = self.ego_vehicle.get_velocity()
+        if v_3d.length() != 0.0:
+            theta_v = math.acos(np.clip(v_3d.dot(yaw_3d) / (v_3d.length() * yaw_3d.length()), -1, 1))
         else:
-            theta_v=math.acos(0)
+            theta_v = math.acos(0)
         v_s = v_3d.length() * math.cos(theta_v)
         v_t = v_3d.length() * math.sin(theta_v) * np.sign(t)
 
         a_3d = self.ego_vehicle.get_acceleration()
-        if a_3d.length()!=0.0:
-            theta_a = math.acos(np.clip(a_3d.dot(yaw_3d) / (a_3d.length() * yaw_3d.length()),-1,1))
+        if a_3d.length() != 0.0:
+            theta_a = math.acos(np.clip(a_3d.dot(yaw_3d) / (a_3d.length() * yaw_3d.length()), -1, 1))
         else:
-            theta_a=math.acos(0)
+            theta_a = math.acos(0)
         a_s = a_3d.length() * math.cos(theta_a)
         a_t = a_3d.length() * math.sin(theta_a)
 
         """Attention:
         Upon initializing, there are some bugs in the theta_v and theta_a, which could be greater than 90,
         this might be caused by carla."""
-        return {'waypoints': wps, 'ego_vehicle': [v_s/10, v_t/10, a_s/3, a_t/3, t, yaw_diff_ego], 'vehicle_front': vfl}
+        return {'waypoints': wps, 'ego_vehicle': [v_s / 10, v_t / 10, a_s / 3, a_t / 3, t, yaw_diff_ego],
+                'vehicle_front': vfl}
 
     def _get_reward(self):
         """Calculate the step reward:
@@ -503,7 +515,19 @@ class CarlaEnv:
         #     lane_center.road_id,lane_center.lane_id,yaw_diff,sep='\t')
 
         self.reward_info = {'TTC': fTTC, 'Comfort': fCom, 'Efficiency': fEff, 'Lane_center': fLcen, 'Yaw': fYaw}
-        return fTTC + fEff + fCom + fLcen + fYaw - self.penalty * self._truncated()
+
+        history,tags=self.collision_sensor.get_collision_history()
+        if len(history)!=0:
+            if SemanticTags.Vehicles in tags:
+                # If ego vehicle collides with traffic lights and stop signs, do not add penalty
+                self.reward_info.update({'Abandon': False})
+                return fTTC + fEff + fCom + fLcen*2 + fYaw - self.penalty * self._truncated()
+            else:
+                self.reward_info.update({'Abandon': True})
+                return fTTC + fEff + fCom + fLcen*2 + fYaw
+
+        self.reward_info.update({'Abandon': False})
+        return fTTC + fEff + fCom + fLcen*2 + fYaw - self.penalty * self._truncated()
 
     def _speed_switch(self, cont):
         """cont: the control command of RL agent"""
@@ -536,14 +560,15 @@ class CarlaEnv:
 
     def _truncated(self):
         """Calculate whether to terminate the current episode"""
-        if len(self.collision_sensor.get_collision_history()) != 0:
+        if len(self.collision_sensor.get_collision_history()[0]) != 0:
+            #Here we judge speed state because there might be collision event when spawning vehicles
             logging.warn('collison happend')
             return True
         if self.map.get_waypoint(self.ego_vehicle.get_location()) is None:
             logging.warn('vehicle drive out of road')
             return True
         if get_speed(self.ego_vehicle, False) < 0.1 and self.speed_state != SpeedState.START:
-            logging.warn('vehicle speed too small')
+            logging.warn('vehicle speed too low')
             return True
         # lane_center=self.map.get_waypoint(self.ego_vehicle.get_location(),project_to_road=True)
         # print(lane_center.transform.location.distance(self.ego_vehicle.get_location()),self.reward_info['Lane_center'],
@@ -566,7 +591,7 @@ class CarlaEnv:
 
     def _done(self):
         if self.RL_switch == True and self.next_wps[1].transform.location.distance(
-                self.spawn_waypoint.transform.location) < self.sampling_resolution:
+                self.ego_spawn_point.location) < self.sampling_resolution:
             # The local planner's waypoint list has been depleted
             logging.info('vehicle reach destination, simulation terminate')
             return True
@@ -576,7 +601,7 @@ class CarlaEnv:
                 logging.info('500 steps passed under traffic manager control')
                 return True
             if self.next_wps[1].transform.location.distance(
-                    self.spawn_waypoint.transform.location) < self.sampling_resolution:
+                    self.ego_spawn_point.location) < self.sampling_resolution:
                 # The second next waypoints is close enough to the spawn point, route done
                 logging.info('vehicle reach destination, simulation terminate')
                 return True
@@ -614,7 +639,7 @@ class CarlaEnv:
                 The possible route instructions are 'Left', 'Right', 'Straight'.
                 The traffic manager only need this instruction when faces with a junction."""
             self.traffic_manager.set_route(self.ego_vehicle,
-                                            ['Straight', 'Straight', 'Straight', 'Straight', 'Straight'])
+                                           ['Straight', 'Straight', 'Straight', 'Straight', 'Straight'])
 
     def _sensor_callback(self, sensor_data, sensor_queue):
         array = np.frombuffer(sensor_data.raw_data, dtype=np.dtype('uint8'))
@@ -655,7 +680,7 @@ class CarlaEnv:
         else:
             bp.set_attribute('role_name', 'hero')
 
-        #bp.set_attribute('sticky_control', False)
+        # bp.set_attribute('sticky_control', False)
         return bp
 
     def _init_renderer(self):
@@ -676,7 +701,7 @@ class CarlaEnv:
     def _set_traffic_manager(self):
         self.traffic_manager = self.client.get_trafficmanager(self.tm_port)
         # every vehicle keeps a distance of 3.0 meter
-        self.traffic_manager.set_global_distance_to_leading_vehicle(10.0)
+        self.traffic_manager.set_global_distance_to_leading_vehicle(self.sampling_resolution)
         # Set physical mode only for cars around ego vehicle to save computation
         if self.hybrid:
             self.traffic_manager.set_hybrid_physics_mode(True)
@@ -710,8 +735,7 @@ class CarlaEnv:
 
         if not overlap:
             ego_bp = self._create_vehicle_blueprint(self.ego_filter, ego=True, color='0,255,0')
-            spawn_points=self.map.get_spawn_points()
-            transform.location.z=0.3
+            #transform.location.z += 0.3
             # sp=None
             # for spawn_point in spawn_points:
             #     if transform.location.distance(spawn_point.location)<self.sampling_resolution:
@@ -735,7 +759,8 @@ class CarlaEnv:
         each vehicle is set to autopilot mode and controled by Traffic Maneger
         note: the ego vehicle trafficmanager and companion vehicle trafficmanager shouldn't be the same one
         """
-        spawn_points_ = self.map.get_spawn_points()
+        # spawn_points_ = self.map.get_spawn_points()
+        spawn_points_ = self.spawn_points
         # make sure companion vehicles also spawn on chosen route
         # spawn_points_=[x.transform for x in self.ego_spawn_waypoints]
 
@@ -759,6 +784,7 @@ class CarlaEnv:
             if i >= self.num_of_vehicles:
                 break
 
+            #print(transform)
             blueprint = self._create_vehicle_blueprint('vehicle.audi.etron', number_of_wheels=[4])
             # Spawn the cars and their autopilot all together
             command_batch.append(SpawnActor(blueprint, transform).
@@ -777,6 +803,8 @@ class CarlaEnv:
                     self.world.get_actor(response.actor_id), 100)
                 self.traffic_manager.ignore_walkers_percentage(
                     self.world.get_actor(response.actor_id), 100)
+                self.traffic_manager.set_route(self.world.get_actor(response.actor_id),
+                        ['Straight', 'Straight', 'Straight', 'Straight', 'Straight'])
                 # self.traffic_manager.update_vehicle_lights(
                 #     self.world.get_actor(response.actor_id),True)
                 # print(self.world.get_actor(response.actor_id).attributes)
@@ -795,11 +823,21 @@ class CarlaEnv:
         """
         pass
 
-    def _clear_actors(self, actor_filters):
-        """Clear specific actors"""
-        for actor_filter in actor_filters:
-            self.client.apply_batch([carla.command.DestroyActor(x)
-                                     for x in self.world.get_actors().filter(actor_filter)])
+    def _clear_actors(self, actor_filters, filter=True):
+        """Clear specific actors
+        filter: True means filter actors by blueprint, Fals means fiter actors by carla.CityObjectLabel"""
+        if filter:
+            for actor_filter in actor_filters:
+                self.client.apply_batch([carla.command.DestroyActor(x)
+                                         for x in self.world.get_actors().filter(actor_filter)])
+        # else:
+        #     for actor_filter in actor_filters:
+        #         objects=self.world.get_environment_objects(actor_filter)
+        #         for ob in objects:
+        #             print(ob)
+        #             #ob.destroy()
+        #             self.world.get_actor(ob.id).destroy()
+        #         #self.client.apply_batch([carla.command.DestroyActor(x.id) for x in objects])
         # for actor_filter in actor_filters:
         #     for actor in self.world.get_actors().filter(actor_filter):
         #         if actor.is_alive:

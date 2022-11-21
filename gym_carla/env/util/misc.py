@@ -238,7 +238,7 @@ def vector(location_1, location_2):
 def compute_distance(location_1, location_2):
     """
     Euclidean distance between 3D points
-
+    This map's z value does not change, so ignore the location's z value
         :param location_1, location_2: 3D points
     """
     x = location_2.x - location_1.x

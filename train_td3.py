@@ -18,9 +18,9 @@ LR_CRITIC = 0.02
 GAMMA = 0.9  # q值更新系数
 TAU = 0.01  # 软更新参数
 EPSILON = 0.5  # epsilon-greedy
-POLICY_UPDATE_FREQ=5
+POLICY_UPDATE_FREQ = 5
 BUFFER_SIZE = 20000
-MINIMAL_SIZE = 5000
+MINIMAL_SIZE = 10000
 BATCH_SIZE = 128
 REPLACE_A = 500
 REPLACE_C = 300
@@ -54,7 +54,7 @@ def main():
 
     for run in [base_name]:
         agent = TD3(s_dim, a_dim, a_bound, GAMMA, TAU, SIGMA, THETA, EPSILON, BUFFER_SIZE, BATCH_SIZE, LR_ACTOR,
-                     LR_CRITIC, POLICY_UPDATE_FREQ,DEVICE)
+                    LR_CRITIC, POLICY_UPDATE_FREQ, DEVICE)
 
         # training part
         max_rolling_score = np.float('-5')
@@ -82,7 +82,7 @@ def main():
                             action = agent.take_action(state)
 
                             next_state, reward, truncated, done, info = env.step(action)
-                            if env.is_effective_action():
+                            if env.is_effective_action() and not info['Abandon']:
                                 if 'Throttle' in info:
                                     # Input the guided action to replay buffer
                                     throttle_brake = -info['Brake'] if info['Brake'] > 0 else info['Throttle']

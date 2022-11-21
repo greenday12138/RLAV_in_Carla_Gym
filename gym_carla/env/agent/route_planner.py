@@ -1,4 +1,5 @@
 import carla
+import copy
 import logging,random
 import numpy as np
 import networkx as nx
@@ -52,11 +53,14 @@ class GlobalPlanner:
         return self._compute_next_waypoints(ego_waypoint,len(self._route))
 
     def get_spawn_points(self):
-        """Vehicle can only be spawned on straight road"""
+        """Vehicle can only be spawned on straight road, return transforms"""
         spawn_points=[]
         for wp in self._route:
             if wp.road_id in STRAIGHT:
-                spawn_points.append(wp)
+                temp=carla.Transform(wp.transform.location,wp.transform.rotation)
+                #Increase the z value a little bit to avoid collison upon initializing
+                temp.location.z+=0.1
+                spawn_points.append(temp)
         
         return spawn_points
 

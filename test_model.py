@@ -24,7 +24,6 @@ MINIMAL_SIZE = 10000
 BATCH_SIZE = 128
 REPLACE_A = 500
 REPLACE_C = 300
-CA = False
 TOTAL_EPISODE = 3000
 TTC_threshold = 4.001
 base_name = f'origin_{TTC_threshold}_NOCA'
@@ -41,9 +40,10 @@ def main():
     env = CarlaEnv(args)
 
     done = False
+    truncated=False
 
     random.seed(0)
-    torch.manual_seed(1)
+    torch.manual_seed(8)
     s_dim = env.get_observation_space()
     a_bound = env.get_action_bound()
     a_dim = 2
@@ -58,23 +58,21 @@ def main():
         agent.train = False
         agent.set_sigma(0)
 
-        done = False
         state = env.reset()
 
-    try:
-        while (True):
-            action = agent.take_action(state)
-            state, reward, done, info = env.step(action)
-            if env.speed_state == SpeedState.REBOOT:
-                env.speed_state = SpeedState.RUNNING
+        try:
+            while not done and not truncated:
+                action = agent.take_action(state)
+                next_state, reward, truncated,done, info = env.step(action)
+                # if env.speed_state == SpeedState.REBOOT:
+                #     env.speed_state = SpeedState.RUNNING
+                state=next_state
 
-            if done:
-                break
-    except KeyboardInterrupt:
-        logging.info("Premature Terminated")
-    finally:
-        env.__del__()
-        logging.info('\nDone.')
+        except KeyboardInterrupt:
+            logging.info("Premature Terminated")
+        finally:
+            env.__del__()
+            logging.info('\nDone.')
 
 
 if __name__ == '__main__':
