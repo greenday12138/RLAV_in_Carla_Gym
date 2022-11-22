@@ -42,7 +42,7 @@ def main():
     truncated = False
 
     random.seed(0)
-    torch.manual_seed(8)
+    torch.manual_seed(16)
     s_dim = env.get_observation_space()
     a_bound = env.get_action_bound()
     a_dim = 2

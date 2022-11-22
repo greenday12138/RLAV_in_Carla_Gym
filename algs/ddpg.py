@@ -43,6 +43,7 @@ class PolicyNet(torch.nn.Module):
         self.state_dim = state_dim
         self.action_bound = action_bound
         self.train = train
+        # self.LaneEncoder = LaneEncoder()
         # self.layer_norm=nn.LayerNorm(128)
         # self.batch_norm=nn.BatchNorm2d(128)
         self.dropout = nn.Dropout(0.2)
@@ -53,10 +54,10 @@ class PolicyNet(torch.nn.Module):
         # concat the first layer output and input to second layer
         self.fc_out = nn.Linear(128, 2)
 
-        torch.nn.init.normal_(self.fc1_1.weight.data,0,0.01)
-        torch.nn.init.normal_(self.fc1_2.weight.data,0,0.01)
-        torch.nn.init.normal_(self.fc_out.weight.data,0,0.01)
-        torch.nn.init.normal_(self.fc_out.weight.data,0,0.01)
+        # torch.nn.init.normal_(self.fc1_1.weight.data,0,0.01)
+        # torch.nn.init.normal_(self.fc1_2.weight.data,0,0.01)
+        # torch.nn.init.normal_(self.fc_out.weight.data,0,0.01)
+        # torch.nn.init.normal_(self.fc_out.weight.data,0,0.01)
         # torch.nn.init.xavier_normal_(self.fc1_1.weight.data)
         # torch.nn.init.xavier_normal_(self.fc1_2.weight.data)
         # torch.nn.init.xavier_normal_(self.fc_out.weight.data)
