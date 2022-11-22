@@ -7,8 +7,8 @@ from enum import Enum
 from queue import Queue
 from gym_carla.env.agent.basic_agent import BasicAgent
 from gym_carla.env.util.misc import draw_waypoints, get_speed, get_acceleration, test_waypoint, \
-    compute_distance, get_actor_polygons, get_lane_center
-from gym_carla.env.sensor import CollisionSensor, LaneInvasionSensor,SemanticTags
+    compute_distance, get_actor_polygons, get_lane_center, remove_unnecessary_objects
+from gym_carla.env.sensor import CollisionSensor, LaneInvasionSensor, SemanticTags
 from gym_carla.env.agent.route_planner import GlobalPlanner, LocalPlanner
 from gym_carla.env.agent.pid_controller import VehiclePIDController
 
@@ -59,15 +59,7 @@ class CarlaEnv:
         self.client = carla.Client(self.host, self.port)
         self.client.set_timeout(10.0)
         self.world = self.client.load_world(args.map)
-        self.world.unload_map_layer(carla.MapLayer.StreetLights)
-        self.world.unload_map_layer(carla.MapLayer.Buildings)
-        self.world.unload_map_layer(carla.MapLayer.Decals)
-        self.world.unload_map_layer(carla.MapLayer.Walls)
-        self.world.unload_map_layer(carla.MapLayer.Foliage)
-        self.world.unload_map_layer(carla.MapLayer.ParkedVehicles)
-        self.world.unload_map_layer(carla.MapLayer.Particles)
-        self.world.unload_map_layer(carla.MapLayer.Ground)
-        # self.world.unload_map_layer(carla.MapLayer.Props)
+        remove_unnecessary_objects(self.world)
         self.map = self.world.get_map()
         self.origin_settings = self.world.get_settings()
         self.traffic_manager = None
@@ -90,7 +82,7 @@ class CarlaEnv:
         self.global_planner = GlobalPlanner(self.map, self.sampling_resolution)
         self.local_planner = None
         self.spawn_points = self.global_planner.get_spawn_points()
-        self.ego_spawn_point=None
+        self.ego_spawn_point = None
         # former_wp record the ego vehicle waypoint of former step
 
         # arguments for debug
@@ -158,7 +150,7 @@ class CarlaEnv:
         # try to spawn ego vehicle
         while self.ego_vehicle is None:
             self.ego_spawn_point = random.choice(self.spawn_points)
-            self.former_wp =get_lane_center(self.map,self.ego_spawn_point.location)
+            self.former_wp = get_lane_center(self.map, self.ego_spawn_point.location)
             self.ego_vehicle = self._try_spawn_ego_vehicle_at(self.ego_spawn_point)
         # self.ego_vehicle.set_simulate_physics(False)
         self.collision_sensor = CollisionSensor(self.ego_vehicle)
@@ -427,27 +419,36 @@ class CarlaEnv:
 
         yaw_diff_ego = get_yaw_diff(self.ego_vehicle.get_transform().rotation, lane_center.transform.rotation)
 
-        yaw_3d = lane_center.transform.get_forward_vector()
+        yaw_forward = lane_center.transform.get_forward_vector().make_unit_vector()
+        # yaw_right = lane_center.transform.get_right_vector().make_unit_vector()
         # print(lane_center.road_id, lane_center.lane_id, lane_center.transform.location.x,
         #       lane_center.transform.location.y, lane_center.transform.rotation.yaw,
         #       math.cos(math.radians(lane_center.transform.rotation.yaw)),
         #       math.sin(math.radians(lane_center.transform.rotation.yaw)), sep='\t')
         # print(yaw_3d.x,yaw_3d.y,yaw_3d.z,sep='\t')
         v_3d = self.ego_vehicle.get_velocity()
+        # ignore z value
+        v_3d.z = 0
+        v_sign = 1 if v_3d.cross(yaw_forward).z > 0 else -1
         if v_3d.length() != 0.0:
-            theta_v = math.acos(np.clip(v_3d.dot(yaw_3d) / (v_3d.length() * yaw_3d.length()), -1, 1))
+            theta_v = math.acos(np.clip(v_3d.dot(yaw_forward) / (v_3d.length() * yaw_forward.length()), -1, 1))
+            # alpha_v = math.acos(np.clip(v_3d.dot(yaw_right)/(v_3d.length()*yaw_right.length()),-1,1))
         else:
             theta_v = math.acos(0)
+            # alpha_v=math.acos(0)
         v_s = v_3d.length() * math.cos(theta_v)
-        v_t = v_3d.length() * math.sin(theta_v) * np.sign(t)
+        v_t = v_3d.length() * math.sin(theta_v) * v_sign
+        # v_t1=v_3d.length()*math.cos(alpha_v)
 
         a_3d = self.ego_vehicle.get_acceleration()
+        a_3d.z = 0
+        a_sign = 1 if a_3d.cross(yaw_forward).z > 0 else -1
         if a_3d.length() != 0.0:
-            theta_a = math.acos(np.clip(a_3d.dot(yaw_3d) / (a_3d.length() * yaw_3d.length()), -1, 1))
+            theta_a = math.acos(np.clip(a_3d.dot(yaw_forward) / (a_3d.length() * yaw_forward.length()), -1, 1))
         else:
             theta_a = math.acos(0)
         a_s = a_3d.length() * math.cos(theta_a)
-        a_t = a_3d.length() * math.sin(theta_a)
+        a_t = a_3d.length() * math.sin(theta_a) * a_sign
 
         """Attention:
         Upon initializing, there are some bugs in the theta_v and theta_a, which could be greater than 90,
@@ -477,9 +478,9 @@ class CarlaEnv:
 
         if ego_speed > self.speed_limit:
             # fEff = 1
-            fEff = math.exp(self.speed_limit - ego_speed)
+            fEff = math.exp(self.speed_limit - ego_speed) - 1
         else:
-            fEff = ego_speed / self.speed_limit
+            fEff = ego_speed / self.speed_limit - 1
 
         cur_acc = self.ego_vehicle.get_acceleration()
         jerk = (cur_acc.x - self.last_acc.x) ** 2 / (1.0 / self.fps) + (cur_acc.y - self.last_acc.y) ** 2 / (
@@ -514,20 +515,23 @@ class CarlaEnv:
         #     (self.ego_vehicle.get_transform().rotation.yaw+720)%360,(lane_center.transform.rotation.yaw+720)%360,
         #     lane_center.road_id,lane_center.lane_id,yaw_diff,sep='\t')
 
-        self.reward_info = {'TTC': fTTC, 'Comfort': fCom, 'Efficiency': fEff, 'Lane_center': fLcen, 'Yaw': fYaw}
-
-        history,tags=self.collision_sensor.get_collision_history()
-        if len(history)!=0:
-            if SemanticTags.Vehicles in tags:
-                # If ego vehicle collides with traffic lights and stop signs, do not add penalty
-                self.reward_info.update({'Abandon': False})
-                return fTTC + fEff + fCom + fLcen*2 + fYaw - self.penalty * self._truncated()
-            else:
-                self.reward_info.update({'Abandon': True})
-                return fTTC + fEff + fCom + fLcen*2 + fYaw
+        self.reward_info = {'TTC': fTTC, 'Comfort': fCom, 'Efficiency': fEff, 'Lane_center': fLcen, 'Yaw': fYaw, 'Abandon':False}
 
         self.reward_info.update({'Abandon': False})
-        return fTTC + fEff + fCom + fLcen*2 + fYaw - self.penalty * self._truncated()
+
+        if self._truncated():
+            history, tags = self.collision_sensor.get_collision_history()
+            if len(history) != 0:
+                if SemanticTags.Vehicles in tags:
+                    return - self.penalty * self._truncated()
+                else:
+                    # If ego vehicle collides with traffic lights and stop signs, do not add penalty
+                    self.reward_info['Abandon']=True
+                    return fTTC + (fEff + fLcen * 2) * 0.5
+            else:
+                return - self.penalty * self._truncated()
+        else:
+            return fTTC + (fEff + fLcen * 2) * 0.5
 
     def _speed_switch(self, cont):
         """cont: the control command of RL agent"""
@@ -561,7 +565,7 @@ class CarlaEnv:
     def _truncated(self):
         """Calculate whether to terminate the current episode"""
         if len(self.collision_sensor.get_collision_history()[0]) != 0:
-            #Here we judge speed state because there might be collision event when spawning vehicles
+            # Here we judge speed state because there might be collision event when spawning vehicles
             logging.warn('collison happend')
             return True
         if self.map.get_waypoint(self.ego_vehicle.get_location()) is None:
@@ -735,7 +739,7 @@ class CarlaEnv:
 
         if not overlap:
             ego_bp = self._create_vehicle_blueprint(self.ego_filter, ego=True, color='0,255,0')
-            #transform.location.z += 0.3
+            # transform.location.z += 0.3
             # sp=None
             # for spawn_point in spawn_points:
             #     if transform.location.distance(spawn_point.location)<self.sampling_resolution:
@@ -784,7 +788,7 @@ class CarlaEnv:
             if i >= self.num_of_vehicles:
                 break
 
-            #print(transform)
+            # print(transform)
             blueprint = self._create_vehicle_blueprint('vehicle.audi.etron', number_of_wheels=[4])
             # Spawn the cars and their autopilot all together
             command_batch.append(SpawnActor(blueprint, transform).
@@ -804,7 +808,7 @@ class CarlaEnv:
                 self.traffic_manager.ignore_walkers_percentage(
                     self.world.get_actor(response.actor_id), 100)
                 self.traffic_manager.set_route(self.world.get_actor(response.actor_id),
-                        ['Straight', 'Straight', 'Straight', 'Straight', 'Straight'])
+                                               ['Straight', 'Straight', 'Straight', 'Straight', 'Straight'])
                 # self.traffic_manager.update_vehicle_lights(
                 #     self.world.get_actor(response.actor_id),True)
                 # print(self.world.get_actor(response.actor_id).attributes)

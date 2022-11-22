@@ -5,6 +5,41 @@ import numpy as np
 import carla
 from gym_carla.env.settings import *
 
+def remove_unnecessary_objects(world):
+    """Remove unuseful objects in the world"""
+    # world.unload_map_layer(carla.MapLayer.StreetLights)
+    # world.unload_map_layer(carla.MapLayer.Buildings)
+    # world.unload_map_layer(carla.MapLayer.Decals)
+    world.unload_map_layer(carla.MapLayer.Walls)
+    # world.unload_map_layer(carla.MapLayer.Foliage)
+    world.unload_map_layer(carla.MapLayer.ParkedVehicles)
+    # world.unload_map_layer(carla.MapLayer.Particles)
+    # world.unload_map_layer(carla.MapLayer.Ground)
+    objs = set()
+    for obj in world.get_environment_objects(carla.CityObjectLabel.TrafficSigns):
+        objs.add(obj.id)
+    for obj in world.get_environment_objects(carla.CityObjectLabel.TrafficLight):
+        objs.add(obj.id)
+    for obj in world.get_environment_objects(carla.CityObjectLabel.Other):
+        objs.add(obj.id)
+    for obj in world.get_environment_objects(carla.CityObjectLabel.Poles):
+        objs.add(obj.id)
+    for obj in world.get_environment_objects(carla.CityObjectLabel.Static):
+        objs.add(obj.id)
+    for obj in world.get_environment_objects(carla.CityObjectLabel.Dynamic):
+        objs.add(obj.id)
+    for obj in world.get_environment_objects(carla.CityObjectLabel.Buildings):
+        objs.add(obj.id)
+    for obj in world.get_environment_objects(carla.CityObjectLabel.Fences):
+        objs.add(obj.id)
+    for obj in world.get_environment_objects(carla.CityObjectLabel.Walls):
+        objs.add(obj.id)
+    for obj in world.get_environment_objects(carla.CityObjectLabel.Vegetation):
+        objs.add(obj.id)
+    for obj in world.get_environment_objects(carla.CityObjectLabel.Ground):
+        objs.add(obj.id)
+    world.enable_environment_objects(objs, False)
+    # world.unload_map_layer(carla.MapLayer.Props)
 
 def test_waypoint(waypoint):
     """
@@ -58,7 +93,7 @@ def get_lane_center(map,location):
 
 def get_speed(vehicle, unit=True):
     """
-    Compute speed of a vehicle
+    Compute speed of a vehicle, ignore z value
         :param unit: the unit of return, True means Km/h, False means m/s
         :param vehicle: the vehicle for which speed is calculated
         :return: speed as a float 
@@ -66,9 +101,9 @@ def get_speed(vehicle, unit=True):
     vel = vehicle.get_velocity()
 
     if unit:
-        return 3.6 * math.sqrt(vel.x ** 2 + vel.y ** 2 + vel.z ** 2)
+        return 3.6 * math.sqrt(vel.x ** 2 + vel.y ** 2)
     else:
-        return math.sqrt(vel.x ** 2 + vel.y ** 2 + vel.z ** 2)
+        return math.sqrt(vel.x ** 2 + vel.y ** 2)
 
 
 def get_acceleration(vehicle, unit=True):
@@ -81,9 +116,9 @@ def get_acceleration(vehicle, unit=True):
     acc = vehicle.get_acceleration()
 
     if unit:
-        return 36 * 36 * 10 * math.sqrt(acc.x ** 2 + acc.y ** 2 + acc.z ** 2)
+        return 36 * 36 * 10 * math.sqrt(acc.x ** 2 + acc.y ** 2)
     else:
-        return math.sqrt(acc.x ** 2 + acc.y ** 2 + acc.z ** 2)
+        return math.sqrt(acc.x ** 2 + acc.y ** 2)
 
 
 def get_actor_polygons(world, filt):

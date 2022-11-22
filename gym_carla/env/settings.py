@@ -139,7 +139,7 @@ ARGS.add_argument(
         and the action of basic need to add into the replay buffer, km/h')
 ARGS.add_argument(
     '--steer_bound', type=float,
-    default=0.2,
+    default=0.5,
     help='Steer bound for ego vehicle controller')
 ARGS.add_argument(
     '--throttle_bound', type=float,

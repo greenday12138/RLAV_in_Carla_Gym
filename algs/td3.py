@@ -131,6 +131,55 @@ class QValueNet(torch.nn.Module):
 
         return out
 
+class MLP(nn.Module):
+    r"""
+    Construct a MLP in LaneEncoder, include a single fully-connected layer,
+    followed by layer normalization and then ReLU.
+    """
+
+    def __init__(self, input_size, hidden_size=64):
+        r"""
+        self.norm is layer normalization.
+        Args:
+            input_size: the size of input layer.
+            hidden_size: the size of output layer.
+        """
+        super(MLP, self).__init__()
+        self.fc1 = nn.Linear(input_size, hidden_size)
+        self.norm = torch.nn.LayerNorm(hidden_size)
+        # self.fc2 = nn.Linear(hidden_size, output_size)
+
+    def forward(self, x):
+        r"""
+        Args:
+            x: x.shape = [batch_size, n, input_size]
+        """
+        x = self.fc1(x)
+        x = self.norm(x)
+        x = F.relu(x)
+        # x = self.fc2(x)
+        return x
+
+
+class LaneEncoder(torch.nn.Module):
+    def __init__(self, waypoint_dim, hidden_size):
+        super(LaneEncoder, self).__init__()
+        self.waypoint_dim = waypoint_dim
+        self.hidden_size = hidden_size
+        self.MLP = MLP(self.waypoint_dim, self.hidden_size)
+
+    def forward(self, waypoints):
+        """
+        :param waypoints: [batch_size, n, input_size]
+        :return: (batch_size, n, input_size*2)
+        """
+        x = self.MLP(waypoints)
+        batch_size, n, input_size = x.shape
+        x2 = x.permute(0, 2, 1)  # [batch_size, input_size, n]
+        x2 = F.max_pool1d(x2, kernel_size=x2.shape[2])  # [batch_size, input_size, 1]
+        x2 = torch.cat([x2]*n, dim=2)  # [batch_size, input_size, n]
+        y = torch.cat((x2.permute(0, 2, 1), x), dim=2)  # [batch_size, n, input_size*2]
+        return y
 
 class TD3:
     def __init__(self, 

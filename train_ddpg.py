@@ -19,7 +19,7 @@ GAMMA = 0.9  # q值更新系数
 TAU = 0.01  # 软更新参数
 EPSILON = 0.5  # epsilon-greedy
 BUFFER_SIZE = 20000
-MINIMAL_SIZE = 10000
+MINIMAL_SIZE = 5000
 BATCH_SIZE = 128
 REPLACE_A = 500
 REPLACE_C = 300
@@ -111,7 +111,8 @@ def main():
                             score_e += info['Efficiency']
                             score_c += info['Comfort']
 
-                            if env.rl_control_step > 20000 and env.is_effective_action() and env.RL_switch:
+                            if env.rl_control_step > 20000 and env.is_effective_action() and \
+                                    env.RL_switch and SIGMA > 0.1:
                                 globals()['SIGMA'] *= SIGMA_DECAY
                                 agent.set_sigma(SIGMA)
 
