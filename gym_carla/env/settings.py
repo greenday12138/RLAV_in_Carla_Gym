@@ -85,9 +85,9 @@ ARGS.add_argument(
     help='Choose one of the possible world maps',
     default='Town01_Opt')
 ARGS.add_argument(
-    '-n', '--num_of_vehicles', type=int,
+    '-n', '--num_of_vehicles', type=list,
     help='Total vehicles number which run in simulation',
-    default=20)
+    default=[20,30,40,50])
 ARGS.add_argument(
     '-sa', '--sampling_resolution', type=float,
     help='Distance between generated two waypoints',
@@ -151,6 +151,6 @@ ARGS.add_argument(
     help='Brake bound for ego vehicle controller')
 ARGS.add_argument(
     '--switch_threshold', type=int,
-    default=1,
+    default=20,
     help='Let the RL controller and PID controller alternatively take control every 500 steps'
 )

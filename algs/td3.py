@@ -348,7 +348,7 @@ class TD3:
                              dtype=torch.float32).to(self.device)
         return
 
-    def save_net(self):
+    def save_net(self,file='./out/td3_final.pth'):
         state = {
             'actor': self.actor.state_dict(),
             'actor_target':self.actor_target.state_dict(),
@@ -359,7 +359,7 @@ class TD3:
             'actor_optimizer': self.actor_optimizer.state_dict(),
             'critic_optimizer': self.critic_optimizer.state_dict()
         }
-        torch.save(state, './out/td3.pth')
+        torch.save(state, file)
 
     def load_net(self, state):
         self.actor.load_state_dict(state['actor'])

@@ -18,12 +18,12 @@ LR_CRITIC = 0.02
 GAMMA = 0.9  # q值更新系数
 TAU = 0.01  # 软更新参数
 EPSILON = 0.5  # epsilon-greedy
-BUFFER_SIZE = 20000
-MINIMAL_SIZE = 5000
+BUFFER_SIZE = 40000
+MINIMAL_SIZE = 10000
 BATCH_SIZE = 128
 REPLACE_A = 500
 REPLACE_C = 300
-TOTAL_EPISODE = 5000
+TOTAL_EPISODE = 10000
 SIGMA_DECAY = 0.9999
 TTC_threshold = 4.001
 base_name = f'origin_{TTC_threshold}_NOCA'
@@ -111,7 +111,10 @@ def main():
                             score_e += info['Efficiency']
                             score_c += info['Comfort']
 
-                            if env.rl_control_step > 20000 and env.is_effective_action() and \
+                            if env.total_step>100000:
+                                agent.save_net('./out/ddpg_pre_trained.pth')
+
+                            if env.rl_control_step > 10000 and env.is_effective_action() and \
                                     env.RL_switch and SIGMA > 0.1:
                                 globals()['SIGMA'] *= SIGMA_DECAY
                                 agent.set_sigma(SIGMA)
