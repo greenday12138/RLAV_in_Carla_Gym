@@ -5,12 +5,13 @@ import math, time
 import numpy as np
 from enum import Enum
 from queue import Queue
-from gym_carla.env.agent.basic_agent import BasicAgent
+#from gym_carla.env.agent.basic_agent import BasicAgent
 from gym_carla.env.util.misc import draw_waypoints, get_speed, get_acceleration, test_waypoint, \
     compute_distance, get_actor_polygons, get_lane_center, remove_unnecessary_objects
 from gym_carla.env.sensor import CollisionSensor, LaneInvasionSensor, SemanticTags
 from gym_carla.env.agent.route_planner import GlobalPlanner, LocalPlanner
 from gym_carla.env.agent.pid_controller import VehiclePIDController
+from gym_carla.env.carla.behavior_agent import BehaviorAgent,BasicAgent
 
 
 class SpeedState(Enum):
@@ -193,10 +194,11 @@ class CarlaEnv:
 
         # Only use RL controller after ego vehicle speed reach 10 m/s
         self.speed_state = SpeedState.START
-        self.controller = BasicAgent(self.ego_vehicle, {'target_speed': self.speed_threshold, 'dt': 1 / self.fps,
-                                                        'max_steering': self.steer_bound,
-                                                        'max_throttle': self.throttle_bound,
-                                                        'max_brake': self.brake_bound})
+        # self.controller = BasicAgent(self.ego_vehicle, {'target_speed': self.speed_threshold, 'dt': 1 / self.fps,
+        #                                                 'max_throttle': self.throttle_bound,
+        #                                                 'max_brake': self.brake_bound})
+        self.autopilot_controller=BasicAgent(self.ego_vehicle,target_speed=30,
+            opt_dict={'ignore_traffic_lights':True,'ignore_stop_signs':True})  
 
         # code for synchronous mode
         camera_bp = self.world.get_blueprint_library().find('sensor.camera.rgb')
@@ -208,25 +210,27 @@ class CarlaEnv:
         # speed state switch
         if not self.debug:
             if self.total_step < 20000:
-                self.RL_switch = True
-                # if self.RL_switch:
-                #     if self.rl_control_episode == self.SWITCH_THRESHOLD:
-                #         self.RL_switch = False
-                #         self.rl_control_episode = 0
-                #         self.world.debug.draw_point(self.ego_spawn_point.location, size=0.2, life_time=0)
-                #     else:
-                #         self.rl_control_episode += 1
-                #         # self.local_planner.set_global_plan(self.global_planner.get_route(
-                #         #     self.map.get_waypoint(self.ego_vehicle.get_location())))
-                # elif not self.RL_switch:
-                #     self.RL_switch = True
-                #     self.rl_control_episode += 1
-                #     # self.local_planner.set_global_plan(self.global_planner.get_route(
-                #     #     self.map.get_waypoint(self.ego_vehicle.get_location())))
+                #self.RL_switch = True
+                if self.RL_switch:
+                    if self.rl_control_episode == self.SWITCH_THRESHOLD:
+                        self.RL_switch = False
+                        self.rl_control_episode = 0
+                        self.world.debug.draw_point(self.ego_spawn_point.location, size=0.2, life_time=0)
+                    else:
+                        self.rl_control_episode += 1
+                        # self.local_planner.set_global_plan(self.global_planner.get_route(
+                        #     self.map.get_waypoint(self.ego_vehicle.get_location())))
+                else:
+                    self.RL_switch = True
+                    self.rl_control_episode += 1
+                    # self.local_planner.set_global_plan(self.global_planner.get_route(
+                    #     self.map.get_waypoint(self.ego_vehicle.get_location())))
             else:
                 self.RL_switch = True
                 # self.local_planner.set_global_plan(self.global_planner.get_route(
                 #     self.map.get_waypoint(self.ego_vehicle.get_location())))
+        else:
+            self.autopilot_controller.set_destination(random.choice(self.spawn_points).location)
 
         # Update timesteps
         self.time_step = 0
@@ -254,25 +258,25 @@ class CarlaEnv:
                 steer (float):A scalar value to control the vehicle steering [-1.0, 1.0]. Default is 0.0.
                 brake (float):A scalar value to control the vehicle brake [0.0, 1.0]. Default is 0.0."""
         steer = action[0][0] * self.steer_bound
-        if action[0][1] >= 0:
-            jump = action[0][1] * self.throttle_bound
-        else:
-            jump = action[0][1] * self.brake_bound
-        if self.is_effective_action():
-            self.throttle_brake += jump
-            self.throttle_brake = np.clip(self.throttle_brake, -0.2, 0.8)
-        if self.throttle_brake < 0:
-            brake = abs(self.throttle_brake)
-            throttle = 0
-        else:
-            brake = 0
-            throttle = self.throttle_brake
         # if action[0][1] >= 0:
-        #     brake = 0
-        #     throttle = action[0][1] * self.throttle_bound
+        #     jump = action[0][1] * self.throttle_bound
         # else:
+        #     jump = action[0][1] * self.brake_bound
+        # if self.is_effective_action():
+        #     self.throttle_brake += jump
+        #     self.throttle_brake = np.clip(self.throttle_brake, -0.2, 0.8)
+        # if self.throttle_brake < 0:
+        #     brake = abs(self.throttle_brake)
         #     throttle = 0
-        #     brake = abs(action[0][1]) * self.brake_bound
+        # else:
+        #     brake = 0
+        #     throttle = self.throttle_brake
+        if action[0][1] >= 0:
+            brake = 0
+            throttle = action[0][1] * self.throttle_bound
+        else:
+            throttle = 0
+            brake = abs(action[0][1]) * self.brake_bound
 
         # control = carla.VehicleControl(steer=float(steer), throttle=float(throttle), brake=float(brake),hand_brake=False,
         #                                reverse=False,manual_gear_shift=True,gear=1)
@@ -282,13 +286,44 @@ class CarlaEnv:
         # Use DFA to caaulate different speed state transition
         if not self.debug:
             control = self._speed_switch(control)
+        else:
+            if self.autopilot_controller.done() and self.loop:
+                self.autopilot_controller.set_destination(random.choice(self.spawn_points).location)
+            control=self.autopilot_controller.run_step()
 
         if self.sync:
             if not self.debug:
-                if self.speed_state == SpeedState.RUNNING and self.RL_switch:
+                if self.is_effective_action():
+                    if not self.RL_switch:
+                        #Add noise to autopilot controller's control command
+                        control.steer=np.clip(np.random.normal(control.steer,0.2),-1,1)
+                        if control.throttle>0:
+                            throttle_brake=control.throttle
+                        else:
+                            throttle_brake=-control.brake
+                        throttle_brake=np.clip(np.random.normal(throttle_brake,0.5),-1,1)
+                        if throttle_brake>0:
+                            control.throttle=throttle_brake
+                            control.brake=0
+                        else:
+                            control.throttle=0
+                            control.brake=abs(throttle_brake)
+
                     self.ego_vehicle.apply_control(control)
-                if self.speed_state == SpeedState.REBOOT:
-                    self.ego_vehicle.apply_control(control)
+            else:
+                control.steer=np.clip(np.random.normal(control.steer,0.2),-1,1)
+                if control.throttle>0:
+                    throttle_brake=control.throttle
+                else:
+                    throttle_brake=-control.brake
+                throttle_brake=np.clip(np.random.normal(throttle_brake,0.5),-1,1)
+                if throttle_brake>0:
+                    control.throttle=throttle_brake
+                    control.brake=0
+                else:
+                    control.throttle=0
+                    control.brake=abs(throttle_brake)
+                self.ego_vehicle.apply_control(control)
 
             # print(self.map.get_waypoint(self.ego_vehicle.get_location(),False),self.ego_vehicle.get_transform(),sep='\n')
             # print(self.world.get_snapshot().timestamp)
@@ -523,13 +558,13 @@ class CarlaEnv:
             history, tags = self.collision_sensor.get_collision_history()
             if len(history) != 0:
                 if SemanticTags.Vehicles in tags:
-                    return - self.penalty * self._truncated()
+                    return - self.penalty
                 else:
                     # If ego vehicle collides with traffic lights and stop signs, do not add penalty
                     self.reward_info['Abandon']=True
                     return fTTC + (fEff + fLcen * 2) * 0.5
             else:
-                return - self.penalty * self._truncated()
+                return - self.penalty
         else:
             return fTTC + (fEff + fLcen * 2) * 0.5
 
@@ -541,17 +576,24 @@ class CarlaEnv:
             # control=self.controller.run_step({'waypoints':self.next_wps,'vehicle_front':self.vehicle_front})
             if ego_speed >= self.speed_threshold:
                 self.speed_state = SpeedState.RUNNING
-
-                if self.RL_switch:
-                    self._ego_autopilot(False)
-                else:
-                    self._ego_autopilot(True)
+                self._ego_autopilot(False)
+                if not self.RL_switch:
+                    #self._ego_autopilot(True)
+                    self.autopilot_controller.set_destination(random.choice(self.spawn_points).location)
+                    control=self.autopilot_controller.run_step()
         elif self.speed_state == SpeedState.RUNNING:
-            if self.reset_step < self.SWITCH_THRESHOLD:
-                # Only add reboot state in the beginning 200 episodes
-                if self.RL_switch == True and ego_speed < self.speed_min:
+            if self.RL_switch == True:
+                if ego_speed < self.speed_min:
+                    # Only add reboot state in the beginning 200 episodes
                     # self._ego_autopilot(True)
-                    self.speed_state = SpeedState.REBOOT
+                    #self.speed_state = SpeedState.REBOOT
+                    pass
+                pass
+            else:
+                #Under autopilot controller control
+                if self.autopilot_controller.done() and self.loop:
+                    self.autopilot_controller.set_destination(random.choice(self.spawn_points).location)
+                control=self.autopilot_controller.run_step()
         elif self.speed_state == SpeedState.REBOOT:
             control = self.controller.run_step({'waypoints': self.next_wps, 'vehicle_front': self.vehicle_front})
             if ego_speed >= self.speed_threshold:
@@ -739,15 +781,6 @@ class CarlaEnv:
 
         if not overlap:
             ego_bp = self._create_vehicle_blueprint(self.ego_filter, ego=True, color='0,255,0')
-            # transform.location.z += 0.3
-            # sp=None
-            # for spawn_point in spawn_points:
-            #     if transform.location.distance(spawn_point.location)<self.sampling_resolution:
-            #         sp=spawn_point
-            # if sp is None:
-            #     print("Spawn point error")
-            # else:
-            #     print(transform,sp,sep='\n')
             vehicle = self.world.try_spawn_actor(ego_bp, transform)
             if vehicle is None:
                 logging.warn("Ego vehicle generation fail")
@@ -809,8 +842,8 @@ class CarlaEnv:
                     self.world.get_actor(response.actor_id), 100)
                 self.traffic_manager.set_route(self.world.get_actor(response.actor_id),
                                                ['Straight', 'Straight', 'Straight', 'Straight', 'Straight'])
-                # self.traffic_manager.update_vehicle_lights(
-                #     self.world.get_actor(response.actor_id),True)
+                self.traffic_manager.update_vehicle_lights(
+                    self.world.get_actor(response.actor_id),True)
                 # print(self.world.get_actor(response.actor_id).attributes)
 
         msg = 'requested %d vehicles, generate %d vehicles, press Ctrl+C to exit.'
@@ -834,14 +867,7 @@ class CarlaEnv:
             for actor_filter in actor_filters:
                 self.client.apply_batch([carla.command.DestroyActor(x)
                                          for x in self.world.get_actors().filter(actor_filter)])
-        # else:
-        #     for actor_filter in actor_filters:
-        #         objects=self.world.get_environment_objects(actor_filter)
-        #         for ob in objects:
-        #             print(ob)
-        #             #ob.destroy()
-        #             self.world.get_actor(ob.id).destroy()
-        #         #self.client.apply_batch([carla.command.DestroyActor(x.id) for x in objects])
+
         # for actor_filter in actor_filters:
         #     for actor in self.world.get_actors().filter(actor_filter):
         #         if actor.is_alive:

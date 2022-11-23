@@ -7,37 +7,24 @@ from gym_carla.env.settings import *
 
 def remove_unnecessary_objects(world):
     """Remove unuseful objects in the world"""
-    # world.unload_map_layer(carla.MapLayer.StreetLights)
-    # world.unload_map_layer(carla.MapLayer.Buildings)
-    # world.unload_map_layer(carla.MapLayer.Decals)
+    def remove_object(world,objs,obj):
+        for ob in world.get_environment_objects(obj):
+            objs.add(ob.id)
+    world.unload_map_layer(carla.MapLayer.StreetLights)
+    world.unload_map_layer(carla.MapLayer.Buildings)
+    world.unload_map_layer(carla.MapLayer.Decals)
     world.unload_map_layer(carla.MapLayer.Walls)
-    # world.unload_map_layer(carla.MapLayer.Foliage)
+    world.unload_map_layer(carla.MapLayer.Foliage)
     world.unload_map_layer(carla.MapLayer.ParkedVehicles)
     # world.unload_map_layer(carla.MapLayer.Particles)
-    # world.unload_map_layer(carla.MapLayer.Ground)
+    world.unload_map_layer(carla.MapLayer.Ground)
+    labels=[carla.CityObjectLabel.TrafficSigns,carla.CityObjectLabel.TrafficLight,carla.CityObjectLabel.Other,
+        carla.CityObjectLabel.Poles,carla.CityObjectLabel.Static,carla.CityObjectLabel.Dynamic,carla.CityObjectLabel.Buildings,
+        carla.CityObjectLabel.Fences,carla.CityObjectLabel.Walls,carla.CityObjectLabel.Vegetation,carla.CityObjectLabel.Ground]
     objs = set()
-    for obj in world.get_environment_objects(carla.CityObjectLabel.TrafficSigns):
-        objs.add(obj.id)
-    for obj in world.get_environment_objects(carla.CityObjectLabel.TrafficLight):
-        objs.add(obj.id)
-    for obj in world.get_environment_objects(carla.CityObjectLabel.Other):
-        objs.add(obj.id)
-    for obj in world.get_environment_objects(carla.CityObjectLabel.Poles):
-        objs.add(obj.id)
-    for obj in world.get_environment_objects(carla.CityObjectLabel.Static):
-        objs.add(obj.id)
-    for obj in world.get_environment_objects(carla.CityObjectLabel.Dynamic):
-        objs.add(obj.id)
-    for obj in world.get_environment_objects(carla.CityObjectLabel.Buildings):
-        objs.add(obj.id)
-    for obj in world.get_environment_objects(carla.CityObjectLabel.Fences):
-        objs.add(obj.id)
-    for obj in world.get_environment_objects(carla.CityObjectLabel.Walls):
-        objs.add(obj.id)
-    for obj in world.get_environment_objects(carla.CityObjectLabel.Vegetation):
-        objs.add(obj.id)
-    for obj in world.get_environment_objects(carla.CityObjectLabel.Ground):
-        objs.add(obj.id)
+    for label in labels:
+        for obj in world.get_environment_objects(label):
+            objs.add(obj.id)
     world.enable_environment_objects(objs, False)
     # world.unload_map_layer(carla.MapLayer.Props)
 

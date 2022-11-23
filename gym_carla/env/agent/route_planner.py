@@ -8,7 +8,7 @@ from enum import Enum
 from collections import deque
 from shapely.geometry import Polygon
 from gym_carla.env.settings import ROADS,STRAIGHT,CURVE,JUNCTION
-from gym_carla.env.util.misc import vector,compute_magnitude_angle,\
+from gym_carla.env.util.misc import get_lane_center, get_speed, vector,compute_magnitude_angle,\
     is_within_distance_ahead,draw_waypoints,compute_distance,is_within_distance,test_waypoint
 
 class RoadOption(Enum):
@@ -222,7 +222,7 @@ class LocalPlanner:
         self._map = self._world.get_map()
 
         self._sampling_radius = sampling_resolution
-        self._min_distance = 1
+        self._base_min_distance = 3.0   #This value is tricky
 
         self._target_waypoint = None
         self._buffer_size = buffer_size
@@ -344,7 +344,7 @@ class LocalPlanner:
 
         # not enough waypoints in the horizon? => add more!
         if len(self._waypoints_queue) < int(self._waypoints_queue.maxlen * 0.5) and not self._stop_waypoint_creation:
-            self._compute_next_waypoints(k=10)
+            self._compute_next_waypoints(self._buffer_size*2)
 
         #   Buffering the waypoints
         while len(self._waypoint_buffer)<self._buffer_size:
@@ -377,6 +377,12 @@ class LocalPlanner:
         #         self._waypoint_buffer.popleft()
  
         veh_location=self._vehicle.get_location()
+        veh_speed=get_speed(self._vehicle,False)
+        settings=self._world.get_settings()
+        if settings.synchronous_mode:
+            self._min_distance=self._base_min_distance+settings.fixed_delta_seconds*veh_speed
+        else:
+            self._min_distance=self._base_min_distance+0.5*veh_speed
         num_waypoint_removed = 0
         for waypoint, _ in self._waypoint_buffer:
 
@@ -394,6 +400,11 @@ class LocalPlanner:
             for _ in range(num_waypoint_removed):
                 self._waypoint_buffer.popleft()  
         
+        # lane_center=get_lane_center(self._map,self._vehicle.get_location())
+        # print(lane_center.road_id,lane_center.lane_id,lane_center.s,sep='\t',end='\n\n')
+        # for wp,_ in self._waypoint_buffer:
+        #     print(wp.road_id,wp.lane_id,wp.s,wp.transform.location.distance(lane_center.transform.location),sep='\t')
+
         return waypoints
 
     def _get_hazard(self):

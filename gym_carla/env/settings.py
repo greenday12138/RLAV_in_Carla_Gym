@@ -1,7 +1,7 @@
 """This file defines all high level parameters of carla gym environment"""
 import argparse
 
-CARLA_PATH = 'D:\WindowsNoEditor'
+CARLA_PATH = 'D:\ProgramFiles\Carla\WindowsNoEditor'
 # the following road id sets define the chosen route
 ROADS = set()
 STRAIGHT = {8, 0, 1, 2, 3, 15, 5, 6, 7}
@@ -122,7 +122,7 @@ ARGS.add_argument(
     help='TTC threshold')
 ARGS.add_argument(
     '--penalty', type=float,
-    default=10,
+    default=5,
     help='reward penalty for simulation terminated early on account of collision and lane invasion')
 ARGS.add_argument(
     '--speed_limit', type=float,
@@ -139,15 +139,15 @@ ARGS.add_argument(
         and the action of basic need to add into the replay buffer, km/h')
 ARGS.add_argument(
     '--steer_bound', type=float,
-    default=0.5,
+    default=1.0,
     help='Steer bound for ego vehicle controller')
 ARGS.add_argument(
     '--throttle_bound', type=float,
-    default=0.75,
+    default=1.0,
     help='Throttle bound for ego vehicle controller')
 ARGS.add_argument(
     '--brake_bound', type=float,
-    default=0.5,
+    default=1.0,
     help='Brake bound for ego vehicle controller')
 ARGS.add_argument(
     '--switch_threshold', type=int,
