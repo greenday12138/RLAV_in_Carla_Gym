@@ -216,7 +216,7 @@ class CarlaEnv:
 
         # speed state switch
         if not self.debug:
-            if self.total_step < 100000:
+            if not self.RL_switch and self.total_step < 100000:
                 if not self.TM_switch:
                     if self.tm_control_episode == self.SWITCH_THRESHOLD:
                         self.TM_switch=True
@@ -617,6 +617,8 @@ class CarlaEnv:
                         self._ego_autopilot(False)
                         self.autopilot_controller.set_destination(random.choice(self.spawn_points).location)
                         control=self.autopilot_controller.run_step()
+                else:
+                    self._ego_autopilot(False)
         elif self.speed_state == SpeedState.RUNNING:
             if self.RL_switch == True:
                 if ego_speed < self.speed_min:

@@ -51,11 +51,12 @@ def main():
     result = []
 
     for run in [base_name]:
-        param = torch.load('./out/ddpg.pth')
+        param = torch.load('./out/ddpg_pre_trained.pth')
         agent = DDPG(s_dim, a_dim, a_bound, GAMMA, TAU, SIGMA, THETA, EPSILON, BUFFER_SIZE, BATCH_SIZE, LR_ACTOR,
                      LR_CRITIC, DEVICE)
         agent.load_net(param)
         agent.train = False
+        env.RL_switch=True
         agent.set_sigma(0)
 
         state = env.reset()

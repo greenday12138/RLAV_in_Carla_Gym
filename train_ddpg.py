@@ -111,7 +111,7 @@ def main():
                             score_e += info['Efficiency']
                             score_c += info['Comfort']
 
-                            if env.total_step>100000:
+                            if env.total_step==100000:
                                 agent.save_net('./out/ddpg_pre_trained.pth')
 
                             if env.rl_control_step > 10000 and env.is_effective_action() and \
