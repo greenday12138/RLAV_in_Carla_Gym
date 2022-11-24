@@ -155,7 +155,6 @@ if __name__=='__main__':
     # # print(torch.squeeze(sq))
     # print(arr1,arr2,arr3,sep='\n')
     # print(torch.split(arr3,split_size_or_sections=[1,1],dim=1),sep='\n')
-    a=0.5
-    for i in range(20000):
-        a=a*0.9999
-    print(a)
+    a=carla.Vector3D(1,0,0)
+    b=carla.Vector3D(0,1,0)
+    print(a.cross(b).z,b.cross(a).z,sep='\t')

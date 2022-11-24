@@ -3,11 +3,12 @@ import carla
 import random
 import math, time
 import numpy as np
+import time
 from enum import Enum
 from queue import Queue
 #from gym_carla.env.agent.basic_agent import BasicAgent
 from gym_carla.env.util.misc import draw_waypoints, get_speed, get_acceleration, test_waypoint, \
-    compute_distance, get_actor_polygons, get_lane_center, remove_unnecessary_objects
+    compute_distance, get_actor_polygons, get_lane_center, remove_unnecessary_objects,get_yaw_diff
 from gym_carla.env.sensor import CollisionSensor, LaneInvasionSensor, SemanticTags
 from gym_carla.env.agent.route_planner import GlobalPlanner, LocalPlanner
 from gym_carla.env.agent.pid_controller import VehiclePIDController
@@ -202,10 +203,10 @@ class CarlaEnv:
         #                                                 'max_brake': self.brake_bound})
         self.autopilot_controller=BasicAgent(self.ego_vehicle,target_speed=30,
             opt_dict={'ignore_traffic_lights':True,'ignore_stop_signs':True})
-        # self.control_sigma={'Steer':random.choice([0.5]),
-        #                 'Throttle_brake':random.choice([0.4,0.5,0.6])}  
-        self.control_sigma={'Steer':random.choice([0.05,0.1,0.15,0.2,0.25]),
-                            'Throttle_brake':random.choice([0.4,0.5,0.6])}  
+        self.control_sigma={'Steer':random.choice([0.3, 0.4, 0.5]),
+                        'Throttle_brake':random.choice([0.4,0.5,0.6])}
+        # self.control_sigma={'Steer':random.choice([0.05,0.1,0.15,0.2,0.25]),
+        #                     'Throttle_brake':random.choice([0.4,0.5,0.6])}
 
         # code for synchronous mode
         camera_bp = self.world.get_blueprint_library().find('sensor.camera.rgb')
@@ -422,19 +423,6 @@ class CarlaEnv:
 
         # The wps_length here is a litle tricky, compared with the commented version
         # wps_length=dict['waypoints'][-1].transform.location.distance(self.ego_vehicle.get_location())
-        def get_yaw_diff(rotation1, rotation2):
-            if abs(rotation1.yaw - rotation2.yaw) < 90:
-                yaw_diff = rotation1.yaw - rotation2.yaw
-            else:
-                yaw_diff = (rotation1.yaw + 720) % 360 - (rotation2.yaw + 720) % 360
-            if abs(yaw_diff) < 90:
-                yaw_diff /= 90
-            else:
-                # The current state is not stable, deprecate it
-                yaw_diff = np.sign(yaw_diff)
-
-            return yaw_diff
-
         wps_length = self.sampling_resolution * self.buffer_size
         wps = []
         print(self.ego_vehicle.get_transform().rotation,
@@ -444,7 +432,9 @@ class CarlaEnv:
         if dict['waypoints']:
             for wp in dict['waypoints']:
                 distance = self.ego_vehicle.get_location().distance(wp.transform.location)
-                yaw_diff = get_yaw_diff(self.ego_vehicle.get_transform().rotation, wp.transform.rotation)
+                yaw_diff = math.degrees(get_yaw_diff(wp.transform.get_forward_vector(),
+                                                     self.ego_vehicle.get_transform().get_forward_vector()))
+                yaw_diff/=90
 
                 wps.append([distance / wps_length, yaw_diff])
         if len(wps) < self.buffer_size:
@@ -473,43 +463,25 @@ class CarlaEnv:
         right_lane_dis = lane_center.get_right_lane().transform.location.distance(self.ego_vehicle.get_location())
         t = lane_center.lane_width / 2 + lane_center.get_right_lane().lane_width / 2 - right_lane_dis
 
-        yaw_diff_ego = get_yaw_diff(self.ego_vehicle.get_transform().rotation, lane_center.transform.rotation)
+        yaw_diff_ego=math.degrees(get_yaw_diff(lane_center.transform.get_forward_vector(),
+                                               self.ego_vehicle.get_transform().get_forward_vector()))
 
-        yaw_forward = lane_center.transform.get_forward_vector().make_unit_vector()
-        # yaw_right = lane_center.transform.get_right_vector().make_unit_vector()
-        # print(lane_center.road_id, lane_center.lane_id, lane_center.transform.location.x,
-        #       lane_center.transform.location.y, lane_center.transform.rotation.yaw,
-        #       math.cos(math.radians(lane_center.transform.rotation.yaw)),
-        #       math.sin(math.radians(lane_center.transform.rotation.yaw)), sep='\t')
-        # print(yaw_3d.x,yaw_3d.y,yaw_3d.z,sep='\t')
+        yaw_forward = lane_center.transform.get_forward_vector()
         v_3d = self.ego_vehicle.get_velocity()
-        # ignore z value
-        v_3d.z = 0
-        v_sign = 1 if v_3d.cross(yaw_forward).z > 0 else -1
-        if v_3d.length() != 0.0:
-            theta_v = math.acos(np.clip(v_3d.dot(yaw_forward) / (v_3d.length() * yaw_forward.length()), -1, 1))
-            # alpha_v = math.acos(np.clip(v_3d.dot(yaw_right)/(v_3d.length()*yaw_right.length()),-1,1))
-        else:
-            theta_v = math.acos(0)
-            # alpha_v=math.acos(0)
+        theta_v=get_yaw_diff(v_3d,yaw_forward)
         v_s = v_3d.length() * math.cos(theta_v)
-        v_t = v_3d.length() * math.sin(theta_v) * v_sign
+        v_t = v_3d.length() * math.sin(theta_v)
         # v_t1=v_3d.length()*math.cos(alpha_v)
 
         a_3d = self.ego_vehicle.get_acceleration()
-        a_3d.z = 0
-        a_sign = 1 if a_3d.cross(yaw_forward).z > 0 else -1
-        if a_3d.length() != 0.0:
-            theta_a = math.acos(np.clip(a_3d.dot(yaw_forward) / (a_3d.length() * yaw_forward.length()), -1, 1))
-        else:
-            theta_a = math.acos(0)
+        theta_a=get_yaw_diff(a_3d,yaw_forward)
         a_s = a_3d.length() * math.cos(theta_a)
-        a_t = a_3d.length() * math.sin(theta_a) * a_sign
+        a_t = a_3d.length() * math.sin(theta_a)
 
         """Attention:
         Upon initializing, there are some bugs in the theta_v and theta_a, which could be greater than 90,
         this might be caused by carla."""
-        return {'waypoints': wps, 'ego_vehicle': [v_s / 10, v_t / 10, a_s / 3, a_t / 3, t, yaw_diff_ego],
+        return {'waypoints': wps, 'ego_vehicle': [v_s , v_t , a_s, a_t , t, yaw_diff_ego],
                 'vehicle_front': vfl}
 
     def _get_reward(self):
@@ -598,7 +570,7 @@ class CarlaEnv:
             else:
                 return - self.penalty
         else:
-            return fTTC + (fEff + fLcen * 2) * 0.5
+            return fTTC + (fEff + fLcen) * 0.5
 
     def _speed_switch(self, cont):
         """cont: the control command of RL agent"""
