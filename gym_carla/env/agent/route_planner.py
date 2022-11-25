@@ -219,7 +219,7 @@ class GlobalPlanner:
 
 
 class LocalPlanner:
-    def __init__(self, vehicle, sampling_resolution=4.0, buffer_size=12):
+    def __init__(self, vehicle, sampling_resolution=4.0, buffer_size=10):
         self._vehicle = vehicle
         self._world = self._vehicle.get_world()
         self._map = self._world.get_map()
@@ -337,78 +337,111 @@ class LocalPlanner:
             self._waypoints_queue.append((next_waypoint, road_option))
 
     def _get_waypoints(self):
-        """
-        Execute one step of local planning which involves running the longitudinal and lateral PID controllers to
-        follow the waypoints trajectory.
+        """Get the next waypoint list according to ego vehicle's current location"""
+        lane_center=get_lane_center(self._map,self._vehicle.get_location())
+        _waypoints_queue = deque(maxlen=600)
+        _waypoints_queue.append(lane_center)
+        available_entries = _waypoints_queue.maxlen - len(self._waypoints_queue)
+        k = min(available_entries, self._buffer_size)
 
-        :param debug: boolean flag to activate waypoints debugging
-        :return:
-        """
+        for _ in range(k):
+            last_waypoint = _waypoints_queue[-1]
+            next_waypoints = list(last_waypoint.next(self._sampling_radius))
 
-        # not enough waypoints in the horizon? => add more!
-        if len(self._waypoints_queue) < int(self._waypoints_queue.maxlen * 0.5) and not self._stop_waypoint_creation:
-            self._compute_next_waypoints(self._buffer_size * 2)
-
-        #   Buffering the waypoints
-        while len(self._waypoint_buffer) < self._buffer_size:
-            if self._waypoints_queue:
-                self._waypoint_buffer.append(
-                    self._waypoints_queue.popleft())
-            else:
+            if len(next_waypoints) == 0:
                 break
-
-        waypoints = []
-
-        for i, (waypoint, _) in enumerate(self._waypoint_buffer):
-            waypoints.append(waypoint)
-            # waypoints.append([waypoint.transform.location.x, waypoint.transform.location.y, waypoint.transform.rotation.yaw])
-
-        # current vehicle waypoint
-        self._current_waypoint = self._map.get_waypoint(self._vehicle.get_location())
-        # target waypoint
-        self._target_waypoint, self._target_road_option = self._waypoint_buffer[0]
-
-        # purge the queue of obsolete waypoints
-        # vehicle_transform = self._vehicle.get_transform()
-        # max_index = -1
-
-        # for i, (waypoint, _) in enumerate(self._waypoint_buffer):
-        #     if distance_vehicle(waypoint, vehicle_transform) < self._min_distance:
-        #         max_index = i
-        # if max_index >= 0:
-        #     for i in range(max_index - 1):
-        #         self._waypoint_buffer.popleft()
-
-        veh_location = self._vehicle.get_location()
-        veh_speed = get_speed(self._vehicle, False)
-        settings = self._world.get_settings()
-        if settings.synchronous_mode:
-            self._min_distance = self._base_min_distance + settings.fixed_delta_seconds * veh_speed
-        else:
-            self._min_distance = self._base_min_distance + 0.5 * veh_speed
-        num_waypoint_removed = 0
-        for waypoint, _ in self._waypoint_buffer:
-
-            if len(self._waypoints_queue) - num_waypoint_removed == 1:
-                min_distance = 1  # Don't remove the last waypoint until very close by
+            elif len(next_waypoints) == 1:
+                # only one option available ==> lanefollowing
+                next_waypoint = next_waypoints[0]
+                #road_option = RoadOption.LANEFOLLOW
             else:
-                min_distance = self._min_distance
+                # road_options_list = self._retrieve_options(
+                #     next_waypoints, last_waypoint)
 
-            if veh_location.distance(waypoint.transform.location) < min_distance:
-                num_waypoint_removed += 1
-            else:
-                break
+                idx = None
+                for i, wp in enumerate(next_waypoints):
+                    if wp.road_id in ROADS:
+                        next_waypoint = wp
+                        idx = i
+                #road_option = road_options_list[idx]
 
-        if num_waypoint_removed > 0:
-            for _ in range(num_waypoint_removed):
-                self._waypoint_buffer.popleft()
+            _waypoints_queue.append(next_waypoint)
+        _waypoints_queue.popleft()
+        return _waypoints_queue
 
-                # lane_center=get_lane_center(self._map,self._vehicle.get_location())
-        # print(lane_center.road_id,lane_center.lane_id,lane_center.s,sep='\t',end='\n\n')
-        # for wp,_ in self._waypoint_buffer:
-        #     print(wp.road_id,wp.lane_id,wp.s,wp.transform.location.distance(lane_center.transform.location),sep='\t')
+    # def _get_waypoints(self):
+    #     """
+    #     Execute one step of local planning which involves running the longitudinal and lateral PID controllers to
+    #     follow the waypoints trajectory.
 
-        return waypoints
+    #     :param debug: boolean flag to activate waypoints debugging
+    #     :return:
+    #     """
+
+    #     # not enough waypoints in the horizon? => add more!
+    #     if len(self._waypoints_queue) < int(self._waypoints_queue.maxlen * 0.5) and not self._stop_waypoint_creation:
+    #         self._compute_next_waypoints(self._buffer_size * 2)
+
+    #     #   Buffering the waypoints
+    #     while len(self._waypoint_buffer) < self._buffer_size:
+    #         if self._waypoints_queue:
+    #             self._waypoint_buffer.append(
+    #                 self._waypoints_queue.popleft())
+    #         else:
+    #             break
+
+    #     waypoints = []
+
+    #     for i, (waypoint, _) in enumerate(self._waypoint_buffer):
+    #         waypoints.append(waypoint)
+    #         # waypoints.append([waypoint.transform.location.x, waypoint.transform.location.y, waypoint.transform.rotation.yaw])
+
+    #     # current vehicle waypoint
+    #     self._current_waypoint = self._map.get_waypoint(self._vehicle.get_location())
+    #     # target waypoint
+    #     self._target_waypoint, self._target_road_option = self._waypoint_buffer[0]
+
+    #     # purge the queue of obsolete waypoints
+    #     # vehicle_transform = self._vehicle.get_transform()
+    #     # max_index = -1
+
+    #     # for i, (waypoint, _) in enumerate(self._waypoint_buffer):
+    #     #     if distance_vehicle(waypoint, vehicle_transform) < self._min_distance:
+    #     #         max_index = i
+    #     # if max_index >= 0:
+    #     #     for i in range(max_index - 1):
+    #     #         self._waypoint_buffer.popleft()
+
+    #     veh_location = self._vehicle.get_location()
+    #     veh_speed = get_speed(self._vehicle, False)
+    #     settings = self._world.get_settings()
+    #     if settings.synchronous_mode:
+    #         self._min_distance = self._base_min_distance + settings.fixed_delta_seconds * veh_speed
+    #     else:
+    #         self._min_distance = self._base_min_distance + 0.5 * veh_speed
+    #     num_waypoint_removed = 0
+    #     for waypoint, _ in self._waypoint_buffer:
+
+    #         if len(self._waypoints_queue) - num_waypoint_removed == 1:
+    #             min_distance = 1  # Don't remove the last waypoint until very close by
+    #         else:
+    #             min_distance = self._min_distance
+
+    #         if veh_location.distance(waypoint.transform.location) < min_distance:
+    #             num_waypoint_removed += 1
+    #         else:
+    #             break
+
+    #     if num_waypoint_removed > 0:
+    #         for _ in range(num_waypoint_removed):
+    #             self._waypoint_buffer.popleft()
+
+    #             # lane_center=get_lane_center(self._map,self._vehicle.get_location())
+    #     # print(lane_center.road_id,lane_center.lane_id,lane_center.s,sep='\t',end='\n\n')
+    #     # for wp,_ in self._waypoint_buffer:
+    #     #     print(wp.road_id,wp.lane_id,wp.s,wp.transform.location.distance(lane_center.transform.location),sep='\t')
+
+    #     return waypoints
 
     def _get_hazard(self):
         # retrieve relevant elements for safe navigation, i.e.: traffic lights

@@ -91,7 +91,7 @@ ARGS.add_argument(
 ARGS.add_argument(
     '-sa', '--sampling_resolution', type=float,
     help='Distance between generated two waypoints',
-    default=4.0)
+    default=1.0)
 ARGS.add_argument(
     '--tm-port',
     metavar='P',
@@ -122,7 +122,7 @@ ARGS.add_argument(
     help='TTC threshold')
 ARGS.add_argument(
     '--penalty', type=float,
-    default=5,
+    default=1,
     help='reward penalty for simulation terminated early on account of collision and lane invasion')
 ARGS.add_argument(
     '--speed_limit', type=float,

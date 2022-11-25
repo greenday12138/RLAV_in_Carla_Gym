@@ -203,7 +203,9 @@ class CarlaEnv:
         #                                                 'max_throttle': self.throttle_bound,
         #                                                 'max_brake': self.brake_bound})
         self.autopilot_controller=BasicAgent(self.ego_vehicle,target_speed=30,
-            opt_dict={'ignore_traffic_lights':True,'ignore_stop_signs':True})
+            opt_dict={'ignore_traffic_lights':True,'ignore_stop_signs':True,
+            'sampling_resolution':self.sampling_resolution,'dt':1.0/self.fps,
+            'sampling_radius':self.sampling_resolution})
         # self.control_sigma={'Steer':random.choice([0.3, 0.4, 0.5]),
         #                 'Throttle_brake':random.choice([0.4,0.5,0.6])}
         self.control_sigma={'Steer':random.choice([0.05,0.1,0.15,0.2,0.25]),
@@ -258,21 +260,6 @@ class CarlaEnv:
         return self._get_state({'waypoints': self.next_wps, 'vehicle_front': self.vehicle_front})
 
     def step(self, action):
-        # route planner
-        self.next_wps, _, self.vehicle_front = self.local_planner.run_step()
-
-        if self.debug:
-            # run the ego vehicle with PID_controller
-            if self.next_wps[0].id != self.former_wp.id:
-                self.former_wp = self.next_wps[0]
-
-            draw_waypoints(self.world, [self.next_wps[0]], 60, z=1)
-            self.world.debug.draw_point(self.ego_vehicle.get_location(), size=0.1, life_time=5.0)
-            control = None
-            # control=self.controller.run_step({'waypoints':self.next_wps,'vehicle_front':self.vehicle_front})
-            # print(control.steer,control.throttle,control.brake,sep='\t')
-        else:
-            draw_waypoints(self.world, self.next_wps, 0.2, z=1)
         """throttle (float):A scalar value to control the vehicle throttle [0.0, 1.0]. Default is 0.0.
                 steer (float):A scalar value to control the vehicle steering [-1.0, 1.0]. Default is 0.0.
                 brake (float):A scalar value to control the vehicle brake [0.0, 1.0]. Default is 0.0."""
@@ -355,6 +342,21 @@ class CarlaEnv:
             control = self.ego_vehicle.get_control()
             print(control)
             # print(self.ego_vehicle.get_speed_limit(),get_speed(self.ego_vehicle,False),get_acceleration(self.ego_vehicle,False),sep='\t')
+            # route planner
+            self.next_wps, _, self.vehicle_front = self.local_planner.run_step()
+
+            if self.debug:
+                # run the ego vehicle with PID_controller
+                if self.next_wps[0].id != self.former_wp.id:
+                    self.former_wp = self.next_wps[0]
+
+                draw_waypoints(self.world, [self.next_wps[0]], 60, z=1)
+                self.world.debug.draw_point(self.ego_vehicle.get_location(), size=0.1, life_time=5.0)
+                control = None
+                # control=self.controller.run_step({'waypoints':self.next_wps,'vehicle_front':self.vehicle_front})
+                # print(control.steer,control.throttle,control.brake,sep='\t')
+            else:
+                draw_waypoints(self.world, self.next_wps, 1.0/self.fps+0.001, z=1)
 
             spectator = self.world.get_spectator()
             transform = self.ego_vehicle.get_transform()
@@ -520,9 +522,9 @@ class CarlaEnv:
         v_s = v_3d.length() * math.cos(theta_v)
         if v_s > self.speed_limit:
             # fEff = 1
-            fEff = math.exp(self.speed_limit - v_s)
+            fEff = math.exp(self.speed_limit - v_s * 3.6)
         else:
-            fEff = v_s / self.speed_limit
+            fEff = v_s * 3.6 / self.speed_limit
 
         cur_acc = self.ego_vehicle.get_acceleration()
         jerk = (cur_acc.x - self.last_acc.x) ** 2 / (1.0 / self.fps) + (cur_acc.y - self.last_acc.y) ** 2 / (
@@ -647,7 +649,7 @@ class CarlaEnv:
         return False
 
     def _done(self):
-        if self.RL_switch == True and self.next_wps[1].transform.location.distance(
+        if self.RL_switch == True and self.next_wps[2].transform.location.distance(
                 self.ego_spawn_point.location) < self.sampling_resolution:
             # The local planner's waypoint list has been depleted
             logging.info('vehicle reach destination, simulation terminate')
@@ -657,7 +659,7 @@ class CarlaEnv:
                 # Let the traffic manager only execute 5000 steps. or it can fill the replay buffer
                 logging.info('5000 steps passed under traffic manager control')
                 return True
-            if self.next_wps[1].transform.location.distance(
+            if self.next_wps[2].transform.location.distance(
                     self.ego_spawn_point.location) < self.sampling_resolution:
                 # The second next waypoints is close enough to the spawn point, route done
                 logging.info('vehicle reach destination, simulation terminate')
