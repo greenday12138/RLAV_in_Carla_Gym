@@ -301,6 +301,7 @@ class CarlaEnv:
             if not self.debug:
                 if not self.RL_switch and not self.TM_switch:
                     #Add noise to autopilot controller's control command
+                    print(f"Basic Agent Control Before Noise:{control}")
                     control.steer=np.clip(np.random.normal(control.steer,self.control_sigma['Steer']),-1,1)
                     if control.throttle>0:
                         throttle_brake=control.throttle
@@ -435,7 +436,9 @@ class CarlaEnv:
             dict['waypoints'][2].road_id,dict['waypoints'][2].lane_id,dict['waypoints'][2].transform.rotation,sep='\t')
         if dict['waypoints']:
             for wp in dict['waypoints']:
-                distance = self.ego_vehicle.get_location().distance(wp.transform.location)
+                lane_center = get_lane_center(self.map,self.ego_vehicle.get_location())
+                #distance = self.ego_vehicle.get_location().distance(wp.transform.location)
+                distance = lane_center.transform.location.distance(wp.transform.location)
                 yaw_diff = math.degrees(get_yaw_diff(wp.transform.get_forward_vector(),
                                                      self.ego_vehicle.get_transform().get_forward_vector()))
                 yaw_diff/=90

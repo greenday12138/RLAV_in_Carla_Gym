@@ -192,7 +192,6 @@ class DDPG:
         self.learn_time = 0
         self.replace_a = 0
         self.replace_c = 0
-        self.train = True
         self.s_dim = state_dim  # state_dim here is a dict
         self.a_dim, self.a_bound = action_dim, action_bound
         self.theta = theta
@@ -249,9 +248,8 @@ class DDPG:
 
     def learn(self):
         self.learn_time += 1
-        self.train = True
-        if self.learn_time > 100000:
-            self.train = False
+        # if self.learn_time > 100000:
+        #     self.train = False
         self.replace_a += 1
         self.replace_c += 1
         b_s, b_a, b_r, b_ns, b_t, b_d = self.replay_buffer.sample(self.batch_size)
