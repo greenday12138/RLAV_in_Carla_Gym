@@ -265,12 +265,11 @@ class DDPG:
         action_target = self.actor_target(batch_ns)
         action_target = torch.tensor(action_target, dtype=torch.float32).to(self.device)
         next_q_values = self.critic_target(batch_ns, action_target)
-        q_targets = batch_r + self.gamma * next_q_values * (1 - batch_t)
+        q_targets = batch_r + self.gamma * next_q_values * (1 - batch_t)*(1 - batch_d)
         critic_loss = self.loss(self.critic(batch_s, batch_a), q_targets)
         print(f'TD-error:{critic_loss}')
         self.critic_optimizer.zero_grad()
         critic_loss.backward()
-
         # print()
         # self._print_grad(self.critic)
         # print()

@@ -287,10 +287,11 @@ class TD3:
         next_q_values_2=self.critic2_target(batch_ns,action_target)
         next_q_values=torch.min(next_q_values_1,next_q_values_2)
 
-        q_targets = batch_r + self.gamma * next_q_values * (1 - batch_t)
+        q_targets = batch_r + self.gamma * next_q_values * (1 - batch_t)*(1-batch_d)
         critic1_loss = self.loss(self.critic1(batch_s, batch_a), q_targets.detach())
         critic2_loss=self.loss(self.critic2(batch_s,batch_a),q_targets.detach())
         critic_loss=critic1_loss+critic2_loss
+        print(f'TD-error:{critic_loss}')
         self.critic_optimizer.zero_grad()
         critic_loss.backward()
         self.critic_optimizer.step()

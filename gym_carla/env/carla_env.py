@@ -523,11 +523,11 @@ class CarlaEnv:
             theta_v = math.acos(0)
             # alpha_v=math.acos(0)
         v_s = v_3d.length() * math.cos(theta_v)
-        if v_s > self.speed_limit:
+        if v_s*3.6 > self.speed_limit:
             # fEff = 1
-            fEff = math.exp(self.speed_limit - v_s * 3.6)
+            fEff = math.exp(self.speed_limit - v_s * 3.6) - 1
         else:
-            fEff = v_s * 3.6 / self.speed_limit
+            fEff = v_s * 3.6 / self.speed_limit - 1
 
         cur_acc = self.ego_vehicle.get_acceleration()
         jerk = (cur_acc.x - self.last_acc.x) ** 2 / (1.0 / self.fps) + (cur_acc.y - self.last_acc.y) ** 2 / (
