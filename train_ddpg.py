@@ -13,8 +13,8 @@ from process import start_process, kill_process
 SIGMA = 0.5
 THETA = 0.05
 DEVICE = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
-LR_ACTOR = 0.01
-LR_CRITIC = 0.02
+LR_ACTOR = 0.001
+LR_CRITIC = 0.002
 GAMMA = 0.9  # q值更新系数
 TAU = 0.01  # 软更新参数
 EPSILON = 0.5  # epsilon-greedy

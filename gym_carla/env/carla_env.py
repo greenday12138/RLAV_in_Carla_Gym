@@ -223,12 +223,12 @@ class CarlaEnv:
                     if self.tm_control_episode == self.SWITCH_THRESHOLD:
                         self.TM_switch=True
                         self.tm_control_episode=0
+                        self.world.debug.draw_point(self.ego_spawn_point.location, size=0.2, life_time=300)
                     else:
                         self.tm_control_episode+=1
                 else:
                     self.TM_switch=False
                     self.tm_control_episode+=1
-                self.world.debug.draw_point(self.ego_spawn_point.location, size=0.2, life_time=240)
                 # if self.RL_switch:
                 #     if self.rl_control_episode == self.SWITCH_THRESHOLD:
                 #         self.RL_switch = False
@@ -520,9 +520,9 @@ class CarlaEnv:
         v_s = v_3d.length() * math.cos(theta_v)
         if v_s > self.speed_limit:
             # fEff = 1
-            fEff = math.exp(self.speed_limit - v_s) - 1
+            fEff = math.exp(self.speed_limit - v_s)
         else:
-            fEff = v_s / self.speed_limit - 1
+            fEff = v_s / self.speed_limit
 
         cur_acc = self.ego_vehicle.get_acceleration()
         jerk = (cur_acc.x - self.last_acc.x) ** 2 / (1.0 / self.fps) + (cur_acc.y - self.last_acc.y) ** 2 / (

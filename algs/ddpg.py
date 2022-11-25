@@ -52,6 +52,7 @@ class PolicyNet(torch.nn.Module):
         self.fc1_2 = nn.Linear(state_dim['ego_vehicle'],32)
         self.fc1_3 = nn.Linear(state_dim['vehicle_front'], 32)
         # concat the first layer output and input to second layer
+        self.fc2 = nn.Linear(128,128)
         self.fc_out = nn.Linear(128, 2)
 
         # torch.nn.init.normal_(self.fc1_1.weight.data,0,0.01)
@@ -72,7 +73,8 @@ class PolicyNet(torch.nn.Module):
         state_ev=F.relu((self.fc1_2(state_ev)))
         state_vf = F.relu(self.fc1_3(state_vf))
         state_ = torch.cat((state_wp,state_ev, state_vf), dim=1)
-        action = torch.tanh(self.fc_out(state_))
+        hidden = F.relu(self.fc2(state_))
+        action = torch.tanh(self.fc_out(hidden))
         # steer,throttle_brake=torch.split(out,split_size_or_sections=[1,1],dim=1)
         # steer=steer.clone()
         # throttle_brake=throttle_brake.clone()
@@ -102,14 +104,13 @@ class QValueNet(torch.nn.Module):
         self.layer_norm = nn.LayerNorm(128)
         self.batch_norm = nn.BatchNorm1d(128)
         self.dropout = nn.Dropout(0.2)
-
-
         #self.fc1 = nn.Linear(self.state_dim + action_dim, 64)
 
         self.fc1_1=nn.Linear(self.state_dim['waypoints'],32)
         self.fc1_2=nn.Linear(self.state_dim['ego_vehicle'],32)
         self.fc1_3=nn.Linear(self.state_dim['vehicle_front'],32)
         self.fc1_4=nn.Linear(self.action_dim,32)
+        self.fc2=nn.Linear(128,128)
         self.fc_out = nn.Linear(128, 1)
 
         # torch.nn.init.normal_(self.fc1.weight.data,0,0.01)
@@ -129,7 +130,8 @@ class QValueNet(torch.nn.Module):
         state_vf=F.relu(self.fc1_3(state_vf))
         state_ac=F.relu(self.fc1_4(action))
         state = torch.cat((state_wp,state_ev,state_vf, state_ac), dim=1)
-        out = self.fc_out(state)
+        hidden=F.relu(self.fc2(state))
+        out = self.fc_out(hidden)
 
         return out
 
