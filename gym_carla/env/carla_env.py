@@ -47,6 +47,7 @@ class CarlaEnv:
         self.hybrid = args.hybrid
         self.stride = args.stride
         self.buffer_size = args.buffer_size
+        self.pre_train_steps = args.pre_train_steps
         self.speed_limit = args.speed_limit
         # The RL agent acts only after ego vehicle speed reach speed threshold
         self.speed_threshold = args.speed_threshold
@@ -217,7 +218,7 @@ class CarlaEnv:
 
         # speed state switch
         if not self.debug:
-            if not self.RL_switch and self.total_step < 100000:
+            if not self.RL_switch and self.total_step < self.pre_train_steps:
                 if not self.TM_switch:
                     if self.tm_control_episode == self.SWITCH_THRESHOLD:
                         self.TM_switch=True
