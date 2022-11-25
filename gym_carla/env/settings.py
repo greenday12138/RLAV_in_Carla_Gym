@@ -151,6 +151,6 @@ ARGS.add_argument(
     help='Brake bound for ego vehicle controller')
 ARGS.add_argument(
     '--switch_threshold', type=int,
-    default=20,
+    default=50,
     help='Let the RL controller and PID controller alternatively take control every 500 steps'
 )

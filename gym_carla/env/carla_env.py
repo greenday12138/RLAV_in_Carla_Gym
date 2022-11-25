@@ -132,8 +132,8 @@ class CarlaEnv:
 
     def reset(self):
         if self.ego_vehicle is not None:
-            self.world.apply_settings(self.origin_settings)
-            self._set_synchronous_mode()
+            # self.world.apply_settings(self.origin_settings)
+            # self._set_synchronous_mode()
             self._clear_actors(
                 ['*vehicle.*', 'sensor.other.collison', 'sensor.camera.rgb', 'sensor.other.lane_invasion'])
             self.ego_vehicle = None
@@ -203,10 +203,10 @@ class CarlaEnv:
         #                                                 'max_brake': self.brake_bound})
         self.autopilot_controller=BasicAgent(self.ego_vehicle,target_speed=30,
             opt_dict={'ignore_traffic_lights':True,'ignore_stop_signs':True})
-        self.control_sigma={'Steer':random.choice([0.3, 0.4, 0.5]),
-                        'Throttle_brake':random.choice([0.4,0.5,0.6])}
-        # self.control_sigma={'Steer':random.choice([0.05,0.1,0.15,0.2,0.25]),
-        #                     'Throttle_brake':random.choice([0.4,0.5,0.6])}
+        # self.control_sigma={'Steer':random.choice([0.3, 0.4, 0.5]),
+        #                 'Throttle_brake':random.choice([0.4,0.5,0.6])}
+        self.control_sigma={'Steer':random.choice([0.05,0.1,0.15,0.2,0.25]),
+                            'Throttle_brake':random.choice([0.4,0.5,0.6])}
 
         # code for synchronous mode
         camera_bp = self.world.get_blueprint_library().find('sensor.camera.rgb')
@@ -222,12 +222,12 @@ class CarlaEnv:
                     if self.tm_control_episode == self.SWITCH_THRESHOLD:
                         self.TM_switch=True
                         self.tm_control_episode=0
-                        self.world.debug.draw_point(self.ego_spawn_point.location,size=0.2,life_time=0)
                     else:
                         self.tm_control_episode+=1
                 else:
                     self.TM_switch=False
                     self.tm_control_episode+=1
+                self.world.debug.draw_point(self.ego_spawn_point.location, size=0.2, life_time=240)
                 # if self.RL_switch:
                 #     if self.rl_control_episode == self.SWITCH_THRESHOLD:
                 #         self.RL_switch = False
@@ -270,7 +270,8 @@ class CarlaEnv:
             control = None
             # control=self.controller.run_step({'waypoints':self.next_wps,'vehicle_front':self.vehicle_front})
             # print(control.steer,control.throttle,control.brake,sep='\t')
-
+        else:
+            draw_waypoints(self.world, self.next_wps, 0.2, z=1)
         """throttle (float):A scalar value to control the vehicle throttle [0.0, 1.0]. Default is 0.0.
                 steer (float):A scalar value to control the vehicle steering [-1.0, 1.0]. Default is 0.0.
                 brake (float):A scalar value to control the vehicle brake [0.0, 1.0]. Default is 0.0."""
@@ -481,7 +482,7 @@ class CarlaEnv:
         """Attention:
         Upon initializing, there are some bugs in the theta_v and theta_a, which could be greater than 90,
         this might be caused by carla."""
-        return {'waypoints': wps, 'ego_vehicle': [v_s , v_t , a_s, a_t , t, yaw_diff_ego],
+        return {'waypoints': wps, 'ego_vehicle': [v_s/10 , v_t/10 , a_s/3, a_t/3 , t, yaw_diff_ego/90],
                 'vehicle_front': vfl}
 
     def _get_reward(self):
@@ -653,7 +654,7 @@ class CarlaEnv:
         if not self.RL_switch:
             if self.time_step > 5000:
                 # Let the traffic manager only execute 5000 steps. or it can fill the replay buffer
-                logging.info('500 steps passed under traffic manager control')
+                logging.info('5000 steps passed under traffic manager control')
                 return True
             if self.next_wps[1].transform.location.distance(
                     self.ego_spawn_point.location) < self.sampling_resolution:

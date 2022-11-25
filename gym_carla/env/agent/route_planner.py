@@ -1,15 +1,16 @@
 import carla
 import copy
-import logging,random
+import logging, random
 import numpy as np
 import networkx as nx
 import matplotlib.pyplot as plt
 from enum import Enum
 from collections import deque
 from shapely.geometry import Polygon
-from gym_carla.env.settings import ROADS,STRAIGHT,CURVE,JUNCTION
-from gym_carla.env.util.misc import get_lane_center, get_speed, vector,compute_magnitude_angle,\
-    is_within_distance_ahead,draw_waypoints,compute_distance,is_within_distance,test_waypoint
+from gym_carla.env.settings import ROADS, STRAIGHT, CURVE, JUNCTION
+from gym_carla.env.util.misc import get_lane_center, get_speed, vector, compute_magnitude_angle, \
+    is_within_distance_ahead, draw_waypoints, compute_distance, is_within_distance, test_waypoint
+
 
 class RoadOption(Enum):
     """
@@ -24,74 +25,75 @@ class RoadOption(Enum):
     CHANGELANELEFT = 5
     CHANGELANERIGHT = 6
 
+
 class GlobalPlanner:
     """
     class for generating chosen circuit's road topology,topology is saved with waypoints list
     vehicle always runs on the outer ring of chosen route
     """
-    def __init__(self,map,sampling_resolution=1000.0) -> None:
-        self._sampling_resolution=sampling_resolution
-        self._wmap=map
 
-        #code for simulation road generation
-        self._route=[]
+    def __init__(self, map, sampling_resolution=1000.0) -> None:
+        self._sampling_resolution = sampling_resolution
+        self._wmap = map
+
+        # code for simulation road generation
+        self._route = []
         self._topology = []
 
-        #generate circuit topology
+        # generate circuit topology
         self._build_topology()
-        #print(len(self._topology))
+        # print(len(self._topology))
         # self._build_graph()
         # nx.draw(self._graph,with_labels=True,font_weight='bold')
         # plt.draw()
         # plt.show()
 
-        #generate route waypoints list
+        # generate route waypoints list
         self._build_route()
 
-
-    def get_route(self,ego_waypoint):
-        return self._compute_next_waypoints(ego_waypoint,len(self._route))
+    def get_route(self, ego_waypoint):
+        return self._compute_next_waypoints(ego_waypoint, len(self._route))
 
     def get_spawn_points(self):
         """Vehicle can only be spawned on straight road, return transforms"""
-        spawn_points=[]
+        spawn_points = []
         for wp in self._route:
             if wp.road_id in STRAIGHT:
-                temp=carla.Transform(wp.transform.location,wp.transform.rotation)
-                #Increase the z value a little bit to avoid collison upon initializing
-                temp.location.z+=0.1
+                temp = carla.Transform(wp.transform.location, wp.transform.rotation)
+                # Increase the z value a little bit to avoid collison upon initializing
+                temp.location.z += 0.1
                 spawn_points.append(temp)
-        
+
         return spawn_points
 
     def _build_route(self):
-        begin=self._topology[0]
+        begin = self._topology[0]
         self._route.append(begin['entry'])
         for wp in begin['path']:
             self._route.append(wp)
-        #self._route.append(begin['exit'])
-        indicator=begin['exit']
-        iter=None
+        # self._route.append(begin['exit'])
+        indicator = begin['exit']
+        iter = None
         for seg in self._topology:
-            if seg['entry'].id==indicator.id:
-                iter=seg
+            if seg['entry'].id == indicator.id:
+                iter = seg
                 break
 
-        while(indicator.id!=begin['entry'].id):
+        while (indicator.id != begin['entry'].id):
             self._route.append(iter['entry'])
             for wp in iter['path']:
                 self._route.append(wp)
-            #self._route.append(iter['exit'])
-            indicator=iter['exit']
+            # self._route.append(iter['exit'])
+            indicator = iter['exit']
             for seg in self._topology:
-                if seg['entry'].id==indicator.id:
-                    iter=seg
+                if seg['entry'].id == indicator.id:
+                    iter = seg
                     break
-        
-        #remove start
-        #print(len(self._route))
 
-    def _compute_next_waypoints(self,cur_wp,k=1):
+        # remove start
+        # print(len(self._route))
+
+    def _compute_next_waypoints(self, cur_wp, k=1):
         """
         Add new waypoints to the trajectory queue.
 
@@ -99,26 +101,26 @@ class GlobalPlanner:
         :param k: how many waypoints to compute
         :return: waypoint list
         """
-        next_wps=[]
-        iter=None
-        for i,wp in enumerate(self._route):
-            if wp.id==cur_wp.id:
-                iter=i
+        next_wps = []
+        iter = None
+        for i, wp in enumerate(self._route):
+            if wp.id == cur_wp.id:
+                iter = i
                 break
-            elif wp.transform.location.distance(cur_wp.transform.location)<self._sampling_resolution/2:
-                #can't find the exact waypoint, get an approximation
-                iter=i
+            elif wp.transform.location.distance(cur_wp.transform.location) < self._sampling_resolution / 2:
+                # can't find the exact waypoint, get an approximation
+                iter = i
         if iter is None:
             logging.error("Current waypoint on route not found!")
-        if iter+k<len(self._route):
+        if iter + k < len(self._route):
             for i in range(k):
-                next_wps.append(self._route[iter+i+1])
+                next_wps.append(self._route[iter + i + 1])
         else:
-            for i in range(len(self._route)-iter-1):
-                next_wps.append(self._route[iter+i+1])
-            for i in range(k-(len(self._route)-iter-1)):
+            for i in range(len(self._route) - iter - 1):
+                next_wps.append(self._route[iter + i + 1])
+            for i in range(k - (len(self._route) - iter - 1)):
                 next_wps.append(self._route[i])
-        
+
         return next_wps
 
     def _build_topology(self):
@@ -155,10 +157,10 @@ class GlobalPlanner:
                     if test_waypoint(w):
                         seg_dict['path'].append(w)
                 else:
-                    next_wp=wp1.next(self._sampling_resolution)[0]
+                    next_wp = wp1.next(self._sampling_resolution)[0]
                     if test_waypoint(next_wp):
                         seg_dict['path'].append(next_wp)
-                self._topology.append(seg_dict)      
+                self._topology.append(seg_dict)
 
     def _build_graph(self):
         """
@@ -215,14 +217,15 @@ class GlobalPlanner:
                 net_vector=vector(entry_wp.transform.location, exit_wp.transform.location),
                 intersection=intersection, type=RoadOption.LANEFOLLOW)
 
+
 class LocalPlanner:
-    def __init__(self, vehicle,sampling_resolution=4.0,buffer_size=12):
+    def __init__(self, vehicle, sampling_resolution=4.0, buffer_size=12):
         self._vehicle = vehicle
         self._world = self._vehicle.get_world()
         self._map = self._world.get_map()
 
         self._sampling_radius = sampling_resolution
-        self._base_min_distance = 3.0   #This value is tricky
+        self._base_min_distance = 3.0  # This value is tricky
 
         self._target_waypoint = None
         self._buffer_size = buffer_size
@@ -231,41 +234,41 @@ class LocalPlanner:
         self._waypoints_queue = deque(maxlen=600)
         self._current_waypoint = self._map.get_waypoint(self._vehicle.get_location())
         self._target_road_option = RoadOption.LANEFOLLOW
-        self._stop_waypoint_creation=False
+        self._stop_waypoint_creation = False
 
         self._last_traffic_light = None
-        self._proximity_threshold = self._sampling_radius*buffer_size/2
+        self._proximity_threshold = self._sampling_radius * buffer_size / 2
 
-        self._waypoints_queue.append( (self._current_waypoint, RoadOption.LANEFOLLOW))
-        #self._waypoints_queue.append( (self._current_waypoint.next(self._sampling_radius)[0], RoadOption.LANEFOLLOW))
-        #self._compute_next_waypoints(k=200)
+        self._waypoints_queue.append((self._current_waypoint, RoadOption.LANEFOLLOW))
+        # self._waypoints_queue.append( (self._current_waypoint.next(self._sampling_radius)[0], RoadOption.LANEFOLLOW))
+        # self._compute_next_waypoints(k=200)
 
     def run_step(self):
         waypoints = self._get_waypoints()
         red_light, vehicle_front = self._get_hazard()
         # red_light = False
         return waypoints, red_light, vehicle_front
-    
-    def get_incoming_waypoint_and_direction(self,steps=3):
+
+    def get_incoming_waypoint_and_direction(self, steps=3):
         """
         Returns direction and waypoint at a distance ahead defined by the user.
 
             :param steps: number of steps to get the incoming waypoint.
         """
-        if len(self._waypoint_buffer)>steps:
+        if len(self._waypoint_buffer) > steps:
             return self._waypoint_buffer[steps]
         else:
             try:
-                wpt,direction=self._waypoint_buffer[-1]
-                return wpt,direction
+                wpt, direction = self._waypoint_buffer[-1]
+                return wpt, direction
             except IndexError as i:
-                return None,RoadOption.VOID
+                return None, RoadOption.VOID
 
-    def set_sampling_redius(self,sampling_resolution):
-        self._sampling_radius=sampling_resolution
-    
-    def set_min_distance(self,min_distance):
-        self._min_distance=min_distance
+    def set_sampling_redius(self, sampling_resolution):
+        self._sampling_radius = sampling_resolution
+
+    def set_min_distance(self, min_distance):
+        self._min_distance = min_distance
 
     def set_global_plan(self, current_plan, stop_waypoint_creation=True, clean_queue=True):
         """
@@ -290,7 +293,7 @@ class LocalPlanner:
             self._waypoints_queue = new_waypoint_queue
 
         for elem in current_plan:
-            self._waypoints_queue.append((elem,RoadOption.LANEFOLLOW))
+            self._waypoints_queue.append((elem, RoadOption.LANEFOLLOW))
 
         self._stop_waypoint_creation = stop_waypoint_creation
 
@@ -309,7 +312,7 @@ class LocalPlanner:
             last_waypoint = self._waypoints_queue[-1][0]
             next_waypoints = list(last_waypoint.next(self._sampling_radius))
 
-            if len(next_waypoints)==0:
+            if len(next_waypoints) == 0:
                 break
             elif len(next_waypoints) == 1:
                 # only one option available ==> lanefollowing
@@ -323,13 +326,13 @@ class LocalPlanner:
                 # road_option = road_options_list[1]  
                 # #road_option = random.choice(road_options_list)
                 # next_waypoint = next_waypoints[road_options_list.index(road_option)]
-                
-                idx=None
-                for i,wp in enumerate(next_waypoints):
+
+                idx = None
+                for i, wp in enumerate(next_waypoints):
                     if wp.road_id in ROADS:
-                        next_waypoint=wp
-                        idx=i
-                road_option=road_options_list[idx]
+                        next_waypoint = wp
+                        idx = i
+                road_option = road_options_list[idx]
 
             self._waypoints_queue.append((next_waypoint, road_option))
 
@@ -344,21 +347,21 @@ class LocalPlanner:
 
         # not enough waypoints in the horizon? => add more!
         if len(self._waypoints_queue) < int(self._waypoints_queue.maxlen * 0.5) and not self._stop_waypoint_creation:
-            self._compute_next_waypoints(self._buffer_size*2)
+            self._compute_next_waypoints(self._buffer_size * 2)
 
         #   Buffering the waypoints
-        while len(self._waypoint_buffer)<self._buffer_size:
+        while len(self._waypoint_buffer) < self._buffer_size:
             if self._waypoints_queue:
                 self._waypoint_buffer.append(
-                self._waypoints_queue.popleft())
+                    self._waypoints_queue.popleft())
             else:
                 break
 
-        waypoints=[]
+        waypoints = []
 
         for i, (waypoint, _) in enumerate(self._waypoint_buffer):
             waypoints.append(waypoint)
-            #waypoints.append([waypoint.transform.location.x, waypoint.transform.location.y, waypoint.transform.rotation.yaw])
+            # waypoints.append([waypoint.transform.location.x, waypoint.transform.location.y, waypoint.transform.rotation.yaw])
 
         # current vehicle waypoint
         self._current_waypoint = self._map.get_waypoint(self._vehicle.get_location())
@@ -375,14 +378,14 @@ class LocalPlanner:
         # if max_index >= 0:
         #     for i in range(max_index - 1):
         #         self._waypoint_buffer.popleft()
- 
-        veh_location=self._vehicle.get_location()
-        veh_speed=get_speed(self._vehicle,False)
-        settings=self._world.get_settings()
+
+        veh_location = self._vehicle.get_location()
+        veh_speed = get_speed(self._vehicle, False)
+        settings = self._world.get_settings()
         if settings.synchronous_mode:
-            self._min_distance=self._base_min_distance+settings.fixed_delta_seconds*veh_speed
+            self._min_distance = self._base_min_distance + settings.fixed_delta_seconds * veh_speed
         else:
-            self._min_distance=self._base_min_distance+0.5*veh_speed
+            self._min_distance = self._base_min_distance + 0.5 * veh_speed
         num_waypoint_removed = 0
         for waypoint, _ in self._waypoint_buffer:
 
@@ -398,9 +401,9 @@ class LocalPlanner:
 
         if num_waypoint_removed > 0:
             for _ in range(num_waypoint_removed):
-                self._waypoint_buffer.popleft()  
-        
-        # lane_center=get_lane_center(self._map,self._vehicle.get_location())
+                self._waypoint_buffer.popleft()
+
+                # lane_center=get_lane_center(self._map,self._vehicle.get_location())
         # print(lane_center.road_id,lane_center.lane_id,lane_center.s,sep='\t',end='\n\n')
         # for wp,_ in self._waypoint_buffer:
         #     print(wp.road_id,wp.lane_id,wp.s,wp.transform.location.distance(lane_center.transform.location),sep='\t')
@@ -454,8 +457,8 @@ class LocalPlanner:
 
             loc = target_vehicle.get_location()
             if is_within_distance_ahead(loc, ego_vehicle_location,
-                            self._vehicle.get_transform().rotation.yaw,
-                            self._proximity_threshold):
+                                        self._vehicle.get_transform().rotation.yaw,
+                                        self._proximity_threshold):
                 return target_vehicle
 
         return None
@@ -487,8 +490,8 @@ class LocalPlanner:
                 for traffic_light in lights_list:
                     loc = traffic_light.get_location()
                     magnitude, angle = compute_magnitude_angle(loc,
-                                            ego_vehicle_location,
-                                            self._vehicle.get_transform().rotation.yaw)
+                                                               ego_vehicle_location,
+                                                               self._vehicle.get_transform().rotation.yaw)
                     if magnitude < 80.0 and angle < min(25.0, min_angle):
                         sel_magnitude = magnitude
                         sel_traffic_light = traffic_light
@@ -505,7 +508,7 @@ class LocalPlanner:
 
         return False
 
-    def _retrieve_options(self,list_waypoints, current_waypoint):
+    def _retrieve_options(self, list_waypoints, current_waypoint):
         """
         Compute the type of connection between the current active waypoint and the multiple waypoints present in
         list_waypoints. The result is encoded as a list of RoadOption enums.
@@ -526,7 +529,7 @@ class LocalPlanner:
 
         return options
 
-    def _compute_connection(self,current_waypoint, next_waypoint):
+    def _compute_connection(self, current_waypoint, next_waypoint):
         """
         Compute the type of topological connection between an active waypoint (current_waypoint) and a target waypoint
         (next_waypoint).
