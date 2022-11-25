@@ -205,7 +205,8 @@ class CarlaEnv:
         self.autopilot_controller=BasicAgent(self.ego_vehicle,target_speed=30,
             opt_dict={'ignore_traffic_lights':True,'ignore_stop_signs':True,
             'sampling_resolution':self.sampling_resolution,'dt':1.0/self.fps,
-            'sampling_radius':self.sampling_resolution})
+            'sampling_radius':self.sampling_resolution,'max_steering':self.steer_bound,
+            'max_throttle':self.throttle_bound,'max_brake':self.brake_bound})
         # self.control_sigma={'Steer':random.choice([0.3, 0.4, 0.5]),
         #                 'Throttle_brake':random.choice([0.4,0.5,0.6])}
         self.control_sigma={'Steer':random.choice([0.05,0.1,0.15,0.2,0.25]),
@@ -263,7 +264,7 @@ class CarlaEnv:
         """throttle (float):A scalar value to control the vehicle throttle [0.0, 1.0]. Default is 0.0.
                 steer (float):A scalar value to control the vehicle steering [-1.0, 1.0]. Default is 0.0.
                 brake (float):A scalar value to control the vehicle brake [0.0, 1.0]. Default is 0.0."""
-        steer = action[0][0] * self.steer_bound
+        steer = np.clip(action[0][0], -self.steer_bound, self.steer_bound)
         # if action[0][1] >= 0:
         #     jump = action[0][1] * self.throttle_bound
         # else:
@@ -279,10 +280,10 @@ class CarlaEnv:
         #     throttle = self.throttle_brake
         if action[0][1] >= 0:
             brake = 0
-            throttle = action[0][1] * self.throttle_bound
+            throttle = np.clip(action[0][1], 0 ,self.throttle_bound)
         else:
             throttle = 0
-            brake = abs(action[0][1]) * self.brake_bound
+            brake = np.clip(abs(action[0][1]), 0 , self.brake_bound)
 
         # control = carla.VehicleControl(steer=float(steer), throttle=float(throttle), brake=float(brake),hand_brake=False,
         #                                reverse=False,manual_gear_shift=True,gear=1)
@@ -302,12 +303,12 @@ class CarlaEnv:
                 if not self.RL_switch and not self.TM_switch:
                     #Add noise to autopilot controller's control command
                     print(f"Basic Agent Control Before Noise:{control}")
-                    control.steer=np.clip(np.random.normal(control.steer,self.control_sigma['Steer']),-1,1)
+                    control.steer=np.clip(np.random.normal(control.steer,self.control_sigma['Steer']),-self.steer_bound,self.steer_bound)
                     if control.throttle>0:
                         throttle_brake=control.throttle
                     else:
                         throttle_brake=-control.brake
-                    throttle_brake=np.clip(np.random.normal(throttle_brake,self.control_sigma['Throttle_brake']),-1,1)
+                    throttle_brake=np.clip(np.random.normal(throttle_brake,self.control_sigma['Throttle_brake']),-self.brake_bound,self.throttle_bound)
                     if throttle_brake>0:
                         control.throttle=throttle_brake
                         control.brake=0
@@ -317,12 +318,12 @@ class CarlaEnv:
                 if self.is_effective_action() and not self.TM_switch:
                     self.ego_vehicle.apply_control(control)
             else:
-                control.steer=np.clip(np.random.normal(control.steer,0.2),-1,1)
+                control.steer=np.clip(np.random.normal(control.steer,self.control_sigma['Steer']),-self.steer_bound,self.steer_bound)
                 if control.throttle>0:
                     throttle_brake=control.throttle
                 else:
                     throttle_brake=-control.brake
-                throttle_brake=np.clip(np.random.normal(throttle_brake,0.5),-1,1)
+                throttle_brake=np.clip(np.random.normal(throttle_brake,self.control_sigma['Throttle_brake']),-self.brake_bound,self.throttle_bound)
                 if throttle_brake>0:
                     control.throttle=throttle_brake
                     control.brake=0
