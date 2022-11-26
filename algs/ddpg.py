@@ -10,12 +10,21 @@ class ReplayBuffer:
 
     def __init__(self, capacity) -> None:
         self.buffer = collections.deque(maxlen=capacity)  # 队列，先进先出
+        with open('./out/replay_buffer_test.txt', 'w') as f:
+            pass
 
     def add(self, state, action, reward, next_state, truncated, done):
         # first compress state info, then add
         state = self._compress(state)
         next_state = self._compress(next_state)
         self.buffer.append((state, action, reward, next_state, truncated, done))
+        with open('./out/replay_buffer_test.txt','ab') as f:
+            np.savetxt(f, state, delimiter=',')
+            np.savetxt(f, action, delimiter=',')
+            np.savetxt(f, np.array([reward]), delimiter=',')
+            np.savetxt(f, next_state, delimiter=',')
+            np.savetxt(f, np.array([truncated]), delimiter=',')
+            np.savetxt(f, np.array([done]), delimiter=',')
 
     def sample(self, batch_size):  # 从buffer中采样数据,数量为batch_size
         transition = random.sample(self.buffer, batch_size)
@@ -263,7 +272,6 @@ class DDPG:
 
         # compute the target Q value using the information of next state
         action_target = self.actor_target(batch_ns)
-        action_target = torch.tensor(action_target, dtype=torch.float32).to(self.device)
         next_q_values = self.critic_target(batch_ns, action_target)
         q_targets = batch_r + self.gamma * next_q_values * (1 - batch_t)*(1 - batch_d)
         critic_loss = self.loss(self.critic(batch_s, batch_a), q_targets)
@@ -276,7 +284,6 @@ class DDPG:
         self.critic_optimizer.step()
 
         action = self.actor(batch_s)
-        action = torch.tensor(action, dtype=torch.float32).to(self.device)
         q = self.critic(batch_s, action)
         actor_loss = -torch.mean(q)
         self.actor_optimizer.zero_grad()

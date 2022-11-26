@@ -237,7 +237,7 @@ class LocalPlanner:
         self._stop_waypoint_creation = False
 
         self._last_traffic_light = None
-        self._proximity_threshold = self._sampling_radius * buffer_size / 2
+        self._proximity_threshold = self._sampling_radius * buffer_size
 
         self._waypoints_queue.append((self._current_waypoint, RoadOption.LANEFOLLOW))
         # self._waypoints_queue.append( (self._current_waypoint.next(self._sampling_radius)[0], RoadOption.LANEFOLLOW))

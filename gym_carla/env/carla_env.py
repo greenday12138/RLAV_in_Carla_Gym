@@ -206,11 +206,12 @@ class CarlaEnv:
             opt_dict={'ignore_traffic_lights':True,'ignore_stop_signs':True,
             'sampling_resolution':self.sampling_resolution,'dt':1.0/self.fps,
             'sampling_radius':self.sampling_resolution,'max_steering':self.steer_bound,
-            'max_throttle':self.throttle_bound,'max_brake':self.brake_bound})
+            'max_throttle':self.throttle_bound,'max_brake':self.brake_bound,
+            'ignore_vehicles':random.choice([True,False])})
         # self.control_sigma={'Steer':random.choice([0.3, 0.4, 0.5]),
         #                 'Throttle_brake':random.choice([0.4,0.5,0.6])}
-        self.control_sigma={'Steer':random.choice([0.05,0.1,0.15,0.2,0.25]),
-                            'Throttle_brake':random.choice([0.4,0.5,0.6])}
+        self.control_sigma={'Steer':random.choice([0,0,0.05,0.1,0.15,0.2,0.25]),
+                            'Throttle_brake':random.choice([0,0,0.1,0.2,0.3,0.4,0.5])}
 
         # code for synchronous mode
         camera_bp = self.world.get_blueprint_library().find('sensor.camera.rgb')
@@ -431,10 +432,10 @@ class CarlaEnv:
         # wps_length=dict['waypoints'][-1].transform.location.distance(self.ego_vehicle.get_location())
         wps_length = self.sampling_resolution * self.buffer_size
         wps = []
-        print(self.ego_vehicle.get_transform().rotation,
-            dict['waypoints'][0].road_id,dict['waypoints'][0].lane_id,dict['waypoints'][0].transform.rotation,
-            dict['waypoints'][1].road_id,dict['waypoints'][1].lane_id,dict['waypoints'][1].transform.rotation,
-            dict['waypoints'][2].road_id,dict['waypoints'][2].lane_id,dict['waypoints'][2].transform.rotation,sep='\t')
+        # print(self.ego_vehicle.get_transform().rotation,
+        #     dict['waypoints'][0].road_id,dict['waypoints'][0].lane_id,dict['waypoints'][0].transform.rotation,
+        #     dict['waypoints'][1].road_id,dict['waypoints'][1].lane_id,dict['waypoints'][1].transform.rotation,
+        #     dict['waypoints'][2].road_id,dict['waypoints'][2].lane_id,dict['waypoints'][2].transform.rotation,sep='\t')
         if dict['waypoints']:
             for wp in dict['waypoints']:
                 lane_center = get_lane_center(self.map,self.ego_vehicle.get_location())
@@ -457,11 +458,7 @@ class CarlaEnv:
             ego_speed = get_speed(self.ego_vehicle, False)
             vf_speed = get_speed(vehicle_front, False)
             rel_speed = ego_speed - vf_speed
-            if rel_speed == 0:
-                rel_s = 0
-            else:
-                rel_s = rel_speed / max(ego_speed, vf_speed)
-            vfl = [distance / wps_length, rel_s]
+            vfl = [distance / wps_length, rel_speed/5]
         else:
             # No vehicle front, suppose there is a vehicle at the end of waypoint list and relative speed is 0
             vfl = [1, 0]
@@ -504,8 +501,8 @@ class CarlaEnv:
         TTC = float('inf')
         if self.vehicle_front:
             distance = self.ego_vehicle.get_location().distance(self.vehicle_front.get_location())
-            rel_speed = abs(ego_speed / 3.6 - get_speed(self.vehicle_front, False))
-            if rel_speed != 0:
+            rel_speed = ego_speed / 3.6 - get_speed(self.vehicle_front, False)
+            if abs(rel_speed)> float(0.0000001):
                 TTC = distance / rel_speed
         # fTTC=-math.exp(-TTC)
         if TTC >= 0 and TTC <= self.TTC_THRESHOLD:

@@ -275,13 +275,9 @@ class TD3:
 
         # compute the target Q value using the information of next state
         action_target = self.actor_target(batch_ns)
-        if (action_target[0, 0].is_cuda):
-            action_target = np.array([action_target[:, 0].detach().cpu().numpy(), action_target[:, 1].detach().cpu().numpy()]).reshape((-1, 2))
-        else:
-            action_target = np.array([action_target[:, 0].detach().numpy(), action_target[:, 1].detach().numpy()]).reshape((-1, 2))
-        action_target[:, 0] = np.clip(np.random.normal(action_target[:, 0], self.sigma), -1, 1)
-        action_target[:, 1] = np.clip(np.random.normal(action_target[:, 1], self.sigma), -1, 1)
-        action_target = torch.tensor(action_target, dtype=torch.float32).to(self.device)
+        action_target[:, 0] += torch.randn_like(action_target[:, 0])*self.sigma
+        action_target[:, 1] += torch.randn_like(action_target[:, 1])*self.sigma
+        action_target = torch.clamp(action_target, -1.0, 1.0)
         
         next_q_values_1=self.critic1_target(batch_ns,action_target)
         next_q_values_2=self.critic2_target(batch_ns,action_target)
@@ -303,7 +299,6 @@ class TD3:
         if self.learn_time%self.policy_update_freq==0:
             #train actor
             action = self.actor(batch_s)
-            action = torch.tensor(action, dtype=torch.float32).to(self.device)
             q = self.critic1(batch_s, action)
             actor_loss = -torch.mean(q)
             self.actor_optimizer.zero_grad()
