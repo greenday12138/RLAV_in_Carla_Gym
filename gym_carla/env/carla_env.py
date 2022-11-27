@@ -44,6 +44,7 @@ class CarlaEnv:
         self.res = args.res
         self.num_of_vehicles = args.num_of_vehicles
         self.sampling_resolution = args.sampling_resolution
+        self.vehicle_proximity = args.vehicle_proximity
         self.hybrid = args.hybrid
         self.stride = args.stride
         self.buffer_size = args.buffer_size
@@ -101,7 +102,7 @@ class CarlaEnv:
         self.TTC_THRESHOLD = args.TTC_th
         self.penalty = args.penalty
         self.last_acc = carla.Vector3D()  # ego vehicle acceration in last step
-        self.reward_info = None
+        self.step_info = None
 
         if self.debug:
             # draw_waypoints(self.world,self.global_panner.get_route())
@@ -189,7 +190,10 @@ class CarlaEnv:
         # self.ego_vehicle.get_location()
 
         # add route planner for ego vehicle
-        self.local_planner = LocalPlanner(self.ego_vehicle, self.sampling_resolution, self.buffer_size)
+        self.local_planner = LocalPlanner(self.ego_vehicle, 
+            {'sampling_resolution':self.sampling_resolution,
+            'buffer_size':self.buffer_size,
+            'vehicle_proximity':self.vehicle_proximity})
         # self.local_planner.set_global_plan(self.global_planner.get_route(
         #      self.map.get_waypoint(self.ego_vehicle.get_location())))
         self.next_wps, _, self.vehicle_front = self.local_planner.run_step()
@@ -262,6 +266,7 @@ class CarlaEnv:
         return self._get_state({'waypoints': self.next_wps, 'vehicle_front': self.vehicle_front})
 
     def step(self, action):
+        self.step_info=None
         """throttle (float):A scalar value to control the vehicle throttle [0.0, 1.0]. Default is 0.0.
                 steer (float):A scalar value to control the vehicle steering [-1.0, 1.0]. Default is 0.0.
                 brake (float):A scalar value to control the vehicle brake [0.0, 1.0]. Default is 0.0."""
@@ -373,8 +378,7 @@ class CarlaEnv:
             """Attention: The sequence of following code is pivotal, do not recklessly chage their execution order"""
             reward = self._get_reward()
             state = self._get_state({'waypoints': self.next_wps, 'vehicle_front': self.vehicle_front})
-            control_info = {'Steer': control.steer, 'Throttle': control.throttle, 'Brake': control.brake}
-            self.reward_info.update({'Reward': reward})
+            self.step_info.update({'Reward': reward})
             self.last_acc = self.ego_vehicle.get_acceleration()
         else:
             temp = self.world.wait_for_tick()
@@ -392,12 +396,12 @@ class CarlaEnv:
             self.total_step += 1
             if self.speed_state == SpeedState.RUNNING and self.RL_switch == True:
                 self.rl_control_step += 1
-            # speed=self.ego_vehicle.get_velocity()
+            control_info = {'Steer': control.steer, 'Throttle': control.throttle, 'Brake': control.brake}
             print(f"Ego Vehicle Speed Limit:{self.ego_vehicle.get_speed_limit() * 3.6}\n"
                   f"Episode:{self.reset_step}, Total_step:{self.total_step}, Time_step:{self.time_step}, RL_control_step:{self.rl_control_step}, \n"
                   f"Vel: {get_speed(self.ego_vehicle, False)}, Acc:{get_acceleration(self.ego_vehicle, False)}, distance:{state['vehicle_front'][0] * self.sampling_resolution * self.buffer_size}, \n"
-                  f"Reward:{self.reward_info['Reward']}, TTC:{self.reward_info['TTC']}, Comfort:{self.reward_info['Comfort']}, "
-                  f"Efficiency:{self.reward_info['Efficiency']}, Lane_center:{self.reward_info['Lane_center']}, Yaw:{self.reward_info['Yaw']} \n"
+                  f"Reward:{self.step_info['Reward']}, TTC:{self.step_info['TTC']}, Comfort:{self.step_info['Comfort']}, "
+                  f"Efficiency:{self.step_info['Efficiency']}, Lane_center:{self.step_info['Lane_center']}, Yaw:{self.step_info['Yaw']} \n"
                   f"Steer:{control_info['Steer']}, Throttle:{control_info['Throttle']}, Brake:{control_info['Brake']}")
             # print(f"Steer:{control_info['Steer']}, Throttle:{control_info['Throttle']}, Brake:{control_info['Brake']}\n")
 
@@ -455,10 +459,13 @@ class CarlaEnv:
         if dict['vehicle_front']:
             vehicle_front = dict['vehicle_front']
             distance = self.ego_vehicle.get_location().distance(vehicle_front.get_location())
+            vehicle_len=max(abs(self.ego_vehicle.bounding_box.extent.x),abs(self.ego_vehicle.bounding_box.extent.y))+ \
+                max(abs(self.vehicle_front.bounding_box.extent.x),abs(self.vehicle_front.bounding_box.extent.y))
+            distance -= vehicle_len
             ego_speed = get_speed(self.ego_vehicle, False)
             vf_speed = get_speed(vehicle_front, False)
             rel_speed = ego_speed - vf_speed
-            vfl = [distance / wps_length, rel_speed/5]
+            vfl = [distance / self.vehicle_proximity, rel_speed/5]
         else:
             # No vehicle front, suppose there is a vehicle at the end of waypoint list and relative speed is 0
             vfl = [1, 0]
@@ -501,12 +508,16 @@ class CarlaEnv:
         TTC = float('inf')
         if self.vehicle_front:
             distance = self.ego_vehicle.get_location().distance(self.vehicle_front.get_location())
+            vehicle_len=max(abs(self.ego_vehicle.bounding_box.extent.x),abs(self.ego_vehicle.bounding_box.extent.y))+ \
+                max(abs(self.vehicle_front.bounding_box.extent.x),abs(self.vehicle_front.bounding_box.extent.y))
+            distance -= vehicle_len
             rel_speed = ego_speed / 3.6 - get_speed(self.vehicle_front, False)
             if abs(rel_speed)> float(0.0000001):
                 TTC = distance / rel_speed
+            #print(distance, TTC)
         # fTTC=-math.exp(-TTC)
         if TTC >= 0 and TTC <= self.TTC_THRESHOLD:
-            fTTC = np.log(TTC / self.TTC_THRESHOLD)
+            fTTC = np.clip(np.log(TTC / self.TTC_THRESHOLD),-1,0)
         else:
             fTTC = 0
 
@@ -542,26 +553,11 @@ class CarlaEnv:
         else:
             fLcen = - Lcen / (lane_center.lane_width / 2)
 
-        yaw_diff = ((self.ego_vehicle.get_transform().rotation.yaw + 720) % 360 - (
-                lane_center.transform.rotation.yaw + 720) % 360) / 90.0
-        if abs(self.ego_vehicle.get_transform().rotation.yaw - lane_center.transform.rotation.yaw) < 90:
-            yaw_diff = self.ego_vehicle.get_transform().rotation.yaw - lane_center.transform.rotation.yaw
-        else:
-            yaw_diff = (self.ego_vehicle.get_transform().rotation.yaw + 720) % 360 - (
-                    lane_center.transform.rotation.yaw + 720) % 360
-        if abs(yaw_diff) < 90:
-            fYaw = - abs(yaw_diff) / 90
-        else:
-            # The current state is not useful, deprecate it
-            fYaw = 0
+        yaw_diff=math.degrees(get_yaw_diff(lane_center.transform.get_forward_vector(),
+                                self.ego_vehicle.get_transform().get_forward_vector()))
+        fYaw= abs(yaw_diff)/90
 
-        # print(self.ego_vehicle.get_transform().rotation.yaw,lane_center.transform.rotation.yaw,
-        #     (self.ego_vehicle.get_transform().rotation.yaw+720)%360,(lane_center.transform.rotation.yaw+720)%360,
-        #     lane_center.road_id,lane_center.lane_id,yaw_diff,sep='\t')
-
-        self.reward_info = {'TTC': fTTC, 'Comfort': fCom, 'Efficiency': fEff, 'Lane_center': fLcen, 'Yaw': fYaw, 'Abandon':False}
-
-        self.reward_info.update({'Abandon': False})
+        self.step_info = {'velocity':v_s,'offlane':Lcen, 'yaw_diff':yaw_diff,'TTC': fTTC, 'Comfort': fCom, 'Efficiency': fEff, 'Lane_center': fLcen, 'Yaw': fYaw, 'Abandon':False}
 
         if self._truncated():
             history, tags = self.collision_sensor.get_collision_history()
@@ -570,12 +566,12 @@ class CarlaEnv:
                     return - self.penalty
                 else:
                     # If ego vehicle collides with traffic lights and stop signs, do not add penalty
-                    self.reward_info['Abandon']=True
-                    return fTTC + (fEff + fLcen * 2) * 0.5
+                    self.step_info['Abandon']=True
+                    return fTTC + fCom + fEff + fLcen +fYaw
             else:
                 return - self.penalty
         else:
-            return fTTC + (fEff + fLcen) * 0.5
+            return fTTC + fCom + fEff + fLcen +fYaw
 
     def _speed_switch(self, cont):
         """cont: the control command of RL agent"""
@@ -636,14 +632,14 @@ class CarlaEnv:
             logging.warn('vehicle speed too low')
             return True
         # lane_center=self.map.get_waypoint(self.ego_vehicle.get_location(),project_to_road=True)
-        # print(lane_center.transform.location.distance(self.ego_vehicle.get_location()),self.reward_info['Lane_center'],
+        # print(lane_center.transform.location.distance(self.ego_vehicle.get_location()),self.step_info['Lane_center'],
         #     lane_center.road_id,lane_center.lane_id,sep='\t')
         # if lane_center.transform.location.distance(self.ego_vehicle.get_location())>=lane_center.lane_width/2:
         #     return True
         # if self.lane_invasion_sensor.get_invasion_count()!=0:
         #     logging.warn('lane invasion occur')
         #     return True
-        if self.reward_info['Lane_center'] == -1.5:
+        if self.step_info['Lane_center'] == -1.5:
             logging.warn('lane invasion occur')
             return True
 
@@ -673,10 +669,10 @@ class CarlaEnv:
             param: control_info, the current controller information
         """
         if control_info is None:
-            return self.reward_info
+            return self.step_info
         else:
-            self.reward_info.update(control_info)
-            return self.reward_info
+            self.step_info.update(control_info)
+            return self.step_info
 
     def _ego_autopilot(self, setting=True):
         # Use traffic manager to control ego vehicle

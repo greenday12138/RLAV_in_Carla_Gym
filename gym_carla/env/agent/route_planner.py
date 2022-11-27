@@ -219,16 +219,20 @@ class GlobalPlanner:
 
 
 class LocalPlanner:
-    def __init__(self, vehicle, sampling_resolution=4.0, buffer_size=10):
+    def __init__(self, vehicle, opt_dict={
+       'sampling_resolution':4.0,
+       'buffer_size':10,
+       'vehicle_proximity':50
+    }):
         self._vehicle = vehicle
         self._world = self._vehicle.get_world()
         self._map = self._world.get_map()
 
-        self._sampling_radius = sampling_resolution
+        self._sampling_radius = opt_dict['sampling_resolution']
         self._base_min_distance = 3.0  # This value is tricky
 
         self._target_waypoint = None
-        self._buffer_size = buffer_size
+        self._buffer_size = opt_dict['buffer_size']
         self._waypoint_buffer = deque(maxlen=self._buffer_size)
 
         self._waypoints_queue = deque(maxlen=600)
@@ -237,7 +241,7 @@ class LocalPlanner:
         self._stop_waypoint_creation = False
 
         self._last_traffic_light = None
-        self._proximity_threshold = self._sampling_radius * buffer_size
+        self._proximity_threshold = opt_dict['vehicle_proximity']
 
         self._waypoints_queue.append((self._current_waypoint, RoadOption.LANEFOLLOW))
         # self._waypoints_queue.append( (self._current_waypoint.next(self._sampling_radius)[0], RoadOption.LANEFOLLOW))
@@ -476,6 +480,8 @@ class LocalPlanner:
 
         ego_vehicle_location = self._vehicle.get_location()
         ego_vehicle_waypoint = self._map.get_waypoint(ego_vehicle_location)
+        min_distance=self._proximity_threshold
+        vehicle_front=None
 
         for target_vehicle in vehicle_list:
             # do not account for the ego vehicle
@@ -492,9 +498,12 @@ class LocalPlanner:
             if is_within_distance_ahead(loc, ego_vehicle_location,
                                         self._vehicle.get_transform().rotation.yaw,
                                         self._proximity_threshold):
-                return target_vehicle
+                if ego_vehicle_location.distance(loc)<min_distance:
+                    # Return the most close vehicel in front of ego vehicle
+                    vehicle_front=target_vehicle
+                    min_distance=ego_vehicle_location.distance(loc)
 
-        return None
+        return vehicle_front
 
     def _is_light_red_us_style(self, lights_list):
         """

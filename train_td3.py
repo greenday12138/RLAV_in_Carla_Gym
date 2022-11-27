@@ -13,8 +13,8 @@ from process import start_process, kill_process
 SIGMA = 0.5
 THETA = 0.05
 DEVICE = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
-LR_ACTOR = 0.01
-LR_CRITIC = 0.02
+LR_ACTOR = 0.001
+LR_CRITIC = 0.002
 GAMMA = 0.9  # q值更新系数
 TAU = 0.01  # 软更新参数
 EPSILON = 0.5  # epsilon-greedy
@@ -24,7 +24,7 @@ MINIMAL_SIZE = 10000
 BATCH_SIZE = 128
 REPLACE_A = 500
 REPLACE_C = 300
-TOTAL_EPISODE = 10000
+TOTAL_EPISODE = 5000
 SIGMA_DECAY = 0.9999
 TTC_threshold = 4.001
 base_name = f'origin_{TTC_threshold}_NOCA'
@@ -116,7 +116,7 @@ def main():
                                 agent.save_net('./out/td3_pre_trained.pth')
 
                             if env.rl_control_step > 10000 and env.is_effective_action() and \
-                                env.RL_switch and SIGMA > 0.1:
+                                env.RL_switch and SIGMA > 0.01:
                                 globals()['SIGMA'] *= SIGMA_DECAY
                                 agent.set_sigma(SIGMA)
 

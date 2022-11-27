@@ -87,7 +87,7 @@ ARGS.add_argument(
 ARGS.add_argument(
     '-n', '--num_of_vehicles', type=list,
     help='Total vehicles number which run in simulation',
-    default=[20,30,40,50])
+    default=[20,25,30,35,40])
 ARGS.add_argument(
     '-sa', '--sampling_resolution', type=float,
     help='Distance between generated two waypoints',
@@ -122,7 +122,7 @@ ARGS.add_argument(
     help='TTC threshold')
 ARGS.add_argument(
     '--penalty', type=float,
-    default=10,
+    default=20,
     help='reward penalty for simulation terminated early on account of collision and lane invasion')
 ARGS.add_argument(
     '--speed_limit', type=float,
@@ -139,7 +139,7 @@ ARGS.add_argument(
         and the action of basic need to add into the replay buffer, km/h')
 ARGS.add_argument(
     '--steer_bound', type=float,
-    default=0.8,
+    default=1.0,
     help='Steer bound for ego vehicle controller')
 ARGS.add_argument(
     '--throttle_bound', type=float,
@@ -147,7 +147,7 @@ ARGS.add_argument(
     help='Throttle bound for ego vehicle controller')
 ARGS.add_argument(
     '--brake_bound', type=float,
-    default=0.3,
+    default=1.0,
     help='Brake bound for ego vehicle controller')
 ARGS.add_argument(
     '--switch_threshold', type=int,
@@ -156,6 +156,11 @@ ARGS.add_argument(
 )
 ARGS.add_argument(
     '--pre_train_steps', type=int,
-    default=1000000,
+    default=100000,
     help='Let the RL controller and PID controller alternatively take control every 500 steps'
+)
+ARGS.add_argument(
+    '--vehicle_proximity',type=float,
+    default=50.0,
+    help='Distance for searching vehicles in front of ego vehicle, units -- meters'
 )

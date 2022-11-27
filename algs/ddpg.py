@@ -273,7 +273,7 @@ class DDPG:
         # compute the target Q value using the information of next state
         action_target = self.actor_target(batch_ns)
         next_q_values = self.critic_target(batch_ns, action_target)
-        q_targets = batch_r + self.gamma * next_q_values * (1 - batch_t)*(1 - batch_d)
+        q_targets = batch_r + self.gamma * next_q_values * (1 - batch_t)
         critic_loss = self.loss(self.critic(batch_s, batch_a), q_targets)
         print(f'TD-error:{critic_loss}')
         self.critic_optimizer.zero_grad()

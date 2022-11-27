@@ -23,7 +23,7 @@ MINIMAL_SIZE = 10000
 BATCH_SIZE = 128
 REPLACE_A = 500
 REPLACE_C = 300
-TOTAL_EPISODE = 10000
+TOTAL_EPISODE = 5000
 SIGMA_DECAY = 0.9999
 TTC_threshold = 4.001
 base_name = f'origin_{TTC_threshold}_NOCA'
@@ -86,10 +86,10 @@ def main():
                                     # Input the guided action to replay buffer
                                     throttle_brake = -info['Brake'] if info['Brake'] > 0 else info['Throttle']
                                     action = np.array([[info['Steer'], throttle_brake]])
-                                    agent.replay_buffer.add(state, action, reward, next_state, truncated, done)
+                                    agent.replay_buffer.add(state, action, reward, next_state, truncated, done, info)
                                 else:
                                     # Input the agent action to replay buffer
-                                    agent.replay_buffer.add(state, action, reward, next_state, truncated, done)
+                                    agent.replay_buffer.add(state, action, reward, next_state, truncated, done, info)
                                 print(f"state -- vehicle_front:{state['vehicle_front']}\n"
                                       f"waypoints:{state['waypoints']}, \n"
                                       f"ego_vehicle:{state['ego_vehicle']}, \n"
@@ -115,7 +115,7 @@ def main():
                                 agent.save_net('./out/ddpg_pre_trained.pth')
 
                             if env.rl_control_step > 10000 and env.is_effective_action() and \
-                                    env.RL_switch and SIGMA > 0.1:
+                                    env.RL_switch and SIGMA > 0.01:
                                 globals()['SIGMA'] *= SIGMA_DECAY
                                 agent.set_sigma(SIGMA)
 
