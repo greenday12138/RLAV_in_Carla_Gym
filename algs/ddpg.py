@@ -10,21 +10,65 @@ class ReplayBuffer:
 
     def __init__(self, capacity) -> None:
         self.buffer = collections.deque(maxlen=capacity)  # 队列，先进先出
+        self.number = 0
+        self.all_buffer = np.zeros((1000000, 66), dtype=np.float32)
         with open('./out/replay_buffer_test.txt', 'w') as f:
             pass
 
-    def add(self, state, action, reward, next_state, truncated, done):
+    def add(self, state, action, reward, next_state, truncated, done, info):
         # first compress state info, then add
         state = self._compress(state)
         next_state = self._compress(next_state)
         self.buffer.append((state, action, reward, next_state, truncated, done))
-        with open('./out/replay_buffer_test.txt','ab') as f:
-            np.savetxt(f, state, delimiter=',')
-            np.savetxt(f, action, delimiter=',')
-            np.savetxt(f, np.array([reward]), delimiter=',')
-            np.savetxt(f, next_state, delimiter=',')
-            np.savetxt(f, np.array([truncated]), delimiter=',')
-            np.savetxt(f, np.array([done]), delimiter=',')
+        reward_ttc = info["TTC"]
+        reward_com = info["Comfort"]
+        reward_eff = info["velocity"]
+        reward_lan = info["offlane"]
+        reward_yaw = info["yaw_diff"]
+        reward_list = np.array([[reward, reward_ttc, reward_com, reward_eff, reward_lan, reward_yaw]])
+        print("reward_eff: ", reward_eff)
+        # print("their shapes", state, action, next_state, reward_list, truncated, done)
+        # state: [1, 28], action: [1, 2], next_state: [1, 28], reward_list = [1, 6], truncated = [1, 1], done = [1, 1]
+        # all: [1, 66]
+        if truncated == False or truncated == 0:
+            truncated = 0
+        else:
+            truncated = 1
+        if done == False or done == 0:
+            done = 0
+        else:
+            done = 1
+        self.save_all(state, action, next_state, reward_list, np.array([truncated]), np.array([done]))
+        # with open('./out/replay_buffer_test.txt','ab') as f:
+        #     np.savetxt(f, state, delimiter=',')
+        #     np.savetxt(f, action, delimiter=',')
+        #     np.savetxt(f, np.array([reward]), delimiter=',')
+        #     np.savetxt(f, next_state, delimiter=',')
+        #     np.savetxt(f, np.array([truncated]), delimiter=',')
+        #     np.savetxt(f, np.array([done]), delimiter=',')
+        # np.save("./pre_train/state"+str(self.number)+".npy", np.array(state))
+        # np.save("./pre_train/action" + str(self.number) + ".npy", np.array(action))
+        # np.save("./pre_train/reward" + str(self.number) + ".npy", np.array(reward_list))
+        # np.save("./pre_train/next_state" + str(self.number) + ".npy", np.array(next_state))
+        # np.save("./pre_train/truncated" + str(self.number) + ".npy", np.array([truncated]))
+        # np.save("./pre_train/done" + str(self.number) + ".npy", np.array([done]))
+
+
+    def save_all(self, state, action, next_state, reward_list, truncated, done):
+        if self.number < 1000000:
+            state_ = np.reshape(state, (-1, 1))
+            action_ = np.reshape(action, (-1, 1))
+            next_state_ = np.reshape(next_state, (-1, 1))
+            reward_list_ = np.reshape(reward_list, (-1, 1))
+            truncated_ = np.reshape(truncated, (-1, 1))
+            done_ = np.reshape(done, (-1, 1))
+            all_feature = np.concatenate((state_, action_, next_state_, reward_list_, truncated_, done_), axis=0)
+            self.all_buffer[self.number, :] = np.squeeze(all_feature)
+            self.number = self.number + 1
+        if self.number == 1000000:
+            np.save("./out/all_replay_buffer.npy", self.all_buffer)
+            self.number = self.number + 1
+
 
     def sample(self, batch_size):  # 从buffer中采样数据,数量为batch_size
         transition = random.sample(self.buffer, batch_size)
@@ -44,6 +88,145 @@ class ReplayBuffer:
 
         return state_
 
+class ReplayBuffer:
+    """经验回放池"""
+
+    def __init__(self, capacity) -> None:
+        self.buffer = collections.deque(maxlen=capacity)  # 队列，先进先出
+        self.number = 0
+        self.all_buffer = np.zeros((1000000, 66), dtype=np.float32)
+        with open('./out/replay_buffer_test.txt', 'w') as f:
+            pass
+
+    def add(self, state, action, reward, next_state, truncated, done, info):
+        # first compress state info, then add
+        state = self._compress(state)
+        next_state = self._compress(next_state)
+        self.buffer.append((state, action, reward, next_state, truncated, done))
+        reward_ttc = info["TTC"]
+        reward_com = info["Comfort"]
+        reward_eff = info["velocity"]
+        reward_lan = info["offlane"]
+        reward_yaw = info["yaw_diff"]
+        reward_list = np.array([[reward, reward_ttc, reward_com, reward_eff, reward_lan, reward_yaw]])
+        print("reward_eff: ", reward_eff)
+        # print("their shapes", state, action, next_state, reward_list, truncated, done)
+        # state: [1, 28], action: [1, 2], next_state: [1, 28], reward_list = [1, 6], truncated = [1, 1], done = [1, 1]
+        # all: [1, 66]
+        if truncated == False or truncated == 0:
+            truncated = 0
+        else:
+            truncated = 1
+        if done == False or done == 0:
+            done = 0
+        else:
+            done = 1
+        self.save_all(state, action, next_state, reward_list, np.array([truncated]), np.array([done]))
+
+
+    def save_all(self, state, action, next_state, reward_list, truncated, done):
+        if self.number < 1000000:
+            state_ = np.reshape(state, (-1, 1))
+            action_ = np.reshape(action, (-1, 1))
+            next_state_ = np.reshape(next_state, (-1, 1))
+            reward_list_ = np.reshape(reward_list, (-1, 1))
+            truncated_ = np.reshape(truncated, (-1, 1))
+            done_ = np.reshape(done, (-1, 1))
+            all_feature = np.concatenate((state_, action_, next_state_, reward_list_, truncated_, done_), axis=0)
+            self.all_buffer[self.number, :] = np.squeeze(all_feature)
+            self.number = self.number + 1
+        if self.number == 1000000:
+            np.save("./out/all_replay_buffer.npy", self.all_buffer)
+            self.number = self.number + 1
+
+
+    def sample(self, batch_size):  # 从buffer中采样数据,数量为batch_size
+        transition = random.sample(self.buffer, batch_size)
+        state, action, reward, next_state, truncated, done = zip(*transition)
+        return state, action, reward, next_state, truncated, done
+
+    def size(self):
+        return len(self.buffer)
+
+    def _compress(self, state):
+        """return state : waypoints info+ vehicle_front info, shape: 1*22,
+        first 20 elements are waypoints info, the rest are vehicle info"""
+        wps = np.array(state['waypoints'], dtype=np.float32).reshape((1, -1))
+        ev = np.array(state['ego_vehicle'],dtype=np.float32).reshape((1,-1))
+        vf = np.array(state['vehicle_front'], dtype=np.float32).reshape((1, -1))
+        state_ = np.concatenate((wps, ev, vf), axis=1)
+
+        return state_
+
+
+class offline_replay_buffer:
+    """
+    manually adjust the sampling of replay buffer and the replay buffer remains unchanged (1,000,000 buffers)
+    """
+    def __init__(self):
+        file_path = "../out/all_replay_buffer.npy"
+        # state: [1, 28], action: [1, 2], next_state: [1, 28], reward_list = [1, 6], truncated = [1, 1], done = [1, 1]
+        # reward_list = np.array([[reward, reward_ttc, reward_com, reward_eff, reward_lan, reward_yaw]])
+        self.replay_buffer = np.load(file_path, allow_pickle=True)
+        self.buffer_num = self.replay_buffer.shape[0]
+        # print(replay_buffer.shape)
+        # split five buffer of different states: dangerous, large off-center, low-efficiency, on-curve, normal
+        self.dangerous_buffer = collections.deque(maxlen=250000)
+        self.off_center_buffer = collections.deque(maxlen=250000)
+        self.low_efficiency_buffer = collections.deque(maxlen=250000)
+        self.on_curve_buffer = collections.deque(maxlen=250000)
+        self.normal_buffer = collections.deque(maxlen=1000000)
+
+        self.ttc_thr = -0.00001
+        self.lane_thr = 0.5
+        self.eff_thr = 5
+        self.curve_thr = 0.1
+        self.split_replay_buffer()
+
+    def size(self):
+        return self.buffer_num
+
+    def split_replay_buffer(self):
+        for i in range(self.buffer_num):
+            current_buffer = self.replay_buffer[i]
+            fTTC = current_buffer[59]
+            fLane = current_buffer[62]
+            feff = current_buffer[61]
+            fcurve = abs(current_buffer[1]-current_buffer[19])
+            print("fttc: ", fTTC, "flane: ", fLane, "feff: ", feff, "fcurve: ", fcurve)
+            if fTTC < self.ttc_thr:
+                # print(fTTC)
+                self.dangerous_buffer.append(current_buffer)
+            elif fLane > self.lane_thr:
+                self.off_center_buffer.append(current_buffer)
+            elif feff < self.eff_thr:
+                self.low_efficiency_buffer.append(current_buffer)
+            elif fcurve > self.curve_thr:
+                self.on_curve_buffer.append(current_buffer)
+            else:
+                self.normal_buffer.append(current_buffer)
+        print("dangerous_buffer: ", len(self.dangerous_buffer), "off_center_buffer: ", len(self.off_center_buffer),
+              "low_efficiency_buffer: ", len(self.low_efficiency_buffer), "on_curve_buffer: ",
+              len(self.on_curve_buffer),"normal_buffer: ", len(self.normal_buffer))
+
+    def sample(self, batch_size):
+        specific_size = batch_size/6
+        normal_size = batch_size-4*specific_size
+        dangerous_transition = random.sample(self.dangerous_buffer, specific_size)
+        dangerous_transitions = zip(*dangerous_transition)
+        off_center_transition = random.sample(self.off_center_buffer, specific_size)
+        off_center_transitions = zip(*off_center_transition)
+        low_efficiency_transition = random.sample(self.low_efficiency_buffer, specific_size)
+        low_efficiency_transitions = zip(*low_efficiency_transition)
+        on_curve_transition = random.sample(self.on_curve_buffer, specific_size)
+        on_curve_transitions = zip(*on_curve_transition)
+        normal_transition = random.sample(self.normal_buffer, normal_size)
+        normal_transitions = zip(*normal_transition)
+        all_transitions = np.concatenate((dangerous_transitions, off_center_transitions, on_curve_transitions,
+                                          low_efficiency_transitions, normal_transitions), axis=0)
+        state, action, next_state, reward, truncated, done = all_transitions[:, :28], all_transitions[:, 28:30],
+        all_transitions[:, 30:56], all_transitions[:, 56:57], all_transitions[:, -2:-1], all_transitions[:, -1:]
+        return state, action, reward, next_state, truncated, done
 
 class PolicyNet(torch.nn.Module):
     def __init__(self, state_dim, action_bound, train=True) -> None:
@@ -207,7 +390,9 @@ class DDPG:
         self.gamma, self.tau, self.sigma, self.epsilon = gamma, tau, sigma, epsilon  # sigma:高斯噪声的标准差，均值直接设置为0
         self.buffer_size, self.batch_size, self.device = buffer_size, batch_size, device
         self.actor_lr, self.critic_lr = actor_lr, critic_lr
+        # adjust different types of replay buffer
         self.replay_buffer = ReplayBuffer(buffer_size)
+        # self.replay_buffer = offline_replay_buffer()
         """self.memory=torch.tensor((buffer_size,self.s_dim*2+self.a_dim+1+1),
             dtype=torch.float32).to(self.device)"""
         self.pointer = 0  # serve as updating the memory data
@@ -255,6 +440,11 @@ class DDPG:
 
         return action
 
+    def running_mean_std(self):
+        mean = 0
+        std = 0
+        return mean, std
+
     def learn(self):
         self.learn_time += 1
         # if self.learn_time > 100000:
@@ -269,11 +459,10 @@ class DDPG:
         batch_r = torch.tensor(b_r, dtype=torch.float32).view((self.batch_size, -1)).to(self.device)
         batch_d = torch.tensor(b_d, dtype=torch.float32).view((self.batch_size, -1)).to(self.device)
         batch_t = torch.tensor(b_t, dtype=torch.float32).view((self.batch_size, -1)).to(self.device)
-
         # compute the target Q value using the information of next state
         action_target = self.actor_target(batch_ns)
         next_q_values = self.critic_target(batch_ns, action_target)
-        q_targets = batch_r + self.gamma * next_q_values * (1 - batch_t)*(1 - batch_d)
+        q_targets = batch_r + self.gamma * next_q_values * (1 - batch_t)
         critic_loss = self.loss(self.critic(batch_s, batch_a), q_targets)
         print(f'TD-error:{critic_loss}')
         self.critic_optimizer.zero_grad()
@@ -376,3 +565,75 @@ class OrnsteinUhlenbeckActionNoise:
 
     def __repr__(self):
         return 'OrnsteinUhlenbeckActionNoise(mu={}, sigma={})'.format(self.mu, self.sigma)
+
+
+class SumTree(object):
+    """
+    This SumTree code is a modified version and the original code is from:
+    https://github.com/jaara/AI-blog/blob/master/SumTree.py
+
+    Story data with its priority in the tree.
+    """
+    data_pointer = 0
+
+    def __init__(self, capacity):
+        self.capacity = capacity  # for all priority values
+        self.tree = np.zeros(2 * capacity - 1)
+        # [--------------Parent nodes-------------][-------leaves to recode priority-------]
+        #             size: capacity - 1                       size: capacity
+        self.data = np.zeros(capacity, dtype=object)  # for all transitions
+        # [--------------data frame-------------]
+        #             size: capacity
+
+    def add(self, p, data):
+        tree_idx = self.data_pointer + self.capacity - 1
+        self.data[self.data_pointer] = data  # update data_frame
+        self.update(tree_idx, p)  # update tree_frame
+
+        self.data_pointer += 1
+        if self.data_pointer >= self.capacity:  # replace when exceed the capacity
+            self.data_pointer = 0
+
+    def update(self, tree_idx, p):
+        change = p - self.tree[tree_idx]
+        self.tree[tree_idx] = p
+        # then propagate the change through tree
+        while tree_idx != 0:    # this method is faster than the recursive loop in the reference code
+            tree_idx = (tree_idx - 1) // 2
+            self.tree[tree_idx] += change
+
+    def get_leaf(self, v):
+        """
+        Tree structure and array storage:
+
+        Tree index:
+             0         -> storing priority sum
+            / \
+          1     2
+         / \   / \
+        3   4 5   6    -> storing priority for transitions
+
+        Array type for storing:
+        [0,1,2,3,4,5,6]
+        """
+        parent_idx = 0
+        while True:     # the while loop is faster than the method in the reference code
+            cl_idx = 2 * parent_idx + 1         # this leaf's left and right kids
+            cr_idx = cl_idx + 1
+            if cl_idx >= len(self.tree):        # reach bottom, end search
+                leaf_idx = parent_idx
+                break
+            else:       # downward search, always search for a higher priority node
+                if v <= self.tree[cl_idx]:
+                    parent_idx = cl_idx
+                else:
+                    v -= self.tree[cl_idx]
+                    parent_idx = cr_idx
+
+        data_idx = leaf_idx - self.capacity + 1
+        return leaf_idx, self.tree[leaf_idx], self.data[data_idx]
+
+    @property
+    def total_p(self):
+        return self.tree[0]  # the root
+
