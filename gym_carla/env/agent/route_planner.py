@@ -490,9 +490,11 @@ class LocalPlanner:
 
             # if the object is not in our lane it's not an obstacle
             target_vehicle_waypoint = self._map.get_waypoint(target_vehicle.get_location())
-            if target_vehicle_waypoint.road_id != ego_vehicle_waypoint.road_id or \
-                    target_vehicle_waypoint.lane_id != ego_vehicle_waypoint.lane_id:
+            if not test_waypoint(target_vehicle_waypoint):
                 continue
+            # if target_vehicle_waypoint.road_id != ego_vehicle_waypoint.road_id or \
+            #         target_vehicle_waypoint.lane_id != ego_vehicle_waypoint.lane_id:
+            #     continue
 
             loc = target_vehicle.get_location()
             if is_within_distance_ahead(loc, ego_vehicle_location,

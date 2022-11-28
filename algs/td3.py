@@ -65,9 +65,9 @@ class PolicyNet(torch.nn.Module):
     def forward(self, state):
         # state : waypoints info+ vehicle_front info, shape: batch_size*22, first 20 elements are waypoints info,
         # the rest are vehicle info
-        state_wp = state[:, :20]
-        state_ev = state[:,-8:-2]
-        state_vf = state[:, -2:]
+        state_wp = state[:, :self.state_dim['waypoints']]
+        state_ev = state[:,-self.state_dim['vehicle_front']-self.state_dim['ego_vehicle']:-self.state_dim['vehicle_front']]
+        state_vf = state[:, -self.state_dim['vehicle_front']:]
         state_wp = F.relu(self.fc1_1(state_wp))
         state_ev=F.relu((self.fc1_2(state_ev)))
         state_vf = F.relu(self.fc1_3(state_vf))
@@ -122,9 +122,9 @@ class QValueNet(torch.nn.Module):
 
         # state : waypoints info+ vehicle_front info, shape: batch_size*22, first 20 elements are waypoints info,
         # the rest are vehicle info
-        state_wp = state[:, :20]
-        state_ev = state[:, -8:-2]
-        state_vf = state[:, -2:]
+        state_wp = state[:, :self.state_dim['waypoints']]
+        state_ev = state[:,-self.state_dim['vehicle_front']-self.state_dim['ego_vehicle']:-self.state_dim['vehicle_front']]
+        state_vf = state[:, -self.state_dim['vehicle_front']:]
         state_wp=F.relu(self.fc1_1(state_wp))
         state_ev=F.relu(self.fc1_2(state_ev))
         state_vf=F.relu(self.fc1_3(state_vf))
@@ -197,6 +197,7 @@ class TD3:
         self.replace_c = 0
         self.train = True
         self.s_dim = state_dim  # state_dim here is a dict
+        self.s_dim['waypoints']*=2  # The input waypoints info has been compressed
         self.a_dim, self.a_bound = action_dim, action_bound
         self.theta = theta
         self.gamma, self.tau, self.sigma, self.epsilon = gamma, tau, sigma, epsilon  # sigma:高斯噪声的标准差，均值直接设置为0

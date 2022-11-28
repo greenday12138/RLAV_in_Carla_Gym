@@ -87,7 +87,7 @@ ARGS.add_argument(
 ARGS.add_argument(
     '-n', '--num_of_vehicles', type=list,
     help='Total vehicles number which run in simulation',
-    default=[20,25,30,35,40])
+    default=[10,20])
 ARGS.add_argument(
     '-sa', '--sampling_resolution', type=float,
     help='Distance between generated two waypoints',
@@ -114,7 +114,7 @@ ARGS.add_argument(
     help='The number of upfront waypoints each state should include')
 ARGS.add_argument(
     '--buffer-size', type=int,
-    default=10,
+    default=20,
     help='The number of look-ahead waypoints in each step')
 ARGS.add_argument(
     '--TTC_th', type=float,
@@ -156,11 +156,16 @@ ARGS.add_argument(
 )
 ARGS.add_argument(
     '--pre_train_steps', type=int,
-    default=100000,
+    default=10000,
     help='Let the RL controller and PID controller alternatively take control every 500 steps'
 )
 ARGS.add_argument(
     '--vehicle_proximity',type=float,
-    default=50.0,
-    help='Distance for searching vehicles in front of ego vehicle, units -- meters'
+    default=20.0,
+    help='Distance for searching vehicles in front of ego vehicle, unit -- meters'
+)
+ARGS.add_argument(
+    '--min_distance',type=float,
+    default=2.0,
+    help='Min distance between two vehicles, unit -- meters'
 )

@@ -44,6 +44,7 @@ class CarlaEnv:
         self.res = args.res
         self.num_of_vehicles = args.num_of_vehicles
         self.sampling_resolution = args.sampling_resolution
+        self.min_distance=args.min_distance
         self.vehicle_proximity = args.vehicle_proximity
         self.hybrid = args.hybrid
         self.stride = args.stride
@@ -253,6 +254,7 @@ class CarlaEnv:
                 #     #     self.map.get_waypoint(self.ego_vehicle.get_location())))
             else:
                 self.RL_switch = True
+                self.TM_switch = False
                 # self.local_planner.set_global_plan(self.global_planner.get_route(
                 #     self.map.get_waypoint(self.ego_vehicle.get_location())))
         else:
@@ -267,6 +269,8 @@ class CarlaEnv:
 
     def step(self, action):
         self.step_info=None
+        self.next_wps=None
+        self.vehicle_front=None
         """throttle (float):A scalar value to control the vehicle throttle [0.0, 1.0]. Default is 0.0.
                 steer (float):A scalar value to control the vehicle steering [-1.0, 1.0]. Default is 0.0.
                 brake (float):A scalar value to control the vehicle brake [0.0, 1.0]. Default is 0.0."""
@@ -413,7 +417,7 @@ class CarlaEnv:
         """Get observation space of cureent environment
         first element: Next waypoints list length of ego vehicle,
         second element: Location (x,y) dimention of waypoint"""
-        return {'waypoints': self.buffer_size * 2, 'ego_vehicle': 6, 'vehicle_front': 2}
+        return {'waypoints': self.buffer_size, 'ego_vehicle': 6, 'vehicle_front': 2}
 
     def get_action_bound(self):
         """Return action bound of ego vehicle controller"""
@@ -458,14 +462,18 @@ class CarlaEnv:
 
         if dict['vehicle_front']:
             vehicle_front = dict['vehicle_front']
+            ego_speed = get_speed(self.ego_vehicle, False)
+            vf_speed = get_speed(vehicle_front, False)
+            rel_speed = ego_speed - vf_speed
             distance = self.ego_vehicle.get_location().distance(vehicle_front.get_location())
             vehicle_len=max(abs(self.ego_vehicle.bounding_box.extent.x),abs(self.ego_vehicle.bounding_box.extent.y))+ \
                 max(abs(self.vehicle_front.bounding_box.extent.x),abs(self.vehicle_front.bounding_box.extent.y))
             distance -= vehicle_len
-            ego_speed = get_speed(self.ego_vehicle, False)
-            vf_speed = get_speed(vehicle_front, False)
-            rel_speed = ego_speed - vf_speed
-            vfl = [distance / self.vehicle_proximity, rel_speed/5]
+            if distance <self.min_distance:
+                vfl=[0, rel_speed/5]
+            else:
+                distance -= self.min_distance
+                vfl = [distance / (self.vehicle_proximity-self.min_distance), rel_speed/5]
         else:
             # No vehicle front, suppose there is a vehicle at the end of waypoint list and relative speed is 0
             vfl = [1, 0]
@@ -511,9 +519,13 @@ class CarlaEnv:
             vehicle_len=max(abs(self.ego_vehicle.bounding_box.extent.x),abs(self.ego_vehicle.bounding_box.extent.y))+ \
                 max(abs(self.vehicle_front.bounding_box.extent.x),abs(self.vehicle_front.bounding_box.extent.y))
             distance -= vehicle_len
-            rel_speed = ego_speed / 3.6 - get_speed(self.vehicle_front, False)
-            if abs(rel_speed)> float(0.0000001):
-                TTC = distance / rel_speed
+            if distance < self.min_distance:
+                TTC = 0.000001
+            else:
+                distance -= self.min_distance
+                rel_speed = ego_speed / 3.6 - get_speed(self.vehicle_front, False)
+                if abs(rel_speed)> float(0.0000001):
+                    TTC = distance / rel_speed
             #print(distance, TTC)
         # fTTC=-math.exp(-TTC)
         if TTC >= 0 and TTC <= self.TTC_THRESHOLD:
@@ -555,7 +567,7 @@ class CarlaEnv:
 
         yaw_diff=math.degrees(get_yaw_diff(lane_center.transform.get_forward_vector(),
                                 self.ego_vehicle.get_transform().get_forward_vector()))
-        fYaw= abs(yaw_diff)/90
+        fYaw= -abs(yaw_diff)/90
 
         self.step_info = {'velocity':v_s,'offlane':Lcen, 'yaw_diff':yaw_diff,'TTC': fTTC, 'Comfort': fCom, 'Efficiency': fEff, 'Lane_center': fLcen, 'Yaw': fYaw, 'Abandon':False}
 
@@ -567,11 +579,11 @@ class CarlaEnv:
                 else:
                     # If ego vehicle collides with traffic lights and stop signs, do not add penalty
                     self.step_info['Abandon']=True
-                    return fTTC + fCom + fEff + fLcen +fYaw
+                    return (fTTC + fEff)*2 + fLcen +fYaw
             else:
                 return - self.penalty
         else:
-            return fTTC + fCom + fEff + fLcen +fYaw
+            return (fTTC+fEff)*2 + fCom  + fLcen +fYaw
 
     def _speed_switch(self, cont):
         """cont: the control command of RL agent"""
@@ -628,14 +640,9 @@ class CarlaEnv:
         if self.map.get_waypoint(self.ego_vehicle.get_location()) is None:
             logging.warn('vehicle drive out of road')
             return True
-        if get_speed(self.ego_vehicle, False) < 0.1 and self.speed_state != SpeedState.START:
+        if get_speed(self.ego_vehicle, False) < 0.00001 and self.speed_state != SpeedState.START:
             logging.warn('vehicle speed too low')
             return True
-        # lane_center=self.map.get_waypoint(self.ego_vehicle.get_location(),project_to_road=True)
-        # print(lane_center.transform.location.distance(self.ego_vehicle.get_location()),self.step_info['Lane_center'],
-        #     lane_center.road_id,lane_center.lane_id,sep='\t')
-        # if lane_center.transform.location.distance(self.ego_vehicle.get_location())>=lane_center.lane_width/2:
-        #     return True
         # if self.lane_invasion_sensor.get_invasion_count()!=0:
         #     logging.warn('lane invasion occur')
         #     return True
@@ -679,8 +686,7 @@ class CarlaEnv:
         self.ego_vehicle.set_autopilot(setting, self.tm_port)
         if setting:
             speed_diff = (30 * 3.6 - self.speed_limit) / (30 * 3.6) * 100
-            self.traffic_manager.set_synchronous_mode(True)
-            self.traffic_manager.distance_to_leading_vehicle(self.ego_vehicle, 10)
+            self.traffic_manager.distance_to_leading_vehicle(self.ego_vehicle, self.min_distance)
             self.traffic_manager.ignore_lights_percentage(self.ego_vehicle, 100)
             self.traffic_manager.ignore_signs_percentage(self.ego_vehicle, 100)
             self.traffic_manager.ignore_vehicles_percentage(self.ego_vehicle, 0)
@@ -757,7 +763,7 @@ class CarlaEnv:
     def _set_traffic_manager(self):
         self.traffic_manager = self.client.get_trafficmanager(self.tm_port)
         # every vehicle keeps a distance of 3.0 meter
-        self.traffic_manager.set_global_distance_to_leading_vehicle(self.sampling_resolution)
+        self.traffic_manager.set_global_distance_to_leading_vehicle(10)
         # Set physical mode only for cars around ego vehicle to save computation
         if self.hybrid:
             self.traffic_manager.set_hybrid_physics_mode(True)
@@ -765,7 +771,9 @@ class CarlaEnv:
 
         """The default global speed limit is 30 m/s
         Vehicles' target speed is 70% of their current speed limit unless any other value is set."""
-        # self.traffic_manager.global_percentage_speed_difference(-0)
+        speed_diff = (30 * 3.6 - (self.speed_limit+1)) / (30 * 3.6) * 100
+        # Let the companion vehicles drive a bit faster than ego speed limit
+        self.traffic_manager.global_percentage_speed_difference(0)
         self.traffic_manager.set_synchronous_mode(self.sync)
 
     def _try_spawn_ego_vehicle_at(self, transform):
