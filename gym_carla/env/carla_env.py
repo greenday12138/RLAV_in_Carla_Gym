@@ -270,7 +270,7 @@ class CarlaEnv:
     def step(self, action):
         self.step_info=None
         self.next_wps=None
-        self.vehicle_front=None
+        #self.vehicle_front=None
         """throttle (float):A scalar value to control the vehicle throttle [0.0, 1.0]. Default is 0.0.
                 steer (float):A scalar value to control the vehicle steering [-1.0, 1.0]. Default is 0.0.
                 brake (float):A scalar value to control the vehicle brake [0.0, 1.0]. Default is 0.0."""
@@ -606,10 +606,15 @@ class CarlaEnv:
                     self._ego_autopilot(False)
         elif self.speed_state == SpeedState.RUNNING:
             if self.RL_switch == True:
-                if ego_speed < self.speed_min:
-                    # Only add reboot state in the beginning 200 episodes
+                if ego_speed < self.speed_min and self.vehicle_front:
+                    distance = self.ego_vehicle.get_location().distance(self.vehicle_front.get_location())
+                    vehicle_len=max(abs(self.ego_vehicle.bounding_box.extent.x),abs(self.ego_vehicle.bounding_box.extent.y))+ \
+                        max(abs(self.vehicle_front.bounding_box.extent.x),abs(self.vehicle_front.bounding_box.extent.y))
+                    distance -= vehicle_len
+                    if distance<self.min_distance+1:
+                        #Ego vehicle following front vehicle
+                        self.speed_state = SpeedState.REBOOT
                     # self._ego_autopilot(True)
-                    #self.speed_state = SpeedState.REBOOT
                     pass
                 pass
             else:
@@ -622,7 +627,7 @@ class CarlaEnv:
                         self.autopilot_controller.set_destination(random.choice(self.spawn_points).location)
                     control=self.autopilot_controller.run_step()
         elif self.speed_state == SpeedState.REBOOT:
-            control = self.controller.run_step({'waypoints': self.next_wps, 'vehicle_front': self.vehicle_front})
+            #control = self.controller.run_step({'waypoints': self.next_wps, 'vehicle_front': self.vehicle_front})
             if ego_speed >= self.speed_threshold:
                 # self._ego_autopilot(False)
                 self.speed_state = SpeedState.RUNNING
@@ -640,7 +645,7 @@ class CarlaEnv:
         if self.map.get_waypoint(self.ego_vehicle.get_location()) is None:
             logging.warn('vehicle drive out of road')
             return True
-        if get_speed(self.ego_vehicle, False) < 0.00001 and self.speed_state != SpeedState.START:
+        if get_speed(self.ego_vehicle, False) < self.speed_min and self.speed_state == SpeedState.RUNNING:
             logging.warn('vehicle speed too low')
             return True
         # if self.lane_invasion_sensor.get_invasion_count()!=0:
@@ -771,9 +776,8 @@ class CarlaEnv:
 
         """The default global speed limit is 30 m/s
         Vehicles' target speed is 70% of their current speed limit unless any other value is set."""
-        speed_diff = (30 * 3.6 - (self.speed_limit+1)) / (30 * 3.6) * 100
         # Let the companion vehicles drive a bit faster than ego speed limit
-        self.traffic_manager.global_percentage_speed_difference(0)
+        #self.traffic_manager.global_percentage_speed_difference(0)
         self.traffic_manager.set_synchronous_mode(self.sync)
 
     def _try_spawn_ego_vehicle_at(self, transform):
@@ -854,15 +858,17 @@ class CarlaEnv:
                 # print("Future Actor",response.actor_id)
                 self.companion_vehicles.append(self.world.get_actor(response.actor_id))
                 self.traffic_manager.ignore_lights_percentage(
-                    self.world.get_actor(response.actor_id), 100)
+                    self.world.get_actor(response.actor_id), 50)
                 self.traffic_manager.ignore_signs_percentage(
-                    self.world.get_actor(response.actor_id), 100)
+                    self.world.get_actor(response.actor_id), 50)
                 self.traffic_manager.ignore_walkers_percentage(
                     self.world.get_actor(response.actor_id), 100)
                 self.traffic_manager.set_route(self.world.get_actor(response.actor_id),
                                                ['Straight', 'Straight', 'Straight', 'Straight', 'Straight'])
                 self.traffic_manager.update_vehicle_lights(
                     self.world.get_actor(response.actor_id),True)
+                self.traffic_manager.vehicle_percentage_speed_difference(
+                    self.world.get_actor(response.actor_id), -0)
                 # print(self.world.get_actor(response.actor_id).attributes)
 
         msg = 'requested %d vehicles, generate %d vehicles, press Ctrl+C to exit.'

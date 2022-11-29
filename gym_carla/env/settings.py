@@ -87,7 +87,7 @@ ARGS.add_argument(
 ARGS.add_argument(
     '-n', '--num_of_vehicles', type=list,
     help='Total vehicles number which run in simulation',
-    default=[10,20])
+    default=[5,10,15,20])
 ARGS.add_argument(
     '-sa', '--sampling_resolution', type=float,
     help='Distance between generated two waypoints',
@@ -114,7 +114,7 @@ ARGS.add_argument(
     help='The number of upfront waypoints each state should include')
 ARGS.add_argument(
     '--buffer-size', type=int,
-    default=20,
+    default=30,
     help='The number of look-ahead waypoints in each step')
 ARGS.add_argument(
     '--TTC_th', type=float,
@@ -130,11 +130,11 @@ ARGS.add_argument(
     help='Speed limit for ego vehicle, km/h')
 ARGS.add_argument(
     '--speed_threshold', type=float,
-    default=20.0,
+    default=10.0,
     help='Speed limit for ego vehicle, km/h')
 ARGS.add_argument(
     '--speed_min', type=float,
-    default=3.6,
+    default=0.01,
     help='When ego vehicle speed reaches down to this threshold, we should let basic agent take control \
         and the action of basic need to add into the replay buffer, km/h')
 ARGS.add_argument(
@@ -161,7 +161,7 @@ ARGS.add_argument(
 )
 ARGS.add_argument(
     '--vehicle_proximity',type=float,
-    default=20.0,
+    default=30.0,
     help='Distance for searching vehicles in front of ego vehicle, unit -- meters'
 )
 ARGS.add_argument(
