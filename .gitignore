@@ -1,3 +1,3 @@
-*out/*.txt
+*out/
 *__pycache__/
 *.idea/
