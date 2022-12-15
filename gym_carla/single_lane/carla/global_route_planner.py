@@ -13,8 +13,8 @@ import numpy as np
 import networkx as nx
 
 import carla
-from gym_carla.env.carla.local_planner import RoadOption
-from gym_carla.env.util.misc import vector,test_waypoint
+from gym_carla.single_lane.carla.local_planner import RoadOption
+from gym_carla.single_lane.util.misc import vector,test_waypoint
 
 class GlobalRoutePlanner(object):
     """

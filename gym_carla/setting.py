@@ -1,0 +1,1 @@
+CARLA_PATH = 'D:\ProgramFiles\Carla\WindowsNoEditor'

@@ -1,7 +1,6 @@
 """This file defines all high level parameters of carla gym environment"""
 import argparse
 
-CARLA_PATH = 'D:\ProgramFiles\Carla\WindowsNoEditor'
 # the following road id sets define the chosen route
 ROADS = set()
 STRAIGHT = {8, 0, 1, 2, 3, 15, 5, 6, 7}

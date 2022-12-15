@@ -3,7 +3,7 @@ import math
 import numpy as np
 import carla
 from collections import deque
-from gym_carla.env.util.misc import get_speed
+from gym_carla.single_lane.util.misc import get_speed
 
 class VehiclePIDController():
     """

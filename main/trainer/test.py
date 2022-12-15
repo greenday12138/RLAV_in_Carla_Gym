@@ -1,7 +1,7 @@
 import gym
 import logging
-from gym_carla.env.carla_env import CarlaEnv
-from gym_carla.env.settings import ARGS
+from gym_carla.single_lane.carla_env import CarlaEnv
+from gym_carla.single_lane.settings import ARGS
 from temp import Temp
 
 def main():

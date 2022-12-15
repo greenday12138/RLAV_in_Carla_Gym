@@ -7,9 +7,9 @@ import matplotlib.pyplot as plt
 from tqdm import tqdm
 from algs.ddpg import DDPG
 from algs.td3 import TD3
-from gym_carla.env.settings import ARGS
-from gym_carla.env.carla_env import CarlaEnv, SpeedState
-from process import start_process, kill_process
+from gym_carla.single_lane.settings import ARGS
+from gym_carla.single_lane.carla_env import CarlaEnv, SpeedState
+from main.util.process import start_process, kill_process
 
 # neural network hyper parameters
 SIGMA = 1

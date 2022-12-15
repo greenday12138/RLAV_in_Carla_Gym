@@ -3,7 +3,7 @@
 import math
 import numpy as np
 import carla
-from gym_carla.env.settings import *
+from gym_carla.single_lane.settings import *
 
 def remove_unnecessary_objects(world):
     """Remove unuseful objects in the world"""

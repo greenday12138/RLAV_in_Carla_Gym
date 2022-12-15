@@ -1,26 +1,15 @@
 import logging
-import carla
-import random
-import math, time
-import numpy as np
-import time
-from enum import Enum
-from queue import Queue
-import logging
 import torch
 import random, collections
+import numpy as np
 import matplotlib.pyplot as plt
 from tqdm import tqdm
 from algs.ddpg import DDPG
-from gym_carla.env.settings import ARGS
-from gym_carla.env.carla_env import CarlaEnv
-from process import start_process, kill_process
-import random, collections
-import numpy as np
-import torch
-from torch import nn
-import torch.nn.functional as F
+from gym_carla.single_lane.settings import ARGS
+from gym_carla.single_lane.carla_env import CarlaEnv
+from main.util.process import start_process, kill_process
 
+# neural network hyper parameters
 SIGMA = 0.5
 THETA = 0.05
 DEVICE = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
@@ -34,10 +23,10 @@ MINIMAL_SIZE = 10000
 BATCH_SIZE = 128
 REPLACE_A = 500
 REPLACE_C = 300
-TOTAL_EPISODE = 10000
+TOTAL_EPISODE = 3000
 SIGMA_DECAY = 0.9999
 TTC_threshold = 4.001
-base_name = 'pretrain'
+base_name = f'origin_{TTC_threshold}_NOCA'
 
 
 def main():
@@ -122,11 +111,11 @@ def main():
                             score_e += info['Efficiency']
                             score_c += info['Comfort']
 
-                            if env.total_step == args.pre_train_steps:
+                            if env.total_step==args.pre_train_steps:
                                 agent.save_net('./out/ddpg_pre_trained.pth')
 
                             if env.rl_control_step > 10000 and env.is_effective_action() and \
-                                    env.RL_switch and SIGMA > 0.1:
+                                    env.RL_switch and SIGMA > 0.01:
                                 globals()['SIGMA'] *= SIGMA_DECAY
                                 agent.set_sigma(SIGMA)
 
@@ -178,6 +167,7 @@ def main():
             env.__del__()
             logging.info('\nDone.')
 
+
 if __name__ == '__main__':
     try:
         start_process()
@@ -186,5 +176,3 @@ if __name__ == '__main__':
     #     logging.warning(e.args)
     finally:
         kill_process()
-
-

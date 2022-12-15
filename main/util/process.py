@@ -1,6 +1,6 @@
 import os,psutil,time
 import subprocess
-from gym_carla.env.settings import CARLA_PATH
+from gym_carla.setting import CARLA_PATH
 
 operating_system='windows' if os.name=='nt' else 'linux'
 

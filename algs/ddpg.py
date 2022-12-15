@@ -38,7 +38,7 @@ class ReplayBuffer:
             done = 0
         else:
             done = 1
-        self.save_all(state, action, next_state, reward_list, np.array([truncated]), np.array([done]))
+        #self.save_all(state, action, next_state, reward_list, np.array([truncated]), np.array([done]))
         # with open('./out/replay_buffer_test.txt','ab') as f:
         #     np.savetxt(f, state, delimiter=',')
         #     np.savetxt(f, action, delimiter=',')

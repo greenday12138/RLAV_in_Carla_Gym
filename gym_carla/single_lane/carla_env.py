@@ -7,13 +7,13 @@ import time
 from enum import Enum
 from queue import Queue
 #from gym_carla.env.agent.basic_agent import BasicAgent
-from gym_carla.env.util.misc import draw_waypoints, get_speed, get_acceleration, test_waypoint, \
+from gym_carla.single_lane.util.misc import draw_waypoints, get_speed, get_acceleration, test_waypoint, \
     compute_distance, get_actor_polygons, get_lane_center, remove_unnecessary_objects,get_yaw_diff
-from gym_carla.env.sensor import CollisionSensor, LaneInvasionSensor, SemanticTags
-from gym_carla.env.agent.route_planner import GlobalPlanner, LocalPlanner
-from gym_carla.env.agent.pid_controller import VehiclePIDController
-from gym_carla.env.carla.behavior_agent import BehaviorAgent,BasicAgent
-
+from gym_carla.single_lane.util.sensor import CollisionSensor, LaneInvasionSensor, SemanticTags
+from gym_carla.single_lane.agent.local_planner import LocalPlanner
+from gym_carla.single_lane.agent.global_planner import GlobalPlanner
+from gym_carla.single_lane.agent.pid_controller import VehiclePIDController
+from gym_carla.single_lane.carla.behavior_agent import BehaviorAgent,BasicAgent
 
 class SpeedState(Enum):
     """Different ego vehicle speed state
@@ -368,7 +368,8 @@ class CarlaEnv:
                 # control=self.controller.run_step({'waypoints':self.next_wps,'vehicle_front':self.vehicle_front})
                 # print(control.steer,control.throttle,control.brake,sep='\t')
             else:
-                draw_waypoints(self.world, self.next_wps, 1.0/self.fps+0.001, z=1)
+                #draw_waypoints(self.world, self.next_wps, 1.0/self.fps+0.001, z=1)
+                pass
 
             spectator = self.world.get_spectator()
             transform = self.ego_vehicle.get_transform()
