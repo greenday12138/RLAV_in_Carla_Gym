@@ -1,16 +1,9 @@
-# Copyright (c) # Copyright (c) 2018-2020 CVC.
-#
-# This work is licensed under the terms of the MIT license.
-# For a copy, see <https://opensource.org/licenses/MIT>.
-
 """ This module contains PID controllers to perform lateral and longitudinal control. """
-
-from collections import deque
 import math
 import numpy as np
 import carla
+from collections import deque
 from gym_carla.multi_lane.util.misc import get_speed
-
 
 class VehiclePIDController():
     """
@@ -20,7 +13,7 @@ class VehiclePIDController():
     """
 
 
-    def __init__(self, vehicle, args_lateral, args_longitudinal, offset=0, max_throttle=0.75, max_brake=0.3,
+    def __init__(self, vehicle, args_lateral={}, args_longitudinal={}, offset=0, max_throttle=0.75, max_brake=0.3,
                  max_steering=0.8):
         """
         Constructor method.

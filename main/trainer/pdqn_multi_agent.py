@@ -167,7 +167,7 @@ def main():
                             score_c += info['Comfort']
 
                             if env.total_step == args.pre_train_steps:
-                                agent.save_net('./out/pdqn_pre_trained.pth')
+                                agent.save_net('../../out/pdqn_pre_trained.pth')
                             # TODO: modify rl_control_step
                             if env.rl_control_step > 10000 and env.is_effective_action() and \
                                     env.RL_switch and SIGMA_ACC > 0.01:
@@ -214,8 +214,8 @@ def main():
                     #     globals()['SIGMA']*=SIGMA_DECAY
                     #     agent.set_sigma(SIGMA)
 
-            agent.save_net('./out/pdqn_final.pth')
-            np.save(f'./out/result_{run}.npy', result)
+            agent.save_net('../../out/pdqn_final.pth')
+            np.save(f'../../out/result_{run}.npy', result)
         except KeyboardInterrupt:
             logging.info("Premature Terminated")
         # except BaseException as e:

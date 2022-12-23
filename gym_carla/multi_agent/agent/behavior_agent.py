@@ -1,20 +1,10 @@
-# Copyright (c) # Copyright (c) 2018-2020 CVC.
-#
-# This work is licensed under the terms of the MIT license.
-# For a copy, see <https://opensource.org/licenses/MIT>.
-
-
-""" This module implements an agent that roams around a track following random
-waypoints and avoiding other vehicles. The agent also responds to traffic lights,
-traffic signs, and has different possible configurations. """
-
-import random
-import numpy as np
 import carla
-from gym_carla.multi_lane.carla.basic_agent import BasicAgent
-from gym_carla.multi_lane.carla.local_planner import RoadOption
-from gym_carla.multi_lane.carla.behavior_types import Cautious, Aggressive, Normal
-from gym_carla.multi_lane.util.misc import get_speed, positive, is_within_distance, compute_distance
+import numpy as np
+from shapely.geometry import Polygon
+from gym_carla.multi_lane.util.misc import get_speed,positive
+from gym_carla.multi_lane.agent.basic_agent import BasicAgent
+from gym_carla.multi_lane.agent.behavior_types import Cautious,Normal,Aggressive
+from gym_carla.multi_lane.agent.local_planner import RoadOption
 
 class BehaviorAgent(BasicAgent):
     """
@@ -61,6 +51,75 @@ class BehaviorAgent(BasicAgent):
         elif behavior == 'aggressive':
             self._behavior = Aggressive()
 
+    def run_step(self, next_waypoint):
+        """
+        Execute one step of navigation.
+
+            :param next_waypoint: next waypoint for vehicle
+            :return control: carla.VehicleControl
+        """
+        self._update_information()
+
+        control = None
+        if self._behavior.tailgate_counter > 0:
+            self._behavior.tailgate_counter -= 1
+
+        ego_vehicle_loc = self._vehicle.get_location()
+        ego_vehicle_wp = self._map.get_waypoint(ego_vehicle_loc)
+
+        #1: Red lights and stops behavior
+        if self.traffic_light_manager():
+            return self.emergency_stop()
+
+        # 2.1: Pedestrian avoidance behaviors
+        walker_state, walker, w_distance = self.pedestrian_avoid_manager(ego_vehicle_wp)
+
+        if walker_state:
+            # Distance is computed from the center of the two cars,
+            # we use bounding boxes to calculate the actual distance
+            distance = w_distance - max(
+                walker.bounding_box.extent.y, walker.bounding_box.extent.x) - max(
+                    self._vehicle.bounding_box.extent.y, self._vehicle.bounding_box.extent.x)
+
+            # Emergency brake if the car is very close.
+            if distance < self._behavior.braking_distance:
+                return self.emergency_stop()
+
+        # 2.2: Car following behaviors
+        vehicle_state, vehicle, distance = self.collision_and_car_avoid_manager(ego_vehicle_wp)
+
+        if vehicle_state:
+            # Distance is computed from the center of the two cars,
+            # we use bounding boxes to calculate the actual distance
+            distance = distance - max(
+                vehicle.bounding_box.extent.y, vehicle.bounding_box.extent.x) - max(
+                    self._vehicle.bounding_box.extent.y, self._vehicle.bounding_box.extent.x)
+
+            # Emergency brake if the car is very close.
+            if distance < self._behavior.braking_distance:
+                return self.emergency_stop()
+            else:
+                control = self.car_following_manager(vehicle, distance)
+
+        # 3: Intersection behavior
+        elif self._incoming_waypoint.is_junction and (self._incoming_direction in [RoadOption.LEFT, RoadOption.RIGHT]):
+            target_speed = min([
+                self._behavior.max_speed,
+                self._speed_limit - 5])
+            self.set_target_speed(target_speed)
+            control=self._vehicle_controller.run_step(self._target_speed,next_waypoint)
+
+        # 4: Normal behavior
+        else:
+            target_speed = min([
+                self._behavior.max_speed,
+                self._speed_limit - self._behavior.speed_lim_dist])
+            self.set_target_speed(target_speed)
+            control=self._vehicle_controller.run_step(self._target_speed,next_waypoint)
+
+        return control
+
+
     def _update_information(self):
         """
         This method updates the information regarding the ego
@@ -68,7 +127,7 @@ class BehaviorAgent(BasicAgent):
         """
         self._speed = get_speed(self._vehicle)
         self._speed_limit = self._vehicle.get_speed_limit()
-        self._local_planner.set_speed(self._speed_limit)
+        self.set_target_speed(self._speed_limit)
         self._direction = self._local_planner.target_road_option
         if self._direction is None:
             self._direction = RoadOption.LANEFOLLOW
@@ -227,74 +286,6 @@ class BehaviorAgent(BasicAgent):
             control = self._local_planner.run_step(debug=debug)
 
         # Normal behavior.
-        else:
-            target_speed = min([
-                self._behavior.max_speed,
-                self._speed_limit - self._behavior.speed_lim_dist])
-            self._local_planner.set_speed(target_speed)
-            control = self._local_planner.run_step(debug=debug)
-
-        return control
-
-    def run_step(self, debug=False):
-        """
-        Execute one step of navigation.
-
-            :param debug: boolean for debugging
-            :return control: carla.VehicleControl
-        """
-        self._update_information()
-
-        control = None
-        if self._behavior.tailgate_counter > 0:
-            self._behavior.tailgate_counter -= 1
-
-        ego_vehicle_loc = self._vehicle.get_location()
-        ego_vehicle_wp = self._map.get_waypoint(ego_vehicle_loc)
-
-        # #1: Red lights and stops behavior
-        # if self.traffic_light_manager():
-        #     return self.emergency_stop()
-
-        # 2.1: Pedestrian avoidance behaviors
-        walker_state, walker, w_distance = self.pedestrian_avoid_manager(ego_vehicle_wp)
-
-        if walker_state:
-            # Distance is computed from the center of the two cars,
-            # we use bounding boxes to calculate the actual distance
-            distance = w_distance - max(
-                walker.bounding_box.extent.y, walker.bounding_box.extent.x) - max(
-                    self._vehicle.bounding_box.extent.y, self._vehicle.bounding_box.extent.x)
-
-            # Emergency brake if the car is very close.
-            if distance < self._behavior.braking_distance:
-                return self.emergency_stop()
-
-        # 2.2: Car following behaviors
-        vehicle_state, vehicle, distance = self.collision_and_car_avoid_manager(ego_vehicle_wp)
-
-        if vehicle_state:
-            # Distance is computed from the center of the two cars,
-            # we use bounding boxes to calculate the actual distance
-            distance = distance - max(
-                vehicle.bounding_box.extent.y, vehicle.bounding_box.extent.x) - max(
-                    self._vehicle.bounding_box.extent.y, self._vehicle.bounding_box.extent.x)
-
-            # Emergency brake if the car is very close.
-            if distance < self._behavior.braking_distance:
-                control=self.emergency_stop()
-            else:
-                control = self.car_following_manager(vehicle, distance)
-
-        # 3: Intersection behavior
-        elif self._incoming_waypoint.is_junction and (self._incoming_direction in [RoadOption.LEFT, RoadOption.RIGHT]):
-            target_speed = min([
-                self._behavior.max_speed,
-                self._speed_limit - 5])
-            self._local_planner.set_speed(target_speed)
-            control = self._local_planner.run_step(debug=debug)
-
-        # 4: Normal behavior
         else:
             target_speed = min([
                 self._behavior.max_speed,

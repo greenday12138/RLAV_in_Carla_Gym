@@ -157,7 +157,7 @@ def main():
                     #     globals()['SIGMA']*=SIGMA_DECAY
                     #     agent.set_sigma(SIGMA)
 
-            agent.save_net()
+            agent.save_net('./out/ddpg_pre_trained.pth')
             np.save(f'./out/result_{run}.npy', result)
         except KeyboardInterrupt:
             logging.info("Premature Terminated")
