@@ -763,7 +763,7 @@ def game_loop(args):
         clock = pygame.time.Clock()
 
         while True:
-            clock.tick(10)
+            clock.tick()
             last_control=world.player.get_control()
             print("control", last_control)
             if args.sync:

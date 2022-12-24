@@ -5,10 +5,10 @@ import numpy as np
 import matplotlib.pyplot as plt
 from tqdm import tqdm
 from algs.pdqn import P_DQN
-from gym_carla.multi_lane.settings import ARGS
-from gym_carla.multi_lane.carla_env import CarlaEnv
+from gym_carla.multi_agent.settings import ARGS
+from gym_carla.multi_agent.carla_env import CarlaEnv
 from main.util.process import start_process, kill_process
-from gym_carla.multi_lane.util.wrapper import fill_action_param,recover_steer
+from gym_carla.multi_agent.util.wrapper import fill_action_param,recover_steer
 from collections import deque
 
 # neural network hyper parameters
@@ -34,7 +34,6 @@ clip_grad = 10
 zero_index_gradients = True
 inverting_gradients = True
 train_pdqn = True
-modify_change_steer = True
 action_mask = False
 ignore_traffic_light = True
 base_name = f'origin_{TTC_threshold}_NOCA'
@@ -47,7 +46,7 @@ def main():
     logging.basicConfig(format='%(levelname)s: %(message)s', level=log_level)
 
     # env=gym.make('CarlaEnv-v0')
-    env = CarlaEnv(args, train_pdqn=train_pdqn, modify_change_steer=modify_change_steer)
+    env = CarlaEnv(args, train_pdqn=train_pdqn)
 
     done = False
     truncated = False
@@ -118,7 +117,7 @@ def main():
                                         action = info['Change']
                                         # action_param = np.array([[info['Steer'], throttle_brake]])
                                         saved_action_param = fill_action_param(action, info['Steer'], throttle_brake,
-                                                                               all_action_param, modify_change_steer)
+                                                                               all_action_param, args.modify_change_steer)
                                         print('agent control in replay buffer: ', action, saved_action_param)
                                         if truncated:
                                             agent.replay_buffer.add(state, action, saved_action_param, reward, next_state,
