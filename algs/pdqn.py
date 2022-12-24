@@ -18,9 +18,13 @@ class ReplayBuffer:
         # first compress state info, then add
         state = self._compress(state)
         next_state = self._compress(next_state)
-        lane_center = info["offlane"]
-        reward_ttc = info["TTC"]
-        reward_eff = info["velocity"]
+        if not truncated:
+            lane_center = info["offlane"]
+            reward_ttc = info["TTC"]
+            reward_eff = info["velocity"]
+            reward_com = info["Comfort"]
+            reward_eff = info["velocity"]
+            reward_yaw = info["yaw_diff"]
         # if reward_ttc < -0.1 or reward_eff < 3:
         #     self.change_buffer.append((state, action, action_param, reward, next_state, truncated, done))
         # if truncated:
@@ -32,10 +36,6 @@ class ReplayBuffer:
         #     for buf in self.tmp_buffer:
         #         self.change_buffer.append(buf)
         self.buffer.append((state, action, action_param, reward, next_state, truncated, done))
-        reward_com = info["Comfort"]
-        reward_eff = info["velocity"]
-
-        reward_yaw = info["yaw_diff"]
         # print("their shapes", state, action, next_state, reward_list, truncated, done)
         # state: [1, 28], action: [1, 2], next_state: [1, 28], reward_list = [1, 6], truncated = [1, 1], done = [1, 1]
         # all: [1, 66]

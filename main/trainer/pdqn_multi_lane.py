@@ -95,13 +95,13 @@ def main():
                             if env.is_effective_action() and not info['Abandon']:
                                 if 'Throttle' in info:
                                     control_state = info['control_state']
-                                    impact = info['impact'] / 9
                                     if control_state:
                                         # under rl control
                                         if truncated:
                                             agent.replay_buffer.add(state, action, all_action_param, reward, next_state,
                                                                 truncated, done, info)
                                         else:
+                                            impact = info['impact'] / 9
                                             impact_deque.append([state, action, all_action_param, reward, next_state,
                                                                     truncated, done, info])
                                             if len(impact_deque) == 2:
@@ -124,6 +124,7 @@ def main():
                                             agent.replay_buffer.add(state, action, saved_action_param, reward, next_state,
                                                                 truncated, done, info)
                                         else:
+                                            impact = info['impact'] / 9
                                             impact_deque.append([state, action, saved_action_param, reward, next_state,
                                                                     truncated, done, info])
                                             if len(impact_deque) == 2:
@@ -162,9 +163,11 @@ def main():
 
                             state = next_state
                             score += reward
-                            score_s += info['TTC']
-                            score_e += info['Efficiency']
-                            score_c += info['Comfort']
+                            
+                            if not truncated:
+                                score_s += info['TTC']
+                                score_e += info['Efficiency']
+                                score_c += info['Comfort']
 
                             if env.total_step == args.pre_train_steps:
                                 agent.save_net('./out/pdqn_pre_trained.pth')

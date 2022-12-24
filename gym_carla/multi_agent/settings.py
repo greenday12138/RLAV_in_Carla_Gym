@@ -194,6 +194,10 @@ ARGS.add_argument(
     '--ignore_traffic_light', type=bool,
     default=False,
     help='Set the vehicles in simulation to ignore traffic lights or not')
+ARGS.add_argument(
+    '--ego_num', type=int,
+    default=3,
+    help='The number of RL controlled ego vehicle')
 # ARGS.add_argument(
 #     '--modify_change_steer', type=bool,
 #     default=False,

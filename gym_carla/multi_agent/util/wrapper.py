@@ -81,8 +81,13 @@ class VehicleWrapper:
 class Truncated(Enum):
     """Different truncate situations"""
     FALSE=-1
-    NORMAL=0
+    OTHER=0
     CHANGE_LANE_IN_LANE_FOLLOW=1
+    COLLISION=2
+    SPEED_LOW=3
+    OUT_OF_ROAD=4
+    OPPOSITE_DIRECTION=5
+    TRAFFIC_LIGHT_BREAK=6
 
 class SpeedState(Enum):
     """Different ego vehicle speed state
