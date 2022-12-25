@@ -3,7 +3,7 @@ import logging
 import weakref, math
 import carla, time
 from enum import Enum
-from gym_carla.multi_agent.util.misc import get_actor_display_name
+from gym_carla.multi_agent.util.misc import get_actor_display_name,create_vehicle_blueprint
 
 class SemanticTags(Enum):
     Unlabeled = 0
@@ -65,6 +65,10 @@ class CollisionSensor(object):
             #used elsewhere
             return history, tags
 
+    def destroy(self):
+        self.sensor.stop()
+        self.sensor.destroy()
+
     def clear_history(self):
         self.history.clear()
 
@@ -106,6 +110,10 @@ class LaneInvasionSensor(object):
     def __del__(self):
         self.count=0
         self.sensor=None
+
+    def destroy(self):
+        self.sensor.stop()
+        self.sensor.destroy()
 
     def get_invasion_count(self):
         return self.count

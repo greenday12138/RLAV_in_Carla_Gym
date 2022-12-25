@@ -15,9 +15,9 @@ import numpy as np
 from enum import Enum
 from collections import deque
 from shapely.geometry import Polygon
-from gym_carla.multi_lane.util.wrapper import Action
-from gym_carla.multi_lane.agent.pid_controller import VehiclePIDController
-from gym_carla.multi_lane.util.misc import get_speed, draw_waypoints, is_within_distance, get_trafficlight_trigger_location, \
+from gym_carla.multi_agent.util.wrapper import Action
+from gym_carla.multi_agent.agent.pid_controller import VehiclePIDController
+from gym_carla.multi_agent.util.misc import get_speed, draw_waypoints, is_within_distance, get_trafficlight_trigger_location, \
     compute_distance, get_lane_center
 
 class Basic_Lanechanging_Agent(object):

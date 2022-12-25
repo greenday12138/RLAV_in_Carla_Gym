@@ -1,9 +1,10 @@
-""" Module with auxiliary functions. """
+""" Module with auxiliary functions. All following functions are related with carla environment"""
 import logging
 import math,re
-import numpy as np
 import carla
-from gym_carla.multi_lane.settings import *
+import random
+import numpy as np
+from gym_carla.multi_agent.settings import *
 from enum import Enum
 
 def remove_unnecessary_objects(world):
@@ -430,3 +431,34 @@ def get_actor_display_name(actor, truncate=250):
     """Method to get actor display name"""
     name = ' '.join(actor.type_id.replace('_', '.').title().split('.')[1:])
     return (name[:truncate - 1] + u'\u2026') if len(name) > truncate else name
+
+def create_vehicle_blueprint(world, actor_filter, ego=False, color=None, number_of_wheels=[4]):
+    """Create the blueprint for a specific actor type.
+
+    Args:
+        actor_filter: a string indicating the actor type, e.g, 'vehicle.lincoln*'.
+
+    Returns:
+        bp: the blueprint object of carla.
+    """
+    blueprints = list(world.get_blueprint_library().filter(actor_filter))
+
+    blueprint_library = []
+    for nw in number_of_wheels:
+        blueprint_library = blueprint_library + [x for x in blueprints if
+                                                    int(x.get_attribute('number_of_wheels')) == nw]
+    bp = random.choice(blueprint_library)
+    if bp.has_attribute('color'):
+        if color is None:
+            color = random.choice(bp.get_attribute('color').recommended_values)
+        bp.set_attribute('color', color)
+    if bp.has_attribute('driver_id'):
+        driver_id = random.choice(bp.get_attribute('driver_id').recommended_values)
+        bp.set_attribute('driver_id', driver_id)
+    if not ego:
+        bp.set_attribute('role_name', 'autopilot')
+    else:
+        bp.set_attribute('role_name', 'hero')
+
+    # bp.set_attribute('sticky_control', False)
+    return bp

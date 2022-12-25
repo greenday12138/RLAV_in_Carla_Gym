@@ -207,3 +207,7 @@ ARGS.add_argument(
     '--pygame', type=bool,
     default=True,
     help='Render another pygame window for ego vehicle and the window style looks like automatic_control.py')
+ARGS.add_argument(
+    '--alg', type=str,
+    default='PDQN',
+    help='The RL algorithm currently in use')

@@ -3,10 +3,10 @@ import copy
 import logging
 from collections import deque
 from shapely.geometry import Polygon
-from gym_carla.multi_lane.agent.global_planner import RoadOption
-from gym_carla.multi_lane.util.wrapper import WaypointWrapper,VehicleWrapper
-from gym_carla.multi_lane.settings import ROADS, STRAIGHT, CURVE, JUNCTION, DOUBLE_DIRECTION, DISTURB_ROADS
-from gym_carla.multi_lane.util.misc import get_lane_center, get_speed, vector, compute_magnitude_angle, \
+from gym_carla.multi_agent.agent.global_planner import RoadOption
+from gym_carla.multi_agent.util.wrapper import WaypointWrapper,VehicleWrapper
+from gym_carla.multi_agent.settings import ROADS, STRAIGHT, CURVE, JUNCTION, DOUBLE_DIRECTION, DISTURB_ROADS
+from gym_carla.multi_agent.util.misc import get_lane_center, get_speed, vector, compute_magnitude_angle, \
     is_within_distance_ahead, is_within_distance_rear, draw_waypoints, compute_distance, is_within_distance, test_waypoint,\
     get_trafficlight_trigger_location
 

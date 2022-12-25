@@ -22,19 +22,19 @@ from gym_carla.multi_agent.util.misc import draw_waypoints, get_speed, get_accel
     create_vehicle_blueprint
 
 class CarlaEnv:
-    def __init__(self, args) -> None:
+    def __init__(self, args,ID) -> None:
         super().__init__()
         self.host = args.host
         self.port = args.port
         self.tm_port = args.tm_port
-        self.sync = args.sync
+        
         self.fps = args.fps
         self.no_rendering = args.no_rendering
         self.ego_filter = args.filter
         self.loop = args.loop
         self.agent = args.agent
         self.behavior = args.behavior
-        self.num_of_vehicles = args.num_of_vehicles
+        
         self.sampling_resolution = args.sampling_resolution
         self.min_distance = args.min_distance
         self.vehicle_proximity = args.vehicle_proximity
@@ -58,7 +58,7 @@ class CarlaEnv:
         self.modify_change_steer = args.modify_change_steer
         self.ignore_traffic_light = args.ignore_traffic_light
 
-        logging.info('listening to server %s:%s', args.host, args.port)
+        logging.info('Client %s listening to server %s:%s', ID,args.host, args.port)
         self.client = carla.Client(self.host, self.port)
         self.client.set_timeout(10.0)
         self.sim_world = self.client.load_world(args.map)
@@ -70,7 +70,7 @@ class CarlaEnv:
         # Set fixed simulation step for synchronous mode
         self._set_synchronous_mode()
         self._set_traffic_manager()
-        logging.info('Carla server connected')
+        logging.info('Client %s connected to Carla Server!',ID)
 
         #init pygame window
         self.pygame=args.pygame and not self.no_rendering

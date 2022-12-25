@@ -33,7 +33,6 @@ TTC_threshold = 4.001
 clip_grad = 10
 zero_index_gradients = True
 inverting_gradients = True
-train_pdqn = True
 action_mask = False
 ignore_traffic_light = True
 base_name = f'origin_{TTC_threshold}_NOCA'
@@ -46,7 +45,7 @@ def main():
     logging.basicConfig(format='%(levelname)s: %(message)s', level=log_level)
 
     # env=gym.make('CarlaEnv-v0')
-    env = CarlaEnv(args, train_pdqn=train_pdqn)
+    env = CarlaEnv(args)
 
     done = False
     truncated = False

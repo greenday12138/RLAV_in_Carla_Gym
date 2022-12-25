@@ -4,8 +4,8 @@ import numpy as np
 import networkx as nx
 import matplotlib.pyplot as plt
 from enum import Enum
-from gym_carla.multi_lane.settings import ROADS, STRAIGHT, CURVE, JUNCTION, DOUBLE_DIRECTION, DISTURB_ROADS
-from gym_carla.multi_lane.util.misc import test_waypoint,vector
+from gym_carla.multi_agent.settings import ROADS, STRAIGHT, CURVE, JUNCTION, DOUBLE_DIRECTION, DISTURB_ROADS
+from gym_carla.multi_agent.util.misc import test_waypoint,vector
 
 class RoadOption(Enum):
     """
