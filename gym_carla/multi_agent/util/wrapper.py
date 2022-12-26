@@ -6,77 +6,61 @@ from gym_carla.multi_agent.util.misc import get_speed,get_yaw_diff,test_waypoint
 
 class WaypointWrapper:
     """The location left, right, center is allocated according to the lane of ego vehicle"""
-    left_front_wps=None
-    left_rear_wps=None
-    center_front_wps=None
-    center_rear_wps=None
-    right_front_wps=None
-    right_rear_wps=None
-    
     def __init__(self,opt=None) -> None:
-        if not opt:
-            WaypointWrapper.left_front_wps=None
-            WaypointWrapper.left_rear_wps=None
-            WaypointWrapper.center_front_wps=None
-            WaypointWrapper.center_rear_wps=None
-            WaypointWrapper.right_front_wps=None
-            WaypointWrapper.right_rear_wps=None
-        else:
+        self.left_front_wps=None
+        self.left_rear_wps=None
+        self.center_front_wps=None
+        self.center_rear_wps=None
+        self.right_front_wps=None
+        self.right_rear_wps=None
+
+        if opt is not None:
             if 'left_front_wps' in opt:
-                WaypointWrapper.left_front_wps=opt['left_front_wps']
+                self.left_front_wps=opt['left_front_wps']
             if 'left_rear_wps' in opt:
-                WaypointWrapper.left_rear_wps=opt['left_rear_wps']
+                self.left_rear_wps=opt['left_rear_wps']
             if 'center_front_wps' in opt:
-                WaypointWrapper.center_front_wps=opt['center_front_wps']
+                self.center_front_wps=opt['center_front_wps']
             if 'center_rear_wps' in opt:
-                WaypointWrapper.center_rear_wps=opt['center_rear_wps']
+                self.center_rear_wps=opt['center_rear_wps']
             if 'right_front_wps' in opt:
-                WaypointWrapper.right_front_wps=opt['right_front_wps']
+                self.right_front_wps=opt['right_front_wps']
             if 'right_rear_wps' in opt:
-                WaypointWrapper.right_rear_wps=opt['right_rear_wps']
+                self.right_rear_wps=opt['right_rear_wps']
 
 
 class VehicleWrapper:
     """The location left, right, center is allocated according to the lane of ego vehicle"""
-    left_front_veh=None
-    left_rear_veh=None
-    center_front_veh=None
-    center_rear_veh=None
-    right_front_veh=None
-    right_rear_veh=None
-    """distance sequence:
-    distance_to_front_vehicles:[left_front_veh,center_front_veh,right_front_veh]
-    distance_to_rear_vehicles:[left_rear_veh,center_rear_veh,right_rear_veh]"""
-    distance_to_front_vehicles=None
-    distance_to_rear_vehicles=None
-
     def __init__(self,opt=None) -> None:
-        if not opt:
-            VehicleWrapper.left_front_veh=None
-            VehicleWrapper.left_rear_veh=None
-            VehicleWrapper.center_front_veh=None
-            VehicleWrapper.center_rear_veh=None
-            VehicleWrapper.right_front_veh=None
-            VehicleWrapper.right_rear_veh=None
-            VehicleWrapper.distance_to_front_vehicles=None
-            VehicleWrapper.distance_to_rear_vehicles=None
-        else:
+        self.left_front_veh=None
+        self.left_rear_veh=None
+        self.center_front_veh=None
+        self.center_rear_veh=None
+        self.right_front_veh=None
+        self.right_rear_veh=None
+        """distance sequence:
+        distance_to_front_vehicles:[left_front_veh,center_front_veh,right_front_veh]
+        distance_to_rear_vehicles:[left_rear_veh,center_rear_veh,right_rear_veh]"""
+        self.distance_to_front_vehicles=None
+        self.distance_to_rear_vehicles=None
+
+        if opt is not None:
             if 'left_front_veh' in opt:
-                VehicleWrapper.left_front_veh=opt['left_front_veh']
+                self.left_front_veh=opt['left_front_veh']
             if 'left_rear_veh' in opt:
-                VehicleWrapper.left_rear_veh=opt['left_rear_veh']
+                self.left_rear_veh=opt['left_rear_veh']
             if 'center_front_veh' in opt:
-                VehicleWrapper.center_front_veh=opt['center_front_veh']
+                self.center_front_veh=opt['center_front_veh']
             if 'center_rear_veh' in opt:
-                VehicleWrapper.center_rear_veh=opt['center_rear_veh']
+                self.center_rear_veh=opt['center_rear_veh']
             if 'right_front_veh' in opt:
-                VehicleWrapper.right_front_veh=opt['right_front_veh']
+                self.right_front_veh=opt['right_front_veh']
             if 'right_rear_veh' in opt:
-                VehicleWrapper.right_rear_veh=opt['right_rear_veh']
+                self.right_rear_veh=opt['right_rear_veh']
             if 'dis_to_front_vehs' in opt:
-                VehicleWrapper.distance_to_front_vehicles=opt['dis_to_front_vehs']
+                self.distance_to_front_vehicles=opt['dis_to_front_vehs']
             if 'dis_to_rear_vehs' in opt:
-                VehicleWrapper.distance_to_rear_vehicles=opt['dis_to_rear_vehs']
+                self.distance_to_rear_vehicles=opt['dis_to_rear_vehs']
 
 class Truncated(Enum):
     """Different truncate situations"""
