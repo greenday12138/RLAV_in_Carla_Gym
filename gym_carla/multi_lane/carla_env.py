@@ -2,11 +2,13 @@ import time
 import carla
 import random
 import logging
+import pygame
 import math, copy
 import numpy as np
 from enum import Enum
 from queue import Queue
 from collections import deque
+from gym_carla.multi_lane.util.render import World,HUD
 #from gym_carla.env.agent.basic_agent import BasicAgent
 from gym_carla.multi_lane.agent.local_planner import LocalPlanner
 from gym_carla.multi_lane.agent.global_planner import GlobalPlanner,RoadOption
@@ -16,10 +18,11 @@ from gym_carla.multi_lane.util.wrapper import WaypointWrapper,VehicleWrapper,Act
     process_steer,recover_steer,fill_action_param,ttc_reward,comfort,pdqn_lane_center,calculate_guide_lane_center
 from gym_carla.multi_lane.util.misc import draw_waypoints, get_speed, get_acceleration, test_waypoint, \
     compute_distance, get_actor_polygons, get_lane_center, remove_unnecessary_objects, get_yaw_diff, \
-    get_trafficlight_trigger_location, is_within_distance, get_sign,is_within_distance_ahead,get_projection
+    get_trafficlight_trigger_location, is_within_distance, get_sign,is_within_distance_ahead,get_projection,\
+    create_vehicle_blueprint
 
 class CarlaEnv:
-    def __init__(self, args, train_pdqn=False, modify_change_steer=False) -> None:
+    def __init__(self, args) -> None:
         super().__init__()
         self.host = args.host
         self.port = args.port
@@ -31,7 +34,6 @@ class CarlaEnv:
         self.loop = args.loop
         self.agent = args.agent
         self.behavior = args.behavior
-        self.res = args.res
         self.num_of_vehicles = args.num_of_vehicles
         self.sampling_resolution = args.sampling_resolution
         self.min_distance = args.min_distance
@@ -52,31 +54,37 @@ class CarlaEnv:
         self.steer_bound = args.steer_bound
         self.throttle_bound = args.throttle_bound
         self.brake_bound = args.brake_bound
-        self.train_pdqn = train_pdqn
-        self.modify_change_steer = modify_change_steer
+        self.train_pdqn = args.alg=='PDQN'
+        self.modify_change_steer = args.modify_change_steer
         self.ignore_traffic_light = args.ignore_traffic_light
 
         logging.info('listening to server %s:%s', args.host, args.port)
         self.client = carla.Client(self.host, self.port)
         self.client.set_timeout(10.0)
-        self.world = self.client.load_world(args.map)
-        remove_unnecessary_objects(self.world)
-        self.map = self.world.get_map()
-        self.origin_settings = self.world.get_settings()
+        self.sim_world = self.client.load_world(args.map)
+        remove_unnecessary_objects(self.sim_world)
+        self.map = self.sim_world.get_map()
+        self.origin_settings = self.sim_world.get_settings()
         self.traffic_manager = None
         self.speed_state = SpeedState.START
+        # Set fixed simulation step for synchronous mode
+        self._set_synchronous_mode()
         self._set_traffic_manager()
         logging.info('Carla server connected')
+
+        #init pygame window
+        self.pygame=args.pygame and not self.no_rendering
+        self.width,self.height=[int(x) for x in args.res.split('x')]
+        if self.pygame :
+            self._init_renderer()
 
         # Record the time of total steps
         self.reset_step = 0
         self.total_step = 0
         self.time_step = 0
         self.rl_control_step = 0
-        # Let the RL controller and PID controller alternatively take control every 500 steps
         # RL_switch: True--currently RL in control, False--currently PID in control
         self.RL_switch = False
-
         self.lights_info=None
         self.last_light_state=None
         self.wps_info=WaypointWrapper()
@@ -93,10 +101,6 @@ class CarlaEnv:
         self.global_planner = GlobalPlanner(self.map, self.sampling_resolution)
         self.local_planner = None
         self.spawn_points = self.global_planner.get_spawn_points()
-        # for p in self.spawn_points:
-        #     print(p.lane_id)
-        self.ego_spawn_point = None
-        # former_wp record the ego vehicle waypoint of former step
 
         # arguments for debug
         self.debug = args.debug
@@ -114,18 +118,16 @@ class CarlaEnv:
         self.step_info = None
 
         if self.debug:
-            # draw_waypoints(self.world,self.global_panner.get_route())
+            # draw_waypoints(self.sim_world,self.global_panner.get_route())
             random.seed(self.seed)
 
-        # Set fixed simulation step for synchronous mode
-        self._set_synchronous_mode()
-
         # Set weather
-        # self.world.set_weather(carla.WeatherParamertes.ClearNoon)
+        # self.sim_world.set_weather(carla.WeatherParamertes.ClearNoon)
 
         self.companion_vehicles = []
         self.vehicle_polygons = []
         self.ego_vehicle = None
+        self.ego_spawn_point = None
 
         # Collision sensor
         self.collision_sensor = None
@@ -134,18 +136,16 @@ class CarlaEnv:
         # thread blocker
         self.sensor_queue = Queue(maxsize=10)
         self.camera = None
-        # self.print_traffic_light_info()
 
     def __del__(self):
         logging.info('\n Destroying all vehicles')
-        self.world.apply_settings(self.origin_settings)
+        self.sim_world.apply_settings(self.origin_settings)
         self._clear_actors(['vehicle.*', 'sensor.other.collison', 'sensor.camera.rgb', 'sensor.other.lane_invasion'])
 
     def reset(self):
         if self.ego_vehicle is not None:
-            # self.world.apply_settings(self.origin_settings)
-            # self._set_synchronous_mode()
-            self.camera.stop()
+            if self.camera is not None:
+                self.camera.stop()
             self.collision_sensor.sensor.stop()
             self.lane_invasion_sensor.sensor.stop()
             self._clear_actors(
@@ -160,6 +160,9 @@ class CarlaEnv:
             self.step_info.clear()
             while (self.sensor_queue.empty() is False):
                 self.sensor_queue.get(block=False)
+            if self.pygame:
+                self.world.destroy()
+                pygame.quit()
         else:
             self.step_info ={}
 
@@ -169,10 +172,10 @@ class CarlaEnv:
         self.rear_vel_deque.append(-1)
         self.rear_vel_deque.append(-1)
         # Get actors polygon list
-        vehicle_poly_dict = get_actor_polygons(self.world, 'vehicle.*')
+        vehicle_poly_dict = get_actor_polygons(self.sim_world, 'vehicle.*')
         self.vehicle_polygons.append(vehicle_poly_dict)
-                #set traffic light elpse time
-        lights_list=self.world.get_actors().filter("*traffic_light*")
+        #set traffic light elpse time
+        lights_list=self.sim_world.get_actors().filter("*traffic_light*")
         for light in lights_list:
             light.set_green_time(10)
             light.set_red_time(5)
@@ -185,25 +188,29 @@ class CarlaEnv:
         # self.ego_vehicle.set_simulate_physics(False)
         self.collision_sensor = CollisionSensor(self.ego_vehicle)
         self.lane_invasion_sensor = LaneInvasionSensor(self.ego_vehicle)
-        # friction_bp=self.world.get_blueprint_library().find('static.trigger.friction')
+        # friction_bp=self.sim_world.get_blueprint_library().find('static.trigger.friction')
         # bb_extent=self.ego_vehicle.bounding_box.extent
         # friction_bp.set_attribute('friction',str(0.0))
         # friction_bp.set_attribute('extent_x',str(bb_extent.x))
         # friction_bp.set_attribute('extent_y',str(bb_extent.y))
         # friction_bp.set_attribute('extent_z',str(bb_extent.z))
-        # self.world.spawn_actor(friction_bp,self.ego_vehicle.get_transform())
-        # self.world.debug.draw_box()
+        # self.sim_world.spawn_actor(friction_bp,self.ego_vehicle.get_transform())
+        # self.sim_world.debug.draw_box()
 
         # let the client interact with server
         if self.sync:
-            self.world.tick()
+            if self.pygame:
+                self._init_renderer()
+                self.world.restart(self.ego_vehicle)
+            else:
+                self.sim_world.tick()
 
-            spectator = self.world.get_spectator()
-            transform = self.ego_vehicle.get_transform()
-            spectator.set_transform(carla.Transform(transform.location + carla.Location(z=100),
-                                                    carla.Rotation(pitch=-90)))
+                spectator = self.sim_world.get_spectator()
+                transform = self.ego_vehicle.get_transform()
+                spectator.set_transform(carla.Transform(transform.location + carla.Location(z=100),
+                                                        carla.Rotation(pitch=-90)))
         else:
-            self.world.wait_for_tick()
+            self.sim_world.wait_for_tick()
 
         """Attention:
         get_location() Returns the actor's location the client recieved during last tick. The method does not call the simulator.
@@ -249,10 +256,10 @@ class CarlaEnv:
                             'lanechanging_fps': random.choice([40, 50, 60])})
 
         # code for synchronous mode
-        camera_bp = self.world.get_blueprint_library().find('sensor.camera.rgb')
-        camera_transform = carla.Transform(carla.Location(x=1.5, z=2.4))
-        self.camera = self.world.spawn_actor(camera_bp, camera_transform, attach_to=self.ego_vehicle)
-        self.camera.listen(lambda image: self._sensor_callback(image, self.sensor_queue))
+        # camera_bp = self.sim_world.get_blueprint_library().find('sensor.camera.rgb')
+        # camera_transform = carla.Transform(carla.Location(x=1.5, z=2.4))
+        # self.camera = self.sim_world.spawn_actor(camera_bp, camera_transform, attach_to=self.ego_vehicle)
+        # self.camera.listen(lambda image: self._sensor_callback(image, self.sensor_queue))
 
         # speed state switch
         if not self.debug:
@@ -378,12 +385,20 @@ class CarlaEnv:
                 self.ego_vehicle.apply_control(self.control)
 
             # print(self.map.get_waypoint(self.ego_vehicle.get_location(),False),self.ego_vehicle.get_transform(),sep='\n')
-            # print(self.world.get_snapshot().timestamp)
-            self.world.tick()
+            # print(self.sim_world.get_snapshot().timestamp)
+            if self.pygame:
+                self._tick()
+            else:
+                self.sim_world.tick()
+                spectator = self.sim_world.get_spectator()
+                transform = self.ego_vehicle.get_transform()
+                spectator.set_transform(carla.Transform(transform.location + carla.Location(z=80),
+                                                        carla.Rotation(pitch=-90)))
+
             """Attention: the server's tick function only returns after it ran a fixed_delta_seconds, so the client need not to wait for
             the server, the world snapshot of tick returned already include the next state after the uploaded action."""
             # print(self.map.get_waypoint(self.ego_vehicle.get_location(),False),self.ego_vehicle.get_transform(),sep='\n')
-            # print(self.world.get_snapshot().timestamp)
+            # print(self.sim_world.get_snapshot().timestamp)
             # print()
             self.control = self.ego_vehicle.get_control()
             lane_center=get_lane_center(self.map,self.ego_vehicle.get_location())
@@ -403,21 +418,18 @@ class CarlaEnv:
             print("Actual Control, change: ", self.control, self.current_action.value)
 
             if self.debug:
-                # draw_waypoints(self.world, [self.next_wps[0]], 60, z=1)
-                draw_waypoints(self.world, self.wps_info.center_front_wps+self.wps_info.center_rear_wps+\
+                # draw_waypoints(self.sim_world, [self.next_wps[0]], 60, z=1)
+                draw_waypoints(self.sim_world, self.wps_info.center_front_wps+self.wps_info.center_rear_wps+\
                     self.wps_info.left_front_wps+self.wps_info.left_rear_wps+self.wps_info.right_front_wps+self.wps_info.right_rear_wps, 
                     1.0 / self.fps + 0.001, z=1)
                 self.control = None
             else:
-                draw_waypoints(self.world, self.wps_info.center_front_wps+self.wps_info.center_rear_wps+\
-                    self.wps_info.left_front_wps+self.wps_info.left_rear_wps+self.wps_info.right_front_wps+self.wps_info.right_rear_wps, 
-                    1.0 / self.fps + 0.001, z=1)
+                # draw_waypoints(self.sim_world, self.wps_info.center_front_wps+self.wps_info.center_rear_wps+\
+                #     self.wps_info.left_front_wps+self.wps_info.left_rear_wps+self.wps_info.right_front_wps+self.wps_info.right_rear_wps, 
+                #     1.0 / self.fps + 0.001, z=1)
+                pass
 
-            spectator = self.world.get_spectator()
-            transform = self.ego_vehicle.get_transform()
-            spectator.set_transform(carla.Transform(transform.location + carla.Location(z=80),
-                                                    carla.Rotation(pitch=-90)))
-            camera_data = self.sensor_queue.get(block=True)
+            #camera_data = self.sensor_queue.get(block=True)
 
             temp = []
             if self.vehs_info.left_rear_veh is not None:
@@ -454,8 +466,8 @@ class CarlaEnv:
             else:
                 self.last_light_state=None
         else:
-            temp = self.world.wait_for_tick()
-            self.world.on_tick(lambda _: {})
+            temp = self.sim_world.wait_for_tick()
+            self.sim_world.on_tick(lambda _: {})
             time.sleep(1.0 / self.fps)
             reward,state,truncated,done,control_info=None,None,Truncated.FALSE,None,None
 
@@ -469,7 +481,7 @@ class CarlaEnv:
             self.time_step += 1
             self.total_step += 1
             self.vel_buffer.append(self.step_info['velocity'])
-            if self.speed_state == SpeedState.RUNNING and self.RL_switch == True:
+            if self.RL_switch == True:
                 self.rl_control_step += 1
             # new_action \in [-1, 0, 1], but saved action is the index of max Q(s, a), and thus change \in [0, 1, 2]
             control_info = {'Steer': self.control.steer, 'Throttle': self.control.throttle, 'Brake': self.control.brake, 
@@ -760,10 +772,10 @@ class CarlaEnv:
             logging.warn('moving in opposite direction')
             return Truncated.OPPOSITE_DIRECTION
         if self.lights_info and self.lights_info.state!=carla.TrafficLightState.Green:
-            self.world.debug.draw_point(self.lights_info.get_location(),size=0.3,life_time=0)
+            self.sim_world.debug.draw_point(self.lights_info.get_location(),size=0.3,life_time=0)
             wps=self.lights_info.get_stop_waypoints()
             for wp in wps:
-                self.world.debug.draw_point(wp.transform.location,size=0.1,life_time=0)
+                self.sim_world.debug.draw_point(wp.transform.location,size=0.1,life_time=0)
                 if is_within_distance_ahead(self.ego_vehicle.get_location(),wp.transform.location, wp.transform, self.min_distance):
                     logging.warn('break traffic light rule')
                     return Truncated.TRAFFIC_LIGHT_BREAK
@@ -932,7 +944,7 @@ class CarlaEnv:
         Returns:
             bp: the blueprint object of carla.
         """
-        blueprints = list(self.world.get_blueprint_library().filter(actor_filter))
+        blueprints = list(self.sim_world.get_blueprint_library().filter(actor_filter))
         if not ego:
             for bp in blueprints:
                 if bp.has_attribute(self.ego_filter):
@@ -945,7 +957,8 @@ class CarlaEnv:
         bp = random.choice(blueprint_library)
         if bp.has_attribute('color'):
             if color is None:
-                color = random.choice(bp.get_attribute('color').recommended_values)
+                color='0,0,0'
+                #color = random.choice(bp.get_attribute('color').recommended_values)
             bp.set_attribute('color', color)
         if bp.has_attribute('driver_id'):
             driver_id = random.choice(bp.get_attribute('driver_id').recommended_values)
@@ -958,20 +971,38 @@ class CarlaEnv:
         # bp.set_attribute('sticky_control', False)
         return bp
 
+    def _tick(self):
+        self.clock.tick()
+        #self.sim_world.tick()
+        if self.sync:
+            self.world.world.tick()
+        else:
+            self.world.world.wait_for_tick()
+        self.world.tick(self.clock)
+        self.world.render(self.display)
+        pygame.display.flip()
+
     def _init_renderer(self):
         """Initialize the birdeye view renderer."""
-        pass
+        pygame.init()
+        pygame.font.init()
+        self.display=pygame.display.set_mode(
+            (self.width, self.height),
+            pygame.HWSURFACE | pygame.DOUBLEBUF)
+        self.hud=HUD(self.width,self.height)
+        self.world=World(self.sim_world,self.hud)
+        self.clock=pygame.time.Clock()
 
     def _set_synchronous_mode(self):
         """Set whether to use the synchronous mode."""
         # Set fixed simulation step for synchronous mode
         if self.sync:
-            settings = self.world.get_settings()
+            settings = self.sim_world.get_settings()
             settings.no_rendering_mode = self.no_rendering
             if not settings.synchronous_mode:
                 settings.synchronous_mode = True
                 settings.fixed_delta_seconds = 1.0 / self.fps
-                self.world.apply_settings(settings)
+                self.sim_world.apply_settings(settings)
 
     def _set_traffic_manager(self):
         self.traffic_manager = self.client.get_trafficmanager(self.tm_port)
@@ -1011,8 +1042,9 @@ class CarlaEnv:
                 break
 
         if not overlap:
-            ego_bp = self._create_vehicle_blueprint(self.ego_filter, ego=True, color='0,255,0')
-            vehicle = self.world.try_spawn_actor(ego_bp, transform)
+            ego_bp=create_vehicle_blueprint(self.sim_world,self.ego_filter,ego=True,
+                color=random.choice(['255,0,0','0,255,0','0,0,255']))
+            vehicle = self.sim_world.try_spawn_actor(ego_bp, transform)
             if vehicle is None:
                 logging.warn("Ego vehicle generation fail")
 
@@ -1053,7 +1085,7 @@ class CarlaEnv:
             if i >= num_of_vehicles:
                 break
 
-            blueprint = self._create_vehicle_blueprint('vehicle.audi.etron', number_of_wheels=[4])
+            blueprint = create_vehicle_blueprint(self.sim_world,'vehicle.audi.etron',ego=False,color='0,0,0',number_of_wheels=[4])
             # Spawn the cars and their autopilot all together
             command_batch.append(SpawnActor(blueprint, transform).
                                  then(SetAutopilot(FutureActor, True, self.tm_port)))
@@ -1064,27 +1096,27 @@ class CarlaEnv:
                 logging.warn(response.error)
             else:
                 # print("Future Actor",response.actor_id)
-                self.companion_vehicles.append(self.world.get_actor(response.actor_id))
+                self.companion_vehicles.append(self.sim_world.get_actor(response.actor_id))
                 if self.ignore_traffic_light:
                     self.traffic_manager.ignore_lights_percentage(
-                        self.world.get_actor(response.actor_id), 100)
+                        self.sim_world.get_actor(response.actor_id), 100)
                     self.traffic_manager.ignore_walkers_percentage(
-                        self.world.get_actor(response.actor_id), 100)
+                        self.sim_world.get_actor(response.actor_id), 100)
                 self.traffic_manager.ignore_signs_percentage(
-                        self.world.get_actor(response.actor_id), 100)
+                        self.sim_world.get_actor(response.actor_id), 100)
                 self.traffic_manager.auto_lane_change(
-                    self.world.get_actor(response.actor_id), False)
+                    self.sim_world.get_actor(response.actor_id), False)
                 # modify change probability
                 self.traffic_manager.random_left_lanechange_percentage(
-                    self.world.get_actor(response.actor_id), 50)
+                    self.sim_world.get_actor(response.actor_id), 50)
                 self.traffic_manager.random_right_lanechange_percentage(
-                    self.world.get_actor(response.actor_id), 50)
+                    self.sim_world.get_actor(response.actor_id), 50)
                 
-                self.traffic_manager.set_route(self.world.get_actor(response.actor_id),
+                self.traffic_manager.set_route(self.sim_world.get_actor(response.actor_id),
                                                ['Straight', 'Straight', 'Straight', 'Straight', 'Straight', 'Straight', 'Straight', 'Straight', 'Straight', 'Straight'])
                 self.traffic_manager.update_vehicle_lights(
-                    self.world.get_actor(response.actor_id), True)
-                # print(self.world.get_actor(response.actor_id).attributes)
+                    self.sim_world.get_actor(response.actor_id), True)
+                # print(self.sim_world.get_actor(response.actor_id).attributes)
 
         msg = 'requested %d vehicles, generate %d vehicles, press Ctrl+C to exit.'
         logging.info(msg, num_of_vehicles, len(self.companion_vehicles))
@@ -1106,10 +1138,10 @@ class CarlaEnv:
         if filter:
             for actor_filter in actor_filters:
                 self.client.apply_batch([carla.command.DestroyActor(x)
-                                         for x in self.world.get_actors().filter(actor_filter)])
+                                         for x in self.sim_world.get_actors().filter(actor_filter)])
 
         # for actor_filter in actor_filters:
-        #     for actor in self.world.get_actors().filter(actor_filter):
+        #     for actor in self.sim_world.get_actors().filter(actor_filter):
         #         if actor.is_alive:
         #             if actor.type_id =='controller.ai.walker':
         #                 actor.stop()

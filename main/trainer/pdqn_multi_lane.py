@@ -30,13 +30,11 @@ REPLACE_C = 300
 TOTAL_EPISODE = 50000
 SIGMA_DECAY = 0.9999
 TTC_threshold = 4.001
+modify_change_steer=False
 clip_grad = 10
 zero_index_gradients = True
 inverting_gradients = True
-train_pdqn = True
-modify_change_steer = True
 action_mask = False
-ignore_traffic_light = True
 base_name = f'origin_{TTC_threshold}_NOCA'
 
 
@@ -47,7 +45,8 @@ def main():
     logging.basicConfig(format='%(levelname)s: %(message)s', level=log_level)
 
     # env=gym.make('CarlaEnv-v0')
-    env = CarlaEnv(args, train_pdqn=train_pdqn, modify_change_steer=modify_change_steer)
+    env = CarlaEnv(args)
+    globals()['modify_change_steer'] = args.modify_change_steer
 
     done = False
     truncated = False
@@ -93,68 +92,23 @@ def main():
                             action, action_param, all_action_param = agent.take_action(state, lane_id=lane_id, action_mask=action_mask)
                             next_state, reward, truncated, done, info = env.step(action, action_param)
                             if env.is_effective_action() and not info['Abandon']:
-                                if 'Throttle' in info:
-                                    control_state = info['control_state']
-                                    if control_state:
-                                        # under rl control
-                                        if truncated:
-                                            agent.replay_buffer.add(state, action, all_action_param, reward, next_state,
-                                                                truncated, done, info)
-                                        else:
-                                            impact = info['impact'] / 9
-                                            impact_deque.append([state, action, all_action_param, reward, next_state,
-                                                                    truncated, done, info])
-                                            if len(impact_deque) == 2:
-                                                experience = impact_deque[0]
-                                                agent.replay_buffer.add(experience[0], experience[1], experience[2],
-                                                                        experience[3] + impact, experience[4], experience[5],
-                                                                        experience[6], experience[7])
-                                            # agent.replay_buffer.add(state, action, all_action_param, reward, next_state,
-                                            #                         truncated, done, info)
-                                            print('rl control in replay buffer: ', action, all_action_param)
-                                    else:
-                                        # Input the guided action to replay buffer
-                                        throttle_brake = -info['Brake'] if info['Brake'] > 0 else info['Throttle']
-                                        action = info['Change']
-                                        # action_param = np.array([[info['Steer'], throttle_brake]])
-                                        saved_action_param = fill_action_param(action, info['Steer'], throttle_brake,
-                                                                               all_action_param, modify_change_steer)
-                                        print('agent control in replay buffer: ', action, saved_action_param)
-                                        if truncated:
-                                            agent.replay_buffer.add(state, action, saved_action_param, reward, next_state,
-                                                                truncated, done, info)
-                                        else:
-                                            impact = info['impact'] / 9
-                                            impact_deque.append([state, action, saved_action_param, reward, next_state,
-                                                                    truncated, done, info])
-                                            if len(impact_deque) == 2:
-                                                experience = impact_deque[0]
-                                                agent.replay_buffer.add(experience[0], experience[1], experience[2],
-                                                                        experience[3] + impact, experience[4], experience[5],
-                                                                        experience[6], experience[7])
-                                            # agent.replay_buffer.add(state, action, saved_action_param, reward, next_state,
-                                            #                         truncated, done, info)
-                                # else:
-                                #     # not work
-                                #     # Input the agent action to replay buffer
-                                #     agent.replay_buffer.add(state, action, all_action_param, reward, next_state, truncated, done, info)
-                                print(f"state -- vehicle_info:{state['vehicle_info']}\n"
-                                      #f"waypoints:{state['left_waypoints']}, \n"
-                                      f"waypoints:{state['center_waypoints']}, \n"
-                                      #f"waypoints:{state['right_waypoints']}, \n"
-                                      f"ego_vehicle:{state['ego_vehicle']}, \n"
-                                      f"light info: {state['light']}\n"
-                                      f"next_state -- vehicle_info:{next_state['vehicle_info']}\n"
-                                      #f"waypoints:{next_state['left_waypoints']}, \n"
-                                      f"waypoints:{next_state['center_waypoints']}, \n"
-                                      #f"waypoints:{next_state['right_waypoints']}, \n"
-                                      f"ego_vehicle:{next_state['ego_vehicle']}\n"
-                                      f"light info: {next_state['light']}\n"
-                                      f"action:{action}\n"
-                                      f"action_param:{action_param}\n"
-                                      f"all_action_param:{all_action_param}\n"
-                                      f"reward:{reward}\n"
-                                      f"truncated:{truncated}, done:{done}")
+                                replay_buffer_adder(agent,impact_deque,state,next_state,action,all_action_param,reward,truncated,done,info)
+                            
+                                print(
+                                        f"state -- vehicle_info:{state['vehicle_info']}\n"
+                                        #f"waypoints:{state['left_waypoints']}, \n"
+                                        #f"waypoints:{states[i]['center_waypoints']}, \n"
+                                        #f"waypoints:{state['right_waypoints']}, \n"
+                                        f"ego_vehicle:{state['ego_vehicle']}, \n"
+                                        f"light info: {state['light']}\n"
+                                        f"next_state -- vehicle_info:{next_state['vehicle_info']}\n"
+                                        #f"waypoints:{next_state['left_waypoints']}, \n"
+                                        #f"waypoints:{next_states[i]['center_waypoints']}, \n"
+                                        #f"waypoints:{next_state['right_waypoints']}, \n"
+                                        f"ego_vehicle:{next_state['ego_vehicle']}\n"
+                                        f"light info: {next_state['light']}\n"
+                                        f"action:{action}, action_param:{action_param}, all_action_param:{all_action_param}\n"
+                                        f"reward:{reward}, truncated:{truncated}, done:{done}")
                             print()
 
                             if agent.replay_buffer.size() > MINIMAL_SIZE:
@@ -171,7 +125,7 @@ def main():
 
                             if env.total_step == args.pre_train_steps:
                                 agent.save_net('./out/pdqn_pre_trained.pth')
-                            # TODO: modify rl_control_step
+                            
                             if env.rl_control_step > 10000 and env.is_effective_action() and \
                                     env.RL_switch and SIGMA_ACC > 0.01:
                                 globals()['SIGMA'] *= SIGMA_DECAY
@@ -226,6 +180,54 @@ def main():
         finally:
             env.__del__()
             logging.info('\nDone.')
+
+def replay_buffer_adder(agent,impact_deque, state, next_state, action,all_action_param,reward, truncated, done, info):
+    """Input all the state info into agent's replay buffer"""
+    if 'Throttle' in info:
+        control_state = info['control_state']
+        if control_state:
+            # under rl control
+            if truncated:
+                agent.replay_buffer.add(state, action, all_action_param, reward, next_state,
+                                    truncated, done, info)
+            else:
+                impact = info['impact'] / 9
+                impact_deque.append([state, action, all_action_param, reward, next_state,
+                                        truncated, done, info])
+                if len(impact_deque) == 2:
+                    experience = impact_deque[0]
+                    agent.replay_buffer.add(experience[0], experience[1], experience[2],
+                                            experience[3] + impact, experience[4], experience[5],
+                                            experience[6], experience[7])
+                # agent.replay_buffer.add(state, action, all_action_param, reward, next_state,
+                #                         truncated, done, info)
+                print('rl control in replay buffer: ', action, all_action_param)
+        else:
+            # Input the guided action to replay buffer
+            throttle_brake = -info['Brake'] if info['Brake'] > 0 else info['Throttle']
+            action = info['Change']
+            # action_param = np.array([[info['Steer'], throttle_brake]])
+            saved_action_param = fill_action_param(action, info['Steer'], throttle_brake,
+                                                    all_action_param,modify_change_steer)
+            print('agent control in replay buffer: ', action, saved_action_param)
+            if truncated:
+                agent.replay_buffer.add(state, action, saved_action_param, reward, next_state,
+                                    truncated, done, info)
+            else:
+                impact = info['impact'] / 9
+                impact_deque.append([state, action, saved_action_param, reward, next_state,
+                                        truncated, done, info])
+                if len(impact_deque) == 2:
+                    experience = impact_deque[0]
+                    agent.replay_buffer.add(experience[0], experience[1], experience[2],
+                                            experience[3] + impact, experience[4], experience[5],
+                                            experience[6], experience[7])
+                # agent.replay_buffer.add(state, action, saved_action_param, reward, next_state,
+                #                         truncated, done, info)
+    # else:
+    #     # not work
+    #     # Input the agent action to replay buffer
+    #     agent.replay_buffer.add(state, action, all_action_param, reward, next_state, truncated, done, info)
 
 
 if __name__ == '__main__':

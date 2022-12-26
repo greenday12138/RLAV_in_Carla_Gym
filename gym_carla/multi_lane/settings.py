@@ -179,7 +179,7 @@ ARGS.add_argument(
     help='Distance for searching vehicles in front of ego vehicle, unit -- meters')
 ARGS.add_argument(
     '--traffic_light_proximity', type=float,
-    default=30.0,
+    default=40.0,
     help='Distance for searching traffic light in front of ego vehicle, unit -- meters,'
     'attention: this value is tricky')
 ARGS.add_argument(
@@ -194,7 +194,16 @@ ARGS.add_argument(
     '--ignore_traffic_light', type=bool,
     default=False,
     help='Set the vehicles in simulation to ignore traffic lights or not')
-# ARGS.add_argument(
-#     '--modify_change_steer', type=bool,
-#     default=False,
-#     help='make the steering of left change to [-1, 0], also right to [0, 1], can be used in pdqn')
+ARGS.add_argument(
+    '--modify_change_steer', type=bool,
+    default=True,
+    help='Useful for pdqn training, make sure the steer >0 when current action is ACTION.CHANGE_LANE_LEFT, \
+         and the steer < 0 when current action is Action.CHANGE_LANE_LEFT')
+ARGS.add_argument(
+    '--pygame', type=bool,
+    default=True,
+    help='Render another pygame window for ego vehicle and the window style looks like automatic_control.py')
+ARGS.add_argument(
+    '--alg', type=str,
+    default='PDQN',
+    help='The RL algorithm currently in use')

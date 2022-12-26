@@ -317,7 +317,7 @@ class Basic_Lanechanging_Agent(object):
         vehicle_speed = get_speed(self._vehicle) / 3.6
         lane_center_ratio = 1 - veh_waypoint.transform.location.distance(veh_location) / 4
         self._min_distance = self._base_min_distance * lane_center_ratio
-        print('min_distance: ', self._min_distance)
+        #print('min_distance: ', self._min_distance)
         next_wp = 1
         if self._min_distance > 1:
             next_wp = 2
