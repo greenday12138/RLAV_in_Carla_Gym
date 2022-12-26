@@ -484,7 +484,7 @@ class CarlaEnv:
             self.time_step += 1
             self.total_step += 1
             self.vel_buffer.append(self.step_info['velocity'])
-            if self.speed_state == SpeedState.RUNNING and self.RL_switch == True:
+            if self.RL_switch == True:
                 self.rl_control_step += 1
             # new_action \in [-1, 0, 1], but saved action is the index of max Q(s, a), and thus change \in [0, 1, 2]
             control_info = {'Steer': self.control.steer, 'Throttle': self.control.throttle, 'Brake': self.control.brake, 

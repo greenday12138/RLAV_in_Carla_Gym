@@ -81,8 +81,8 @@ class CollisionSensor(object):
         actor_type = get_actor_display_name(event.other_actor)
         if self.hud is not None:
             self.hud.notification('Collision with %r' % actor_type)
-        else:
-            logging.info('Collision with %r',actor_type)
+        # else:
+        #     logging.info('Collision with %r',actor_type)
         impulse = event.normal_impulse
         intensity = math.sqrt(impulse.x ** 2 + impulse.y ** 2 + impulse.z ** 2)
         for tag in event.other_actor.semantic_tags:
@@ -129,8 +129,8 @@ class LaneInvasionSensor(object):
         text = ['%r' % str(x).split()[-1] for x in lane_types]
         if self.hud is not None:
             self.hud.notification('Crossed line %s' % ' and '.join(text))
-        else:
-            logging.info('Crossed line %s' % ' and '.join(text))
+        # else:
+        #     logging.info('Crossed line %s' % ' and '.join(text))
         
 
 class GnssSensor(object):

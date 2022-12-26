@@ -59,13 +59,13 @@ class CarlaEnv:
         # generate ego vehicle spawn points on chosen route
         self.global_planner = GlobalPlanner(self.map, self.sampling_resolution)
         self.spawn_points = self.global_planner.get_spawn_points()
-
         # arguments for debug
         self.debug = args.debug
         self.seed = args.seed
         if self.debug:
             # draw_waypoints(self.sim_world,self.global_panner.get_route())
             random.seed(self.seed)
+        self.rl_control_step=0
 
         # Set weather
         # self.sim_world.set_weather(carla.WeatherParamertes.ClearNoon)
@@ -127,20 +127,27 @@ class CarlaEnv:
                 # transform = self.ego_vehicle.get_transform()
                 # spectator.set_transform(carla.Transform(transform.location + carla.Location(z=100),
                 #                                         carla.Rotation(pitch=-90)))
+
+            # code for synchronous mode
+            # camera_bp = self.sim_world.get_blueprint_library().find('sensor.camera.rgb')
+            # camera_transform = carla.Transform(carla.Location(x=1.5, z=2.4))
+            # self.camera = self.sim_world.spawn_actor(camera_bp, camera_transform, attach_to=self.ego_clients[0].ego_vehicle)
+            # self.camera.listen(lambda image: self._sensor_callback(image, self.sensor_queue))
         else:
             self.sim_world.wait_for_tick()
 
-        state=[]
+        states=[]
         for ego in self.ego_clients:
-            state.append(ego.reset_after_tick())
+            states.append(ego.reset_after_tick())
 
         # return state information
-        return  state[0]
+        return  states
 
-    def step(self, a_index, action):
+    def step(self, a_indexs, actions):
+        self.all_under_rl_control=True
         if self.sync:
-            for ego in self.ego_clients:
-                ego.step_before_tick(a_index,action)
+            for i,ego in enumerate(self.ego_clients):
+                ego.step_before_tick(a_indexs[i],actions[i])
 
             # print(self.map.get_waypoint(self.ego_vehicle.get_location(),False),self.ego_vehicle.get_transform(),sep='\n')
             # print(self.sim_world.get_snapshot().timestamp)
@@ -153,6 +160,7 @@ class CarlaEnv:
                 # spectator.set_transform(carla.Transform(transform.location + carla.Location(z=80),
                 #                                         carla.Rotation(pitch=-90)))
 
+            # camera_data = self.sensor_queue.get(block=True)
             """Attention: the server's tick function only returns after it ran a fixed_delta_seconds, so the client need not to wait for
             the server, the world snapshot of tick returned already include the next state after the uploaded action."""
             # print(self.map.get_waypoint(self.ego_vehicle.get_location(),False),self.ego_vehicle.get_transform(),sep='\n')
@@ -167,21 +175,18 @@ class CarlaEnv:
                 dones.append(d)
                 infos.append(i)
 
+                if not ego.is_effective_action() or not ego.RL_switch==True:
+                    self.all_under_rl_control=False
+
+            if self.all_under_rl_control:
+                self.rl_control_step+=1
         else:
             temp = self.sim_world.wait_for_tick()
             self.sim_world.on_tick(lambda _: {})
             time.sleep(1.0 / self.fps)
             states,rewards,truncateds,dones,infos=[],[],[],[],[]
-        
-        truncated,done=False,False
-        for t in truncateds:
-            if t:
-                truncated=True
-        for d in dones:
-            if d and not truncated:
-                done=True
 
-        return states[0],rewards[0],truncated,done,infos[0]
+        return states,rewards,truncateds,dones,infos
 
     def get_observation_space(self):
         """
@@ -194,18 +199,19 @@ class CarlaEnv:
         """Return action bound of ego vehicle controller"""
         return self.ego_clients[0].get_action_bound()
 
-    def is_effective_action(self):
-        # testing if current ego vehcle's action should be put into replay buffer
-        return self.ego_clients[0].is_effective_action()
+    def is_effective_action(self,id=None):
+        """id !=None: testing if ith ego vehcle's action should be put into replay buffer(under rl control)
+            id ==None: testing if all ego vehicles are under rl control"""
+        if id is not None:
+            return self.ego_clients[id].is_effective_action()
+        else:
+            return self.all_under_rl_control
 
     def seed(self, seed=None):
         return
 
     def render(self, mode):
         pass
-
-    def get_ego_lane(self):
-        return self.ego_clients[0].get_ego_lane()
 
     def _sensor_callback(self, sensor_data, sensor_queue):
         array = np.frombuffer(sensor_data.raw_data, dtype=np.dtype('uint8'))

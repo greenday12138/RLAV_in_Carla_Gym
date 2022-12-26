@@ -498,7 +498,7 @@ class CarlaEnv:
         :return:
         """
         """Get observation space of cureent environment"""
-        return {'waypoints': 10, 'ego_vehicle': 6, 'conventional_vehicle': 3, 'light':3}
+        return {'waypoints': 10, 'ego_vehicle': 6, 'companion_vehicle': 3, 'light':3}
 
     def get_action_bound(self):
         """Return action bound of ego vehicle controller"""

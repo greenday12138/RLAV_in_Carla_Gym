@@ -226,22 +226,22 @@ class EgoClient:
         # return state information
         return self._get_state()
 
-    def reset(self):
-        logging.info(f"CLIENT {self.id} RESET AFTER TICK")
-        # let the client interact with server
-        if self.sync:
-            if self.pygame:
-                self._init_renderer()
-                self.world.restart(self.ego_vehicle)
-            else:
-                self.sim_world.tick()
+    # def reset(self):
+    #     logging.info(f"CLIENT {self.id} RESET AFTER TICK")
+    #     # let the client interact with server
+    #     if self.sync:
+    #         if self.pygame:
+    #             self._init_renderer()
+    #             self.world.restart(self.ego_vehicle)
+    #         else:
+    #             self.sim_world.tick()
 
-                spectator = self.sim_world.get_spectator()
-                transform = self.ego_vehicle.get_transform()
-                spectator.set_transform(carla.Transform(transform.location + carla.Location(z=100),
-                                                        carla.Rotation(pitch=-90)))
-        else:
-            self.sim_world.wait_for_tick()
+    #             spectator = self.sim_world.get_spectator()
+    #             transform = self.ego_vehicle.get_transform()
+    #             spectator.set_transform(carla.Transform(transform.location + carla.Location(z=100),
+    #                                                     carla.Rotation(pitch=-90)))
+    #     else:
+    #         self.sim_world.wait_for_tick()
 
     def step_before_tick(self,a_index,action):
         logging.info(f"CLIENT {self.id} STEP BEFORE TICK")
@@ -434,7 +434,7 @@ class EgoClient:
                     'Change': self.current_action.value+1, 'control_state': self.RL_switch}
 
             l_c=self.map.get_waypoint(self.ego_vehicle.get_location())
-            print(f"Episode:{self.reset_step}, Total_step:{self.total_step}, Time_step:{self.time_step}, RL_control_step:{self.rl_control_step}\n"
+            print(f"Client {self.id} Episode:{self.reset_step}, Total_step:{self.total_step}, Time_step:{self.time_step}, RL_control_step:{self.rl_control_step}\n"
                 f"Vel: {self.step_info['velocity']}, Current Acc:{self.step_info['cur_acc']}, Last Acc:{self.step_info['last_acc']}\n"
                 f"Light State: {self.lights_info.state if self.lights_info else None}, Light Distance:{state['light'][2]*self.traffic_light_proximity}, "
                 f"Cur Road ID: {lane_center.road_id}, Cur Lane ID: {lane_center.lane_id}, Before Process Road ID: {l_c.road_id}, Lane ID: {l_c.lane_id}\n"
@@ -451,39 +451,39 @@ class EgoClient:
         else:
             return state, reward, truncated!=Truncated.FALSE, done, self._get_info()   
 
-    def step(self, a_index, action):
+    # def step(self, a_index, action):
         
-        if self.sync:
+    #     if self.sync:
             
 
-            # print(self.map.get_waypoint(self.ego_vehicle.get_location(),False),self.ego_vehicle.get_transform(),sep='\n')
-            # print(self.sim_world.get_snapshot().timestamp)
-            if self.pygame:
-                self._tick()
-            else:
-                self.sim_world.tick()
-                spectator = self.sim_world.get_spectator()
-                transform = self.ego_vehicle.get_transform()
-                spectator.set_transform(carla.Transform(transform.location + carla.Location(z=80),
-                                                        carla.Rotation(pitch=-90)))
-            """Attention: the server's tick function only returns after it ran a fixed_delta_seconds, so the client need not to wait for
-                the server, the world snapshot of tick returned already include the next state after the uploaded action."""
-            # print(self.map.get_waypoint(self.ego_vehicle.get_location(),False),self.ego_vehicle.get_transform(),sep='\n')
-            # print(self.sim_world.get_snapshot().timestamp)
-            # print()
+    #         # print(self.map.get_waypoint(self.ego_vehicle.get_location(),False),self.ego_vehicle.get_transform(),sep='\n')
+    #         # print(self.sim_world.get_snapshot().timestamp)
+    #         if self.pygame:
+    #             self._tick()
+    #         else:
+    #             self.sim_world.tick()
+    #             spectator = self.sim_world.get_spectator()
+    #             transform = self.ego_vehicle.get_transform()
+    #             spectator.set_transform(carla.Transform(transform.location + carla.Location(z=80),
+    #                                                     carla.Rotation(pitch=-90)))
+    #         """Attention: the server's tick function only returns after it ran a fixed_delta_seconds, so the client need not to wait for
+    #             the server, the world snapshot of tick returned already include the next state after the uploaded action."""
+    #         # print(self.map.get_waypoint(self.ego_vehicle.get_location(),False),self.ego_vehicle.get_transform(),sep='\n')
+    #         # print(self.sim_world.get_snapshot().timestamp)
+    #         # print()
             
-        else:
-            temp = self.sim_world.wait_for_tick()
-            self.sim_world.on_tick(lambda _: {})
-            time.sleep(1.0 / self.fps)
-            reward,state,truncated,done,control_info=None,None,Truncated.FALSE,None,None
+    #     else:
+    #         temp = self.sim_world.wait_for_tick()
+    #         self.sim_world.on_tick(lambda _: {})
+    #         time.sleep(1.0 / self.fps)
+    #         reward,state,truncated,done,control_info=None,None,Truncated.FALSE,None,None
 
     def get_observation_space(self):
         """
         :return:
         """
         """Get observation space of cureent environment"""
-        return {'waypoints': 10, 'ego_vehicle': 6, 'conventional_vehicle': 3, 'light':3}
+        return {'waypoints': 10, 'ego_vehicle': 6, 'companion_vehicle': 3, 'light':3}
 
     def get_action_bound(self):
         """Return action bound of ego vehicle controller"""

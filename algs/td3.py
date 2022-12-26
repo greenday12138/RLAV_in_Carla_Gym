@@ -3,37 +3,7 @@ import numpy as np
 import torch
 from torch import nn
 import torch.nn.functional as F
-
-
-class ReplayBuffer:
-    """经验回放池"""
-
-    def __init__(self, capacity) -> None:
-        self.buffer = collections.deque(maxlen=capacity)  # 队列，先进先出
-
-    def add(self, state, action, reward, next_state, truncated, done):
-        # first compress state info, then add
-        state = self._compress(state)
-        next_state = self._compress(next_state)
-        self.buffer.append((state, action, reward, next_state, truncated, done))
-
-    def sample(self, batch_size):  # 从buffer中采样数据,数量为batch_size
-        transition = random.sample(self.buffer, batch_size)
-        state, action, reward, next_state, truncated, done = zip(*transition)
-        return state, action, reward, next_state, truncated, done
-
-    def size(self):
-        return len(self.buffer)
-
-    def _compress(self, state):
-        """return state : waypoints info+ vehicle_front info, shape: 1*22, 
-        first 20 elements are waypoints info, the rest are vehicle info"""
-        wps = np.array(state['waypoints'], dtype=np.float32).reshape((1, -1))
-        ev = np.array(state['ego_vehicle'],dtype=np.float32).reshape((1,-1))
-        vf = np.array(state['vehicle_front'], dtype=np.float32).reshape((1, -1))
-        state_ = np.concatenate((wps, ev, vf), axis=1)
-
-        return state_
+from algs.util.replay_buffer import ReplayBuffer
 
 
 class PolicyNet(torch.nn.Module):
@@ -49,7 +19,7 @@ class PolicyNet(torch.nn.Module):
 
         self.fc1_1 = nn.Linear(state_dim['waypoints'], 64)
         self.fc1_2 = nn.Linear(state_dim['ego_vehicle'],32)
-        self.fc1_3 = nn.Linear(state_dim['vehicle_front'], 32)
+        self.fc1_3 = nn.Linear(state_dim['companion_vehicle'], 32)
         # concat the first layer output and input to second layer
         self.fc2 = nn.Linear(128,128)
         self.fc_out = nn.Linear(128, 2)
@@ -63,11 +33,11 @@ class PolicyNet(torch.nn.Module):
         # torch.nn.init.xavier_normal_(self.fc_out.weight.data)
 
     def forward(self, state):
-        # state : waypoints info+ vehicle_front info, shape: batch_size*22, first 20 elements are waypoints info,
+        # state : waypoints info+ companion_vehicle info, shape: batch_size*22, first 20 elements are waypoints info,
         # the rest are vehicle info
         state_wp = state[:, :self.state_dim['waypoints']]
-        state_ev = state[:,-self.state_dim['vehicle_front']-self.state_dim['ego_vehicle']:-self.state_dim['vehicle_front']]
-        state_vf = state[:, -self.state_dim['vehicle_front']:]
+        state_ev = state[:,-self.state_dim['companion_vehicle']-self.state_dim['ego_vehicle']:-self.state_dim['companion_vehicle']]
+        state_vf = state[:, -self.state_dim['companion_vehicle']:]
         state_wp = F.relu(self.fc1_1(state_wp))
         state_ev=F.relu((self.fc1_2(state_ev)))
         state_vf = F.relu(self.fc1_3(state_vf))
@@ -96,7 +66,7 @@ class QValueNet(torch.nn.Module):
         # parameter state_dim here is a dict
         super().__init__()
 
-        #self.state_dim = state_dim['waypoints'] + state_dim['ego_vehicle']+state_dim['vehicle_front']
+        #self.state_dim = state_dim['waypoints'] + state_dim['ego_vehicle']+state_dim['companion_vehicle']
         self.state_dim=state_dim
 
         self.action_dim = action_dim
@@ -108,7 +78,7 @@ class QValueNet(torch.nn.Module):
 
         self.fc1_1=nn.Linear(self.state_dim['waypoints'],32)
         self.fc1_2=nn.Linear(self.state_dim['ego_vehicle'],32)
-        self.fc1_3=nn.Linear(self.state_dim['vehicle_front'],32)
+        self.fc1_3=nn.Linear(self.state_dim['companion_vehicle'],32)
         self.fc1_4=nn.Linear(self.action_dim,32)
         self.fc2=nn.Linear(128,128)
         self.fc_out = nn.Linear(128, 1)
@@ -120,11 +90,11 @@ class QValueNet(torch.nn.Module):
 
     def forward(self, state, action):
 
-        # state : waypoints info+ vehicle_front info, shape: batch_size*22, first 20 elements are waypoints info,
+        # state : waypoints info+ companion_vehicle info, shape: batch_size*22, first 20 elements are waypoints info,
         # the rest are vehicle info
         state_wp = state[:, :self.state_dim['waypoints']]
-        state_ev = state[:,-self.state_dim['vehicle_front']-self.state_dim['ego_vehicle']:-self.state_dim['vehicle_front']]
-        state_vf = state[:, -self.state_dim['vehicle_front']:]
+        state_ev = state[:,-self.state_dim['companion_vehicle']-self.state_dim['ego_vehicle']:-self.state_dim['companion_vehicle']]
+        state_vf = state[:, -self.state_dim['companion_vehicle']:]
         state_wp=F.relu(self.fc1_1(state_wp))
         state_ev=F.relu(self.fc1_2(state_ev))
         state_vf=F.relu(self.fc1_3(state_vf))

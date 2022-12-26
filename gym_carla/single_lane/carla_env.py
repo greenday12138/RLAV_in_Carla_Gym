@@ -418,7 +418,7 @@ class CarlaEnv:
         """Get observation space of cureent environment
         first element: Next waypoints list length of ego vehicle,
         second element: Location (x,y) dimention of waypoint"""
-        return {'waypoints': self.buffer_size, 'ego_vehicle': 6, 'vehicle_front': 2}
+        return {'waypoints': self.buffer_size, 'ego_vehicle': 6, 'companion_vehicle': 2}
 
     def get_action_bound(self):
         """Return action bound of ego vehicle controller"""

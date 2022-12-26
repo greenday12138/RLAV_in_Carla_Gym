@@ -55,8 +55,8 @@ def main():
     result = []
 
     for run in [base_name]:
-        agent = DDPG(s_dim, a_dim, a_bound, GAMMA, TAU, SIGMA, THETA, EPSILON, BUFFER_SIZE, BATCH_SIZE, LR_ACTOR,
-                     LR_CRITIC, clip_grad, DEVICE)
+        agent = DDPG(s_dim, a_dim, a_bound, GAMMA, TAU, SIGMA, THETA, EPSILON, BUFFER_SIZE, BATCH_SIZE,
+                LR_ACTOR,LR_CRITIC, DEVICE)
 
         # training part
         max_rolling_score = np.float('-5')

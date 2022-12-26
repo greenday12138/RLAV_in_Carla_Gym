@@ -84,7 +84,7 @@ class veh_lane_encoder(torch.nn.Module):
         self.state_dim = state_dim
         self.train = train
         self.lane_encoder = nn.Linear(state_dim['waypoints'], 32)
-        self.veh_encoder = nn.Linear(state_dim['conventional_vehicle'] * 2, 64)
+        self.veh_encoder = nn.Linear(state_dim['companion_vehicle'] * 2, 64)
         self.light_encoder = nn.Linear(state_dim['light'], 32)
         self.agg = nn.Linear(128, 64)
 
@@ -107,7 +107,7 @@ class lane_wise_cross_attention_encoder(torch.nn.Module):
         self.train = train
         self.hidden_size = 64
         self.lane_encoder = nn.Linear(state_dim['waypoints'], self.hidden_size)
-        self.veh_encoder = nn.Linear(state_dim['conventional_vehicle'] * 2, self.hidden_size)
+        self.veh_encoder = nn.Linear(state_dim['companion_vehicle'] * 2, self.hidden_size)
         self.light_encoder = nn.Linear(state_dim['light'], self.hidden_size)
         self.ego_encoder = nn.Linear(state_dim['ego_vehicle'], self.hidden_size)
         self.w = nn.Linear(self.hidden_size, self.hidden_size)
@@ -161,8 +161,8 @@ class PolicyNet_multi(torch.nn.Module):
         # torch.nn.init.xavier_normal_(self.fc_out.weight.data)
 
     def forward(self, state):
-        # state: (waypoints + 2 * conventional_vehicle0 * 3
-        one_state_dim = self.state_dim['waypoints'] + self.state_dim['conventional_vehicle'] * 2 + self.state_dim['light']
+        # state: (waypoints + 2 * companion_vehicle * 3
+        one_state_dim = self.state_dim['waypoints'] + self.state_dim['companion_vehicle'] * 2 + self.state_dim['light']
         # print(state.shape, one_state_dim)
         ego_info = state[:, 3*one_state_dim:]
         # print(ego_info.shape)
@@ -211,7 +211,7 @@ class QValueNet_multi(torch.nn.Module):
         # torch.nn.init.xavier_normal_(self.fc_out.weight.data)
 
     def forward(self, state, action):
-        one_state_dim = self.state_dim['waypoints'] + self.state_dim['conventional_vehicle'] * 2 + self.state_dim['light']
+        one_state_dim = self.state_dim['waypoints'] + self.state_dim['companion_vehicle'] * 2 + self.state_dim['light']
         ego_info = state[:, 3*one_state_dim:]
         left_enc = self.left_encoder(state[:, :one_state_dim], ego_info)
         center_enc = self.center_encoder(state[:, one_state_dim:2*one_state_dim], ego_info)
@@ -253,7 +253,7 @@ class QValueNet_multi_td3(torch.nn.Module):
         # torch.nn.init.xavier_normal_(self.fc_out.weight.data)
 
     def forward(self, state, action):
-        one_state_dim = self.state_dim['waypoints'] + self.state_dim['conventional_vehicle'] * 2 + self.state_dim['light']
+        one_state_dim = self.state_dim['waypoints'] + self.state_dim['companion_vehicle'] * 2 + self.state_dim['light']
         ego_info = state[:, 3*one_state_dim:]
 
         left_enc = self.left_encoder(state[:, :one_state_dim], ego_info)
@@ -336,7 +336,7 @@ class P_DQN:
         # self.steer_noise = OrnsteinUhlenbeckActionNoise(self.sigma, self.theta)
         # self.tb_noise = OrnsteinUhlenbeckActionNoise(self.sigma, self.theta)
 
-    def take_action(self, state, lane_id=-2, action_mask=True):
+    def take_action(self, state, lane_id=-2, action_mask=False):
         # print('vehicle_info', state['vehicle_info'])
         state_left_wps = torch.tensor(state['left_waypoints'], dtype=torch.float32).view(1, -1).to(self.device)
         state_center_wps = torch.tensor(state['center_waypoints'], dtype=torch.float32).view(1, -1).to(self.device)
