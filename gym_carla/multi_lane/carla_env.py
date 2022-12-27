@@ -15,7 +15,7 @@ from gym_carla.multi_lane.agent.global_planner import GlobalPlanner,RoadOption
 from gym_carla.multi_lane.agent.basic_lanechanging_agent import Basic_Lanechanging_Agent
 from gym_carla.multi_lane.util.sensor import CollisionSensor, LaneInvasionSensor, SemanticTags
 from gym_carla.multi_lane.util.wrapper import WaypointWrapper,VehicleWrapper,Action,SpeedState,Truncated,process_lane_wp,process_veh, \
-    process_steer,recover_steer,fill_action_param,ttc_reward,comfort,pdqn_lane_center,calculate_guide_lane_center
+    process_steer,recover_steer,fill_action_param,ttc_reward,comfort,lane_center_reward,calculate_guide_lane_center
 from gym_carla.multi_lane.util.misc import draw_waypoints, get_speed, get_acceleration, test_waypoint, \
     compute_distance, get_actor_polygons, get_lane_center, remove_unnecessary_objects, get_yaw_diff, \
     get_trafficlight_trigger_location, is_within_distance, get_sign,is_within_distance_ahead,get_projection,\
@@ -54,7 +54,6 @@ class CarlaEnv:
         self.steer_bound = args.steer_bound
         self.throttle_bound = args.throttle_bound
         self.brake_bound = args.brake_bound
-        self.train_pdqn = args.alg=='PDQN'
         self.modify_change_steer = args.modify_change_steer
         self.ignore_traffic_light = args.ignore_traffic_light
 
@@ -539,12 +538,7 @@ class CarlaEnv:
 
         lane_center = get_lane_center(self.map, self.ego_vehicle.get_location())
         right_lane_dis = lane_center.get_right_lane().transform.location.distance(self.ego_vehicle.get_location())
-        if self.train_pdqn:
-            t, fLcen = pdqn_lane_center(lane_center, self.ego_vehicle.get_location())
-            ego_t= lane_center.lane_width / 2 + lane_center.get_right_lane().lane_width / 2 - right_lane_dis
-        else:
-            t = lane_center.lane_width / 2 + lane_center.get_right_lane().lane_width / 2 - right_lane_dis
-            ego_t=t
+        ego_t= lane_center.lane_width / 2 + lane_center.get_right_lane().lane_width / 2 - right_lane_dis
 
         ego_vehicle_z = lane_center.transform.location.z
         ego_forward_vector = self.ego_vehicle.get_transform().get_forward_vector()
@@ -657,21 +651,12 @@ class CarlaEnv:
         # jerk = ((cur_acc.x - self.last_acc.x) * self.fps) ** 2 + ((cur_acc.y - self.last_acc.y) * self.fps) ** 2
         # # whick still requires further testing, longitudinal and lateral
         # fCom = -jerk / ((6 * self.fps) ** 2 + (12 * self.fps) ** 2)
-        if self.train_pdqn:
-            Lcen, fLcen = pdqn_lane_center(lane_center, self.ego_vehicle.get_location())
-        else:
-            if self.guide_change:
-                Lcen, fLcen = calculate_guide_lane_center(self.ego_vehicle.get_location(),lane_center, self.ego_vehicle.get_location(), 
+
+        if self.guide_change:
+            Lcen, fLcen = calculate_guide_lane_center(self.ego_vehicle.get_location(),lane_center, self.ego_vehicle.get_location(), 
                     self.vehs_info.distance_to_front_vehicles,self.vehs_info.distance_to_rear_vehicles)
-            else:
-                Lcen = lane_center.transform.location.distance(self.ego_vehicle.get_location())
-                # print(
-                #     f"Lane Center:{Lcen}, Road ID:{lane_center.road_id}, Lane ID:{lane_center.lane_id}, Yaw:{self.ego_vehicle.get_transform().rotation.yaw}")
-                if not test_waypoint(lane_center, True) or Lcen > lane_center.lane_width / 2 + 0.1:
-                    fLcen = -2
-                    print('lane_center.lane_id, lcen, flcen: ', lane_center.lane_id, lane_center.road_id, Lcen, fLcen, lane_center.lane_width / 2)
-                else:
-                    fLcen = - Lcen / (lane_center.lane_width / 2)
+        else:
+            Lcen,fLcen = lane_center_reward(lane_center, self.ego_vehicle.get_location())
 
         yaw_diff = math.degrees(get_yaw_diff(lane_center.transform.get_forward_vector(),
                                 self.ego_vehicle.get_transform().get_forward_vector()))
@@ -705,7 +690,7 @@ class CarlaEnv:
         print('distance_to_front_vehicles, distance_to_rear_vehicles: ', distance_to_front_vehicles, distance_to_rear_vehicles)
         # still the distances of the last time step
         reward = 0
-        if current_action == Action.LANE_FOLLOW and self.train_pdqn:
+        if current_action == Action.LANE_FOLLOW:
             # if change lane in lane following mode, we set this reward=0, but will be truncated
             return reward
         if current_lane - last_lane == -1:

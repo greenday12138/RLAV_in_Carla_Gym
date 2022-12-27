@@ -188,7 +188,7 @@ ARGS.add_argument(
     help='Min distance between two vehicles, unit -- meters')
 ARGS.add_argument(
     '--guide_change', type=bool,
-    default=True,
+    default=False,
     help='guide the vehicle to change via lane_center')
 ARGS.add_argument(
     '--ignore_traffic_light', type=bool,

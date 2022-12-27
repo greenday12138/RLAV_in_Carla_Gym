@@ -10,13 +10,7 @@ from queue import Queue
 from collections import deque
 from gym_carla.multi_agent.util.render import World,HUD
 from gym_carla.multi_agent.assets.ego_client import EgoClient
-#from gym_carla.env.agent.basic_agent import BasicAgent
-from gym_carla.multi_agent.agent.local_planner import LocalPlanner
-from gym_carla.multi_agent.agent.global_planner import GlobalPlanner,RoadOption
-from gym_carla.multi_agent.agent.basic_lanechanging_agent import Basic_Lanechanging_Agent
-from gym_carla.multi_agent.util.sensor import CollisionSensor, LaneInvasionSensor, SemanticTags
-from gym_carla.multi_agent.util.wrapper import WaypointWrapper,VehicleWrapper,Action,SpeedState,Truncated,process_lane_wp,process_veh, \
-    process_steer,recover_steer,fill_action_param,ttc_reward,comfort,pdqn_lane_center,calculate_guide_lane_center
+from gym_carla.multi_agent.agent.global_planner import GlobalPlanner
 from gym_carla.multi_agent.util.misc import draw_waypoints, get_speed, get_acceleration, test_waypoint, \
     compute_distance, get_actor_polygons, get_lane_center, remove_unnecessary_objects, get_yaw_diff, \
     get_trafficlight_trigger_location, is_within_distance, get_sign,is_within_distance_ahead,get_projection,\

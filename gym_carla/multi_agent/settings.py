@@ -188,7 +188,7 @@ ARGS.add_argument(
     help='Min distance between two vehicles, unit -- meters')
 ARGS.add_argument(
     '--guide_change', type=bool,
-    default=True,
+    default=False,
     help='guide the vehicle to change via lane_center')
 ARGS.add_argument(
     '--ignore_traffic_light', type=bool,
@@ -196,7 +196,7 @@ ARGS.add_argument(
     help='Set the vehicles in simulation to ignore traffic lights or not')
 ARGS.add_argument(
     '--ego_num', type=int,
-    default=3,
+    default=1,
     help='The number of RL controlled ego vehicle')
 ARGS.add_argument(
     '--modify_change_steer', type=bool,

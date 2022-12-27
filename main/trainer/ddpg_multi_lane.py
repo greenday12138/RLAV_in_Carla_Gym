@@ -4,7 +4,7 @@ import random, collections
 import numpy as np
 import matplotlib.pyplot as plt
 from tqdm import tqdm
-from algs.ddpg import DDPG
+from algs.ddpg_multi_lane import DDPG
 from gym_carla.multi_lane.settings import ARGS
 from gym_carla.multi_lane.carla_env import CarlaEnv
 from main.util.process import start_process, kill_process
@@ -56,7 +56,7 @@ def main():
 
     for run in [base_name]:
         agent = DDPG(s_dim, a_dim, a_bound, GAMMA, TAU, SIGMA, THETA, EPSILON, BUFFER_SIZE, BATCH_SIZE,
-                LR_ACTOR,LR_CRITIC, DEVICE)
+                LR_ACTOR,LR_CRITIC, clip_grad,DEVICE)
 
         # training part
         max_rolling_score = np.float('-5')

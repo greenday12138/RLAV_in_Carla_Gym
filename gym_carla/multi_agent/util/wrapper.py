@@ -226,7 +226,7 @@ def comfort(fps, last_acc, acc, last_yaw, yaw):
     Yaw_jerk = -abs(yaw_diff) / 90
     return np.clip(acc_jerk * 0.5 + Yaw_jerk, -1, 0), yaw_diff
 
-def pdqn_lane_center(lane_center, ego_location):
+def lane_center_reward(lane_center, ego_location):
     def compute(center,ego):
         Lcen=ego.distance(center.transform.location)
         center_yaw=lane_center.transform.get_forward_vector()
@@ -236,7 +236,7 @@ def pdqn_lane_center(lane_center, ego_location):
         return Lcen
 
     if not test_waypoint(lane_center, True):
-        Lcen = 7
+        Lcen = 2.1
         fLcen = -2
         print('lane_center.lane_id, lane_center.road_id, flcen, lane_wid/2: ', lane_center.lane_id,
                 lane_center.road_id, fLcen, lane_center.lane_width / 2)
