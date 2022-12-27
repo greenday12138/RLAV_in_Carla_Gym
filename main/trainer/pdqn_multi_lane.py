@@ -4,12 +4,13 @@ import random, collections
 import numpy as np
 import matplotlib.pyplot as plt
 from tqdm import tqdm
+from collections import deque
 from algs.pdqn import P_DQN
 from gym_carla.multi_lane.settings import ARGS
 from gym_carla.multi_lane.carla_env import CarlaEnv
 from main.util.process import start_process, kill_process
 from gym_carla.multi_lane.util.wrapper import fill_action_param,recover_steer
-from collections import deque
+from tensorboardX import SummaryWriter
 
 # neural network hyper parameters
 SIGMA = 0.5
@@ -34,16 +35,13 @@ modify_change_steer=False
 clip_grad = 10
 zero_index_gradients = True
 inverting_gradients = True
-action_mask = False
 base_name = f'origin_{TTC_threshold}_NOCA'
 
 
 def main():
     args = ARGS.parse_args()
-
     log_level = logging.DEBUG if args.debug else logging.INFO
     logging.basicConfig(format='%(levelname)s: %(message)s', level=log_level)
-
     # env=gym.make('CarlaEnv-v0')
     env = CarlaEnv(args)
     globals()['modify_change_steer'] = args.modify_change_steer
@@ -57,6 +55,7 @@ def main():
     a_bound = env.get_action_bound()
     a_dim = 2
 
+    writer=SummaryWriter('./out/runs')
     n_run = 3
     rosiolling_window = 100  # 100 car following events, average score
     result = []
@@ -66,8 +65,8 @@ def main():
                      LR_CRITIC, clip_grad, zero_index_gradients, inverting_gradients, DEVICE)
 
         # training part
-        max_rolling_score = np.float('-5')
-        max_score = np.float('-5')
+        max_rolling_score = np.float32('-5')
+        max_score = np.float32('-30')
         var = 3
         collision_train = 0
         episode_score = []
@@ -88,8 +87,7 @@ def main():
                         score_s, score_e, score_c = 0, 0, 0  # part objective scores
                         impact_deque = deque(maxlen=2)
                         while not done and not truncated:
-                            lane_id = env.get_ego_lane()
-                            action, action_param, all_action_param = agent.take_action(state, lane_id=lane_id, action_mask=action_mask)
+                            action, action_param, all_action_param = agent.take_action(state)
                             next_state, reward, truncated, done, info = env.step(action, action_param)
                             if env.is_effective_action() and not info['Abandon']:
                                 replay_buffer_adder(agent,impact_deque,state,next_state,action,all_action_param,reward,truncated,done,info)
@@ -97,13 +95,13 @@ def main():
                                 print(
                                         f"state -- vehicle_info:{state['vehicle_info']}\n"
                                         #f"waypoints:{state['left_waypoints']}, \n"
-                                        #f"waypoints:{states[i]['center_waypoints']}, \n"
+                                        f"waypoints:{state['center_waypoints']}, \n"
                                         #f"waypoints:{state['right_waypoints']}, \n"
                                         f"ego_vehicle:{state['ego_vehicle']}, \n"
                                         f"light info: {state['light']}\n"
                                         f"next_state -- vehicle_info:{next_state['vehicle_info']}\n"
                                         #f"waypoints:{next_state['left_waypoints']}, \n"
-                                        #f"waypoints:{next_states[i]['center_waypoints']}, \n"
+                                        f"waypoints:{next_state['center_waypoints']}, \n"
                                         #f"waypoints:{next_state['right_waypoints']}, \n"
                                         f"ego_vehicle:{next_state['ego_vehicle']}\n"
                                         f"light info: {next_state['light']}\n"
@@ -139,15 +137,19 @@ def main():
                             truncated = False
 
                         # record episode results
-                        episode_score.append(score)
-                        score_safe.append(score_s)
-                        score_efficiency.append(score_e)
-                        score_comfort.append(score_c)
-                        # rolling_score.append(np.mean(episode_score[max]))
-                        cum_collision_num.append(collision_train)
+                        if env.RL_switch:
+                            score/=env.time_step+1
+                            writer.add_scalar('Reward',score,i*10+i_episode)
+                            episode_score.append(score)
+                            score_safe.append(score_s)
+                            score_efficiency.append(score_e)
+                            score_comfort.append(score_c)
+                            # rolling_score.append(np.mean(episode_score[max]))
+                            cum_collision_num.append(collision_train)
 
-                        if max_score < score:
-                            max_score = score
+                            if max_score < score:
+                                max_score = score
+                                agent.save_net('./out/pdqn_final.pth')
 
                         """ if rolling_score[rolling_score.__len__-1]>max_rolling_score:
                             max_rolling_score=rolling_score[rolling_score.__len__-1]
@@ -161,17 +163,6 @@ def main():
                             })
                         pbar.update(1)
 
-                        # sigma decay
-                        # if agent.replay_buffer.size()>MINIMAL_SIZE:
-                        #     globals()['SIGMA']*=SIGMA_DECAY
-                        #     agent.set_sigma(SIGMA)
-
-                    # sigma decay
-                    # if agent.replay_buffer.size()>MINIMAL_SIZE:
-                    #     globals()['SIGMA']*=SIGMA_DECAY
-                    #     agent.set_sigma(SIGMA)
-
-            agent.save_net('./out/pdqn_final.pth')
             np.save(f'./out/result_{run}.npy', result)
         except KeyboardInterrupt:
             logging.info("Premature Terminated")
@@ -179,6 +170,7 @@ def main():
         #      logging.info(e.args)
         finally:
             env.__del__()
+            writer.close()
             logging.info('\nDone.')
 
 def replay_buffer_adder(agent,impact_deque, state, next_state, action,all_action_param,reward, truncated, done, info):

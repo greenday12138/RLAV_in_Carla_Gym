@@ -171,7 +171,7 @@ ARGS.add_argument(
     help='Brake bound for ego vehicle controller')
 ARGS.add_argument(
     '--pre_train_steps', type=int,
-    default=10000,
+    default=100,
     help='Let the RL controller and PID controller alternatively take control every 500 steps')
 ARGS.add_argument(
     '--vehicle_proximity', type=float,
@@ -201,7 +201,7 @@ ARGS.add_argument(
          and the steer < 0 when current action is Action.CHANGE_LANE_LEFT')
 ARGS.add_argument(
     '--pygame', type=bool,
-    default=True,
+    default=False,
     help='Render another pygame window for ego vehicle and the window style looks like automatic_control.py')
 ARGS.add_argument(
     '--alg', type=str,

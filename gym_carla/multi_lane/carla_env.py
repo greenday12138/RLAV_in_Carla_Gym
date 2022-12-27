@@ -525,10 +525,6 @@ class CarlaEnv:
     def render(self, mode):
         pass
 
-    def get_ego_lane(self):
-        lane_center = get_lane_center(self.map, self.ego_vehicle.get_location())
-        return lane_center.lane_id
-
     def _get_state(self):
         """return a tuple: the first element is next waypoints, the second element is vehicle_front information"""
 
@@ -636,6 +632,7 @@ class CarlaEnv:
                     dis=self.ego_vehicle.get_location().distance(wp.transform.location)
                     if dis<self.traffic_light_proximity:
                         max_speed=(dis+0.0001)/self.traffic_light_proximity*self.speed_limit
+        max_speed=self.speed_limit
         if v_s * 3.6 > max_speed:
             # fEff = 1
             fEff = math.exp(max_speed - v_s * 3.6)-1
