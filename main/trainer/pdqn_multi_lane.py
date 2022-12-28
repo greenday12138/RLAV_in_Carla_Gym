@@ -1,5 +1,6 @@
 import logging
 import torch
+import datetime
 import random, collections
 import numpy as np
 import matplotlib.pyplot as plt
@@ -28,7 +29,7 @@ MINIMAL_SIZE = 10000
 BATCH_SIZE = 128
 REPLACE_A = 500
 REPLACE_C = 300
-TOTAL_EPISODE = 50000
+TOTAL_EPISODE = 5000
 SIGMA_DECAY = 0.9999
 TTC_threshold = 4.001
 modify_change_steer=False
@@ -55,7 +56,8 @@ def main():
     a_bound = env.get_action_bound()
     a_dim = 2
 
-    writer=SummaryWriter('./out/runs')
+    time=datetime.datetime.now().strftime('%Y%m%d%H%M%S')
+    episode_writer=SummaryWriter(f"./out/runs/pdqn/{time}")
     n_run = 3
     rosiolling_window = 100  # 100 car following events, average score
     result = []
@@ -73,7 +75,7 @@ def main():
         rolling_score = []
         cum_collision_num = []
 
-        score_safe = []
+        score_safe = []     
         score_efficiency = []
         score_comfort = []
 
@@ -84,7 +86,7 @@ def main():
                         state = env.reset()
                         agent.reset_noise()
                         score = 0
-                        score_s, score_e, score_c = 0, 0, 0  # part objective scores
+                        ttc, efficiency,comfort,lcen,yaw,impact,lane_change_reward = 0, 0, 0, 0, 0, 0, 0  # part objective scores
                         impact_deque = deque(maxlen=2)
                         while not done and not truncated:
                             action, action_param, all_action_param = agent.take_action(state)
@@ -117,9 +119,13 @@ def main():
                             score += reward
                             
                             if not truncated:
-                                score_s += info['TTC']
-                                score_e += info['Efficiency']
-                                score_c += info['Comfort']
+                                ttc += info['TTC']
+                                efficiency += info['Efficiency']
+                                comfort += info['Comfort']
+                                lcen += info['Lane_center']
+                                yaw += info['Yaw']
+                                impact += info['impact']
+                                lane_change_reward += info['lane_changing_reward']
 
                             if env.total_step == args.pre_train_steps:
                                 agent.save_net('./out/pdqn_pre_trained.pth')
@@ -138,12 +144,23 @@ def main():
 
                         # record episode results
                         if env.RL_switch:
+                            episode_writer.add_scalar('Total_Reward',score,i*(TOTAL_EPISODE // 10)+i_episode)
                             score/=env.time_step+1
-                            writer.add_scalar('Reward',score,i*10+i_episode)
+                            episode_writer.add_scalar('Avg_Reward',score,i*(TOTAL_EPISODE // 10)+i_episode)
+                            episode_writer.add_scalar('Time_Steps',env.time_step,i*(TOTAL_EPISODE // 10)+i_episode)
+
+                            episode_writer.add_scalar('TTC',ttc/(env.time_step+1), i*(TOTAL_EPISODE // 10)+i_episode)
+                            episode_writer.add_scalar('Efficiency',efficiency/(env.time_step+1), i*(TOTAL_EPISODE // 10)+i_episode)
+                            episode_writer.add_scalar('Comfort',comfort/(env.time_step+1), i*(TOTAL_EPISODE // 10)+i_episode)
+                            episode_writer.add_scalar('Lcen',lcen/(env.time_step+1), i*(TOTAL_EPISODE // 10)+i_episode)
+                            episode_writer.add_scalar('Yaw',yaw/(env.time_step+1), i*(TOTAL_EPISODE // 10)+i_episode)
+                            episode_writer.add_scalar('Impact',impact/(env.time_step+1), i*(TOTAL_EPISODE // 10)+i_episode)
+                            episode_writer.add_scalar('Lane_change_reward',lane_change_reward/(env.time_step+1), i*(TOTAL_EPISODE // 10)+i_episode)
+                            
                             episode_score.append(score)
-                            score_safe.append(score_s)
-                            score_efficiency.append(score_e)
-                            score_comfort.append(score_c)
+                            score_safe.append(ttc)
+                            score_efficiency.append(efficiency)
+                            score_comfort.append(comfort)
                             # rolling_score.append(np.mean(episode_score[max]))
                             cum_collision_num.append(collision_train)
 
@@ -170,7 +187,8 @@ def main():
         #      logging.info(e.args)
         finally:
             env.__del__()
-            writer.close()
+            episode_writer.close()
+            agent.save_net('./out/pdqn_final.pth')
             logging.info('\nDone.')
 
 def replay_buffer_adder(agent,impact_deque, state, next_state, action,all_action_param,reward, truncated, done, info):

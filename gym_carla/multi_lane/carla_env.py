@@ -143,10 +143,6 @@ class CarlaEnv:
 
     def reset(self):
         if self.ego_vehicle is not None:
-            if self.camera is not None:
-                self.camera.stop()
-            self.collision_sensor.sensor.stop()
-            self.lane_invasion_sensor.sensor.stop()
             self._clear_actors(
                 ['*vehicle.*', 'sensor.other.collision', 'sensor.camera.rgb', 'sensor.other.lane_invasion'])
             self.ego_vehicle = None
@@ -1118,6 +1114,12 @@ class CarlaEnv:
         """Clear specific actors
         filter: True means filter actors by blueprint, Fals means fiter actors by carla.CityObjectLabel"""
         if filter:
+            if self.camera is not None:
+                self.camera.stop()
+            if self.collision_sensor is not None:
+                self.collision_sensor.sensor.stop()
+            if self.lane_invasion_sensor is not None:
+                self.lane_invasion_sensor.sensor.stop()
             for actor_filter in actor_filters:
                 self.client.apply_batch([carla.command.DestroyActor(x)
                                          for x in self.sim_world.get_actors().filter(actor_filter)])
