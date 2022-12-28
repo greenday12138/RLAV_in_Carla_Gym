@@ -618,17 +618,20 @@ class CarlaEnv:
 
         lane_center = get_lane_center(self.map, self.ego_vehicle.get_location())
         yaw_forward = lane_center.transform.get_forward_vector().make_unit_vector()
+        
         v_3d = self.ego_vehicle.get_velocity()
         v_s,v_t=get_projection(v_3d,yaw_forward)
-        max_speed=self.speed_limit
-        if self.lights_info and self.lights_info.state!=carla.TrafficLightState.Green:
-            wps=self.lights_info.get_stop_waypoints()
-            for wp in wps:
-                if wp.lane_id==lane_center.lane_id:
-                    dis=self.ego_vehicle.get_location().distance(wp.transform.location)
-                    if dis<self.traffic_light_proximity:
-                        max_speed=(dis+0.0001)/self.traffic_light_proximity*self.speed_limit
-        max_speed=self.speed_limit
+        speed_1,speed_2=self.speed_limit, self.speed_limit
+        # if self.lights_info and self.lights_info.state!=carla.TrafficLightState.Green:
+        #     wps=self.lights_info.get_stop_waypoints()
+        #     for wp in wps:
+        #         if wp.lane_id==lane_center.lane_id:
+        #             dis=self.ego_vehicle.get_location().distance(wp.transform.location)
+        #             if dis<self.traffic_light_proximity:
+        #                 speed_1=(dis+0.0001)/self.traffic_light_proximity*self.speed_limit
+        # if self.vehs_info.center_front_veh is not None:
+        #     speed_2=self.vehs_info.distance_to_front_vehicles[1]/self.vehicle_proximity*self.speed_limit
+        max_speed=min(speed_1,speed_2)
         if v_s * 3.6 > max_speed:
             # fEff = 1
             fEff = math.exp(max_speed - v_s * 3.6)-1
@@ -1083,12 +1086,12 @@ class CarlaEnv:
                 self.traffic_manager.ignore_signs_percentage(
                         self.sim_world.get_actor(response.actor_id), 100)
                 self.traffic_manager.auto_lane_change(
-                    self.sim_world.get_actor(response.actor_id), False)
+                    self.sim_world.get_actor(response.actor_id), True)
                 # modify change probability
                 self.traffic_manager.random_left_lanechange_percentage(
-                    self.sim_world.get_actor(response.actor_id), 50)
+                    self.sim_world.get_actor(response.actor_id), 0)
                 self.traffic_manager.random_right_lanechange_percentage(
-                    self.sim_world.get_actor(response.actor_id), 50)
+                    self.sim_world.get_actor(response.actor_id), 0)
                 
                 self.traffic_manager.set_route(self.sim_world.get_actor(response.actor_id),
                                                ['Straight', 'Straight', 'Straight', 'Straight', 'Straight', 'Straight', 'Straight', 'Straight', 'Straight', 'Straight'])

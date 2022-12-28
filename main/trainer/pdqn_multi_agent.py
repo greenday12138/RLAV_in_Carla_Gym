@@ -190,7 +190,7 @@ def replay_buffer_adder(agent,impact_deque, state, next_state, action,all_action
         if control_state:
             # under rl control
             if truncated:
-                agent.replay_buffer.add(state, action, all_action_param, reward, next_state,
+                agent.store_transition(state, action, all_action_param, reward, next_state,
                                     truncated, done, info)
             else:
                 impact = info['impact'] / 9
@@ -198,7 +198,7 @@ def replay_buffer_adder(agent,impact_deque, state, next_state, action,all_action
                                         truncated, done, info])
                 if len(impact_deque) == 2:
                     experience = impact_deque[0]
-                    agent.replay_buffer.add(experience[0], experience[1], experience[2],
+                    agent.store_transition(experience[0], experience[1], experience[2],
                                             experience[3] + impact, experience[4], experience[5],
                                             experience[6], experience[7])
                 # agent.replay_buffer.add(state, action, all_action_param, reward, next_state,
@@ -213,15 +213,15 @@ def replay_buffer_adder(agent,impact_deque, state, next_state, action,all_action
                                                     all_action_param,modify_change_steer)
             print('agent control in replay buffer: ', action, saved_action_param)
             if truncated:
-                agent.replay_buffer.add(state, action, saved_action_param, reward, next_state,
-                                    truncated, done, info)
+                agent.store_transition(state,action,saved_action_param,reward,next_state,
+                    truncated,done,info)
             else:
                 impact = info['impact'] / 9
                 impact_deque.append([state, action, saved_action_param, reward, next_state,
                                         truncated, done, info])
                 if len(impact_deque) == 2:
                     experience = impact_deque[0]
-                    agent.replay_buffer.add(experience[0], experience[1], experience[2],
+                    agent.store_transition(experience[0], experience[1], experience[2],
                                             experience[3] + impact, experience[4], experience[5],
                                             experience[6], experience[7])
                 # agent.replay_buffer.add(state, action, saved_action_param, reward, next_state,

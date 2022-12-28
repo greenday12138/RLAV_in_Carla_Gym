@@ -305,19 +305,21 @@ class TD3:
     def hard_update(self, net, target_net):
         net.load_state_dict(target_net.state_dict())
 
-    def store_transition(self, transition_dict):  # how to store the episodic data to buffer
-        index = self.pointer % self.buffer_size
-        states = torch.tensor(transition_dict['states'],
-                              dtype=torch.float32).view(-1, 1).to(self.device)
-        actions = torch.tensor(transition_dict['actions'],
-                               dtype=torch.float32).to(self.device)
-        rewards = torch.tensor(transition_dict['rewards'],
-                               dtype=torch.float32).to(self.device)
-        states_next = torch.tensor(transition_dict['states_next'],
-                                   dtype=torch.float32).view(-1, 1).to(self.device)
-        dones = torch.tensor(transition_dict['dones'],
-                             dtype=torch.float32).to(self.device)
+    def store_transition(self, state, action, reward, next_state, truncated, done,info):  # how to store the episodic data to buffer
+        state=self._compress(state)
+        next_state=self._compress(next_state)
+        self.replay_buffer.add((state, action, reward, next_state, truncated, done,info))
         return
+
+    def _compress(self, state):
+        """return state : waypoints info+ vehicle_front info, shape: 1*22, 
+        first 20 elements are waypoints info, the rest are vehicle info"""
+        wps = np.array(state['waypoints'], dtype=np.float32).reshape((1, -1))
+        ev = np.array(state['ego_vehicle'],dtype=np.float32).reshape((1,-1))
+        vf = np.array(state['vehicle_front'], dtype=np.float32).reshape((1, -1))
+        state_ = np.concatenate((wps, ev, vf), axis=1)
+
+        return state_
 
     def save_net(self,file='./out/td3_final.pth'):
         state = {

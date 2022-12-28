@@ -87,10 +87,11 @@ def main():
                                     # Input the guided action to replay buffer
                                     throttle_brake = -info['Brake'] if info['Brake'] > 0 else info['Throttle']
                                     action = np.array([[info['Steer'], throttle_brake]])
-                                    agent.replay_buffer.add(state, action, reward, next_state, truncated, done)
+                                    agent.store_transition(state,action,reward,next_state,truncated,done,info)
                                 else:
                                     # Input the agent action to replay buffer
-                                    agent.replay_buffer.add(state, action, reward, next_state, truncated, done)
+                                    agent.store_transition(state,action,reward,next_state,truncated,done,info)
+                                    
                                 print(f"state -- vehicle_front:{state['vehicle_front']}\n"
                                       f"waypoints:{state['waypoints']}, \n"
                                       f"ego_vehicle:{state['ego_vehicle']}, \n"

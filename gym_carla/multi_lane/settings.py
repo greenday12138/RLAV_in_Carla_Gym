@@ -94,7 +94,7 @@ ARGS.add_argument(
 ARGS.add_argument(
     '-n', '--num_of_vehicles', type=list,
     help='Total vehicles number which run in simulation',
-    default=[10*3, 15*3, 20*3])
+    default=[ 15*3])
 ARGS.add_argument(
     '-sa', '--sampling_resolution', type=float,
     help='Distance between generated two waypoints',
@@ -142,7 +142,7 @@ ARGS.add_argument(
     help='reward penalty for simulation terminated early on account of lane invasion')
 ARGS.add_argument(
     '--lane_change_reward', type=float,
-    default=20,
+    default=15,
     help='reward for lane change according to the distance to the preceding vehicle')
 ARGS.add_argument(
     '--speed_limit', type=float,

@@ -7,30 +7,16 @@ class ReplayBuffer:
     def __init__(self, capacity) -> None:
         self.buffer = collections.deque(maxlen=capacity)  # 队列，先进先出
 
-    def add(self, state, action, reward, next_state, truncated, done):
-        # first compress state info, then add
-        state = self._compress(state)
-        next_state = self._compress(next_state)
-        self.buffer.append((state, action, reward, next_state, truncated, done))
+    def add(self, transition):
+        self.buffer.append(transition)
 
     def sample(self, batch_size):  # 从buffer中采样数据,数量为batch_size
         transition = random.sample(self.buffer, batch_size)
-        state, action, reward, next_state, truncated, done = zip(*transition)
-        return state, action, reward, next_state, truncated, done
+        state, action, reward, next_state, truncated, done,info = zip(*transition)
+        return state, action, reward, next_state, truncated, done,info
 
     def size(self):
         return len(self.buffer)
-
-    def _compress(self, state):
-        """return state : waypoints info+ vehicle_front info, shape: 1*22, 
-        first 20 elements are waypoints info, the rest are vehicle info"""
-        wps = np.array(state['waypoints'], dtype=np.float32).reshape((1, -1))
-        ev = np.array(state['ego_vehicle'],dtype=np.float32).reshape((1,-1))
-        vf = np.array(state['vehicle_front'], dtype=np.float32).reshape((1, -1))
-        state_ = np.concatenate((wps, ev, vf), axis=1)
-
-        return state_
-
 
 
 class SplitReplayBuffer:
@@ -238,7 +224,6 @@ class OfflineReplayBuffer:
         return state, action, reward, next_state, truncated, done
 
 
-
 class SumTree(object):
     """
     This SumTree code is a modified version and the original code is from:
@@ -309,13 +294,16 @@ class SumTree(object):
     def total_p(self):
         return self.tree[0]  # the root
 
+
 class Memory(object):  # stored as ( s, a, r, s_ ) in SumTree
     """
     This Memory class is modified based on the original code from:
     https://github.com/jaara/AI-blog/blob/master/Seaquest-DDQN-PER.py
+    Detailed information:
+    https://yulizi123.github.io/tutorials/machine-learning/reinforcement-learning/4-6-prioritized-replay/
     """
     epsilon = 0.01  # small amount to avoid zero priority
-    alpha = 0.6  # [0~1] convert the importance of TD error to priority
+    alpha = 0.6  # [0~1] convert the importance of TD error to priority. If alpha = 0, there is no Importance Sampling.
     beta = 0.4  # importance-sampling, from initial value increasing to 1
     beta_increment_per_sampling = 0.001
     abs_err_upper = 1.  # clipped abs error

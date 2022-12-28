@@ -11,34 +11,15 @@ class ReplayBuffer:
     def __init__(self, capacity) -> None:
         self.buffer = collections.deque(maxlen=capacity)  # 队列，先进先出
         self.change_buffer = collections.deque(maxlen=capacity//10)
-        self.tmp_buffer = collections.deque(maxlen=10)
         self.number = 0
 
-    def add(self, state, action, action_param, reward, next_state, truncated, done, info):
-        # first compress state info, then add
-        state = self._compress(state)
-        next_state = self._compress(next_state)
-        if not truncated:
-            lane_center = info["offlane"]
-            reward_ttc = info["TTC"]
-            reward_eff = info["velocity"]
-            reward_com = info["Comfort"]
-            reward_eff = info["velocity"]
-            reward_yaw = info["yaw_diff"]
-        # if reward_ttc < -0.1 or reward_eff < 3:
-        #     self.change_buffer.append((state, action, action_param, reward, next_state, truncated, done))
-        # if truncated:
-        #     self.change_buffer.append((state, action, action_param, reward, next_state, truncated, done))
-        if action == 0 or action == 2:
-            self.change_buffer.append((state, action, action_param, reward, next_state, truncated, done))
-        self.tmp_buffer.append((state, action, action_param, reward, next_state, truncated, done))
-        # if info['lane_changing_reward'] > 0.1:
-        #     for buf in self.tmp_buffer:
-        #         self.change_buffer.append(buf)
-        self.buffer.append((state, action, action_param, reward, next_state, truncated, done))
-        # print("their shapes", state, action, next_state, reward_list, truncated, done)
-        # state: [1, 28], action: [1, 2], next_state: [1, 28], reward_list = [1, 6], truncated = [1, 1], done = [1, 1]
-        # all: [1, 66]
+    def add(self, transition, buffer=True):
+        """Transiton: the rl transition need to sava
+        buffer: True, add transition to self.buffer; False, add transition to self.change_buffer"""
+        if buffer:
+            self.buffer.append(transition)
+        else:
+            self.change_buffer.append(transition)
 
     def sample(self, batch_size):  # 从buffer中采样数据,数量为batch_size
         pri_size = min(batch_size // 2, len(self.change_buffer))
@@ -58,24 +39,6 @@ class ReplayBuffer:
 
     def size(self):
         return len(self.buffer)
-
-    def _compress(self, state):
-        # print('state: ', state)
-        state_left_wps = np.array(state['left_waypoints'], dtype=np.float32).reshape((1, -1))
-        state_center_wps = np.array(state['center_waypoints'], dtype=np.float32).reshape((1, -1))
-        state_right_wps = np.array(state['right_waypoints'], dtype=np.float32).reshape((1, -1))
-        state_veh_left_front = np.array(state['vehicle_info'][0], dtype=np.float32).reshape((1, -1))
-        state_veh_front = np.array(state['vehicle_info'][1], dtype=np.float32).reshape((1, -1))
-        state_veh_right_front = np.array(state['vehicle_info'][2], dtype=np.float32).reshape((1, -1))
-        state_veh_left_rear = np.array(state['vehicle_info'][3], dtype=np.float32).reshape((1, -1))
-        state_veh_rear = np.array(state['vehicle_info'][4], dtype=np.float32).reshape((1, -1))
-        state_veh_right_rear = np.array(state['vehicle_info'][5], dtype=np.float32).reshape((1, -1))
-        state_ev = np.array(state['ego_vehicle'], dtype=np.float32).reshape((1, -1))
-        state_light = np.array(state['light'], dtype=np.float32).reshape((1, -1))
-        state_ = np.concatenate((state_left_wps, state_veh_left_front, state_veh_left_rear, state_light,
-                                 state_center_wps, state_veh_front, state_veh_rear, state_light,
-                                 state_right_wps, state_veh_right_front, state_veh_right_rear, state_light, state_ev), axis=1)
-        return state_
 
 
 class veh_lane_encoder(torch.nn.Module):
@@ -545,19 +508,48 @@ class P_DQN:
     def hard_update(self, net, target_net):
         net.load_state_dict(target_net.state_dict())
 
-    def store_transition(self, transition_dict):  # how to store the episodic data to buffer
-        index = self.pointer % self.buffer_size
-        states = torch.tensor(transition_dict['states'],
-                              dtype=torch.float32).view(-1, 1).to(self.device)
-        actions = torch.tensor(transition_dict['actions'],
-                               dtype=torch.float32).to(self.device)
-        rewards = torch.tensor(transition_dict['rewards'],
-                               dtype=torch.float32).to(self.device)
-        states_next = torch.tensor(transition_dict['states_next'],
-                                   dtype=torch.float32).view(-1, 1).to(self.device)
-        dones = torch.tensor(transition_dict['dones'],
-                             dtype=torch.float32).to(self.device)
+    def store_transition(self, state, action, action_param, reward, next_state, truncated, done, info):  
+        # how to store the episodic data to buffer
+        state=self._compress(state)
+        next_state=self._compress(next_state)
+        if not truncated:
+            lane_center = info["offlane"]
+            reward_ttc = info["TTC"]
+            reward_eff = info["velocity"]
+            reward_com = info["Comfort"]
+            reward_eff = info["velocity"]
+            reward_yaw = info["yaw_diff"]
+        # if reward_ttc < -0.1 or reward_eff < 3:
+        #     self.change_buffer.append((state, action, action_param, reward, next_state, truncated, done))
+        # if truncated:
+        #     self.change_buffer.append((state, action, action_param, reward, next_state, truncated, done))
+        # if action == 0 or action == 2:
+        #     self.replay_buffer.add((state, action, action_param, reward, next_state, truncated, done),False)
+        self.replay_buffer.add((state, action, action_param, reward, next_state, truncated, done),False)
+        self.replay_buffer.add((state, action, action_param, reward, next_state, truncated, done),True)
+        # print("their shapes", state, action, next_state, reward_list, truncated, done)
+        # state: [1, 28], action: [1, 2], next_state: [1, 28], reward_list = [1, 6], truncated = [1, 1], done = [1, 1]
+        # all: [1, 66]
+
         return
+
+    def _compress(self, state):
+        # print('state: ', state)
+        state_left_wps = np.array(state['left_waypoints'], dtype=np.float32).reshape((1, -1))
+        state_center_wps = np.array(state['center_waypoints'], dtype=np.float32).reshape((1, -1))
+        state_right_wps = np.array(state['right_waypoints'], dtype=np.float32).reshape((1, -1))
+        state_veh_left_front = np.array(state['vehicle_info'][0], dtype=np.float32).reshape((1, -1))
+        state_veh_front = np.array(state['vehicle_info'][1], dtype=np.float32).reshape((1, -1))
+        state_veh_right_front = np.array(state['vehicle_info'][2], dtype=np.float32).reshape((1, -1))
+        state_veh_left_rear = np.array(state['vehicle_info'][3], dtype=np.float32).reshape((1, -1))
+        state_veh_rear = np.array(state['vehicle_info'][4], dtype=np.float32).reshape((1, -1))
+        state_veh_right_rear = np.array(state['vehicle_info'][5], dtype=np.float32).reshape((1, -1))
+        state_ev = np.array(state['ego_vehicle'], dtype=np.float32).reshape((1, -1))
+        state_light = np.array(state['light'], dtype=np.float32).reshape((1, -1))
+        state_ = np.concatenate((state_left_wps, state_veh_left_front, state_veh_left_rear, state_light,
+                                    state_center_wps, state_veh_front, state_veh_rear, state_light,
+                                    state_right_wps, state_veh_right_front, state_veh_right_rear, state_light, state_ev), axis=1)
+        return state_
 
     def save_net(self,file='./out/ddpg_final.pth'):
         state = {
