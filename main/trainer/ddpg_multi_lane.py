@@ -1,11 +1,13 @@
 import logging
 import torch
+import datetime
 import random, collections
 import numpy as np
 import matplotlib.pyplot as plt
 from tqdm import tqdm
 from algs.ddpg_multi_lane import DDPG
 from gym_carla.multi_lane.settings import ARGS
+from tensorboardX import SummaryWriter
 from gym_carla.multi_lane.carla_env import CarlaEnv
 from main.util.process import start_process, kill_process
 
@@ -18,7 +20,7 @@ LR_CRITIC = 0.002
 GAMMA = 0.9  # q值更新系数
 TAU = 0.01  # 软更新参数
 EPSILON = 0.5  # epsilon-greedy
-BUFFER_SIZE = 40000
+BUFFER_SIZE = 10000
 MINIMAL_SIZE = 10000
 BATCH_SIZE = 128
 REPLACE_A = 500
@@ -26,15 +28,14 @@ REPLACE_C = 300
 TOTAL_EPISODE = 3000
 SIGMA_DECAY = 0.9998
 TTC_threshold = 4.001
+PER_FLAG=True
 clip_grad = 10
-zero_index_gradients = False
-inverting_gradients = False
 base_name = f'origin_{TTC_threshold}_NOCA'
 
 
 def main():
     args = ARGS.parse_args()
-
+    args.modify_change_steer=False
     log_level = logging.DEBUG if args.debug else logging.INFO
     logging.basicConfig(format='%(levelname)s: %(message)s', level=log_level)
 
@@ -50,17 +51,19 @@ def main():
     a_bound = env.get_action_bound()
     a_dim = 2
 
+    time=datetime.datetime.now().strftime('%Y%m%d%H%M%S')
+    episode_writer=SummaryWriter(f"./out/runs/multi_lane/ddpg/{time}")
     n_run = 3
     rosiolling_window = 100  # 100 car following events, average score
     result = []
 
     for run in [base_name]:
         agent = DDPG(s_dim, a_dim, a_bound, GAMMA, TAU, SIGMA, THETA, EPSILON, BUFFER_SIZE, BATCH_SIZE,
-                LR_ACTOR,LR_CRITIC, clip_grad,DEVICE)
+                LR_ACTOR,LR_CRITIC, clip_grad, PER_FLAG,DEVICE)
 
         # training part
-        max_rolling_score = np.float('-5')
-        max_score = np.float('-5')
+        max_rolling_score = np.float32('-5')
+        max_score = np.float32('-5')
         var = 3
         collision_train = 0
         episode_score = []
@@ -78,46 +81,52 @@ def main():
                         state = env.reset()
                         agent.reset_noise()
                         score = 0
-                        score_s, score_e, score_c = 0, 0, 0  # part objective scores
+                        ttc, efficiency,comfort,lcen,yaw,impact,lane_change_reward = 0, 0, 0, 0, 0, 0, 0  # part objective scores
 
                         while not done and not truncated:
                             action = agent.take_action(state)
-
-                            next_state, reward, truncated, done, info = env.step(1, action)
+                            next_state, reward, truncated, done, info = env.step(0, action)
                             if env.is_effective_action() and not info['Abandon']:
                                 if 'Throttle' in info:
                                     # Input the guided action to replay buffer
                                     throttle_brake = -info['Brake'] if info['Brake'] > 0 else info['Throttle']
                                     action = np.array([[info['Steer'], throttle_brake]])
-                                    agent.replay_buffer.add(state, action, reward, next_state, truncated, done, info)
+                                    agent.store_transition(state,action,reward,next_state,truncated,done,info)
                                 else:
                                     # not work
                                     # Input the agent action to replay buffer
-                                    agent.replay_buffer.add(state, action, reward, next_state, truncated, done, info)
-                                print(f"state -- vehicle_info:{state['vehicle_info']}\n"
-                                      f"waypoints:{state['left_waypoints']}, \n"
-                                      f"waypoints:{state['center_waypoints']}, \n"
-                                      f"waypoints:{state['right_waypoints']}, \n"
-                                      f"ego_vehicle:{state['ego_vehicle']}, \n"
-                                      f"next_state -- vehicle_info:{next_state['vehicle_info']}\n"
-                                      f"waypoints:{next_state['left_waypoints']}, \n"
-                                      f"waypoints:{next_state['center_waypoints']}, \n"
-                                      f"waypoints:{next_state['right_waypoints']}, \n"
-                                      f"ego_vehicle:{next_state['ego_vehicle']}\n"
-                                      f"action:{action}\n"
-                                      f"reward:{reward}\n"
-                                      f"truncated:{truncated}, done:{done}")
-                                print()
+                                    agent.store_transition(state,action,reward,next_state,truncated,done,info)
+                                   
+                                print(
+                                        f"state -- vehicle_info:{state['vehicle_info']}\n"
+                                        #f"waypoints:{state['left_waypoints']}, \n"
+                                        f"waypoints:{state['center_waypoints']}, \n"
+                                        #f"waypoints:{state['right_waypoints']}, \n"
+                                        f"ego_vehicle:{state['ego_vehicle']}, \n"
+                                        f"light info: {state['light']}\n"
+                                        f"next_state -- vehicle_info:{next_state['vehicle_info']}\n"
+                                        #f"waypoints:{next_state['left_waypoints']}, \n"
+                                        f"waypoints:{next_state['center_waypoints']}, \n"
+                                        #f"waypoints:{next_state['right_waypoints']}, \n"
+                                        f"ego_vehicle:{next_state['ego_vehicle']}\n"
+                                        f"light info: {next_state['light']}\n"
+                                        f"action:{action}, reward:{reward}, truncated:{truncated}, done:{done}")
+                            print()
 
-                            if agent.replay_buffer.size() > MINIMAL_SIZE:
+                            if agent.replay_buffer.size() >= MINIMAL_SIZE:
                                 logging.info("Learn begin %f" % SIGMA)
                                 agent.learn()
 
                             state = next_state
                             score += reward
-                            score_s += info['TTC']
-                            score_e += info['Efficiency']
-                            score_c += info['Comfort']
+                            if not truncated:
+                                ttc += info['TTC']
+                                efficiency += info['Efficiency']
+                                comfort += info['Comfort']
+                                lcen += info['Lane_center']
+                                yaw += info['Yaw']
+                                impact += info['impact']
+                                lane_change_reward += info['lane_changing_reward']
 
                             if env.total_step==args.pre_train_steps:
                                 agent.save_net('./out/ddpg_pre_trained.pth')
@@ -133,15 +142,29 @@ def main():
                             truncated = False
 
                         # record episode results
-                        episode_score.append(score)
-                        score_safe.append(score_s)
-                        score_efficiency.append(score_e)
-                        score_comfort.append(score_c)
-                        # rolling_score.append(np.mean(episode_score[max]))
-                        cum_collision_num.append(collision_train)
+                        if env.RL_switch:
+                            episode_writer.add_scalar('Total_Reward',score,i*(TOTAL_EPISODE // 10)+i_episode)
+                            score/=env.time_step+1
+                            episode_writer.add_scalar('Avg_Reward',score,i*(TOTAL_EPISODE // 10)+i_episode)
+                            episode_writer.add_scalar('Time_Steps',env.time_step,i*(TOTAL_EPISODE // 10)+i_episode)
+                            episode_writer.add_scalar('TTC',ttc/(env.time_step+1), i*(TOTAL_EPISODE // 10)+i_episode)
+                            episode_writer.add_scalar('Efficiency',efficiency/(env.time_step+1), i*(TOTAL_EPISODE // 10)+i_episode)
+                            episode_writer.add_scalar('Comfort',comfort/(env.time_step+1), i*(TOTAL_EPISODE // 10)+i_episode)
+                            episode_writer.add_scalar('Lcen',lcen/(env.time_step+1), i*(TOTAL_EPISODE // 10)+i_episode)
+                            episode_writer.add_scalar('Yaw',yaw/(env.time_step+1), i*(TOTAL_EPISODE // 10)+i_episode)
+                            episode_writer.add_scalar('Impact',impact/(env.time_step+1), i*(TOTAL_EPISODE // 10)+i_episode)
+                            episode_writer.add_scalar('Lane_change_reward',lane_change_reward/(env.time_step+1), i*(TOTAL_EPISODE // 10)+i_episode)
+                            
+                            episode_score.append(score)
+                            score_safe.append(ttc)
+                            score_efficiency.append(efficiency)
+                            score_comfort.append(comfort)
+                            # rolling_score.append(np.mean(episode_score[max]))
+                            cum_collision_num.append(collision_train)
 
-                        if max_score < score:
-                            max_score = score
+                            if max_score < score:
+                                max_score = score
+                                agent.save_net('./out/ddpg_optimal.pth')
 
                         """ if rolling_score[rolling_score.__len__-1]>max_rolling_score:
                             max_rolling_score=rolling_score[rolling_score.__len__-1]
@@ -165,7 +188,6 @@ def main():
                     #     globals()['SIGMA']*=SIGMA_DECAY
                     #     agent.set_sigma(SIGMA)
 
-            agent.save_net()
             np.save(f'./out/result_{run}.npy', result)
         except KeyboardInterrupt:
             logging.info("Premature Terminated")
@@ -173,6 +195,8 @@ def main():
         #      logging.info(e.args)
         finally:
             env.__del__()
+            episode_writer.close()
+            agent.save_net('./out/ddpg_final.pth')
             logging.info('\nDone.')
 
 

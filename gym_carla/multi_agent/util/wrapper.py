@@ -100,7 +100,7 @@ def process_lane_wp(wps_list, ego_vehicle_z, ego_forward_vector, my_sample_ratio
         yaw_diff = math.degrees(get_yaw_diff(wp.transform.get_forward_vector(), ego_forward_vector))
         yaw_diff = yaw_diff / 90
         if idx % my_sample_ratio == my_sample_ratio-1:
-            wps.append([delta_z/2, yaw_diff, lane_offset])
+            wps.append([delta_z/3, yaw_diff, lane_offset])
         idx = idx + 1
     return np.array(wps)
 

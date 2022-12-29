@@ -1,9 +1,73 @@
 import random, collections
 import numpy as np
-import torch
+import torch,logging
 from torch import nn
 import torch.nn.functional as F
 from torch.autograd import Variable
+from algs.util.replay_buffer import PriReplayBuffer,SumTree
+
+
+class PriReplayBuffer(object):  # stored as ( s, a, r, s_ ) in SumTree
+    """
+    Prioritized experience replay
+    This Memory class is modified based on the original code from:
+    https://github.com/jaara/AI-blog/blob/master/Seaquest-DDQN-PER.py
+    Detailed information:
+    https://yulizi123.github.io/tutorials/machine-learning/reinforcement-learning/4-6-prioritized-replay/
+    """
+    epsilon = 0.01  # small amount to avoid zero priority
+    alpha = 0.6  # [0~1] convert the importance of TD error to priority. If alpha = 0, there is no Importance Sampling.
+    beta = 0.4  # importance-sampling, from initial value increasing to 1
+    beta_increment_per_sampling = 0.001
+    abs_err_upper = 1.  # clipped abs error
+
+    def __init__(self, capacity):
+        self.tree = SumTree(capacity)
+
+    def add(self, transition):
+        max_p = np.max(self.tree.tree[-self.tree.capacity:])
+        if max_p == 0:
+            max_p = self.abs_err_upper
+        self.tree.add(max_p, transition)   # set the max p for new p
+
+    def sample(self, n):
+        if self.tree.size!=self.tree.capacity:
+            logging.error("Prioritized Experience Replay Buffer Should Not Sample Before Full!")
+        b_idx, ISWeights = np.empty((n,), dtype=np.int32), np.empty((n, 1))
+        b_state,b_action,b_action_param,b_reward,b_next_state,b_truncated,b_done,b_info=[],[],[],[],[],[],[],[]
+        pri_seg = self.tree.total_p / n       # priority segment
+        self.beta = np.min([1., self.beta + self.beta_increment_per_sampling])  # max = 1
+        
+        min_prob = np.min(self.tree.tree[-self.tree.capacity:]) / self.tree.total_p     # for later calculate ISweight
+        for i in range(n):
+            a, b = pri_seg * i, pri_seg * (i + 1)
+            v = np.random.uniform(a, b) #sample from  [a, b) 
+            idx, p, data = self.tree.get_leaf(v)
+            prob = p / self.tree.total_p
+            ISWeights[i, 0] = np.power(prob/min_prob, -self.beta)
+            b_idx[i]=idx
+            b_state.append(data[0])
+            b_action.append(data[1])
+            b_action_param.append(data[2])
+            b_reward.append(data[3])
+            b_next_state.append(data[4])
+            b_truncated.append(data[5])
+            b_done.append(data[6])
+            b_info.append(data[7])
+
+        # print(self.tree.tree)
+        # print(b_idx)
+        return b_idx, ISWeights, (b_state,b_action,b_action_param,b_reward,b_next_state,b_truncated,b_done,b_info)
+
+    def batch_update(self, tree_idx, abs_errors):
+        abs_errors += self.epsilon  # convert to abs and avoid 0
+        clipped_errors = np.minimum(abs_errors, self.abs_err_upper)
+        ps = np.power(clipped_errors, self.alpha)
+        for ti, p in zip(tree_idx, ps):
+            self.tree.update(ti, p)
+    
+    def size(self):
+        return self.tree.size
 
 
 class ReplayBuffer:
@@ -241,7 +305,7 @@ class QValueNet_multi_td3(torch.nn.Module):
 
 class P_DQN:
     def __init__(self, state_dim, action_dim, action_bound, gamma, tau, sigma, sigma_steer, sigma_acc, theta, epsilon,
-                 buffer_size, batch_size, actor_lr, critic_lr, clip_grad, zero_index_gradients, inverting_gradients, device) -> None:
+                 buffer_size, batch_size, actor_lr, critic_lr, clip_grad, zero_index_gradients, inverting_gradients, per_flag,device) -> None:
         self.learn_time = 0
         self.replace_a = 0
         self.replace_c = 0
@@ -259,7 +323,7 @@ class P_DQN:
         self.action_parameter_range_numpy = np.array([2, 2, 2, 2, 2, 2])
         self.gamma, self.tau, self.sigma, self.epsilon = gamma, tau, sigma, epsilon  # sigma:高斯噪声的标准差，均值直接设置为0
         self.steer_noise, self.tb_noise = sigma_steer, sigma_acc
-        self.buffer_size, self.batch_size, self.device = buffer_size, batch_size, device
+        self.batch_size, self.device = batch_size, device
         self.actor_lr, self.critic_lr = actor_lr, critic_lr
         self.clip_grad = clip_grad
         self.indexd = zero_index_gradients
@@ -268,9 +332,13 @@ class P_DQN:
         self.add_actor_noise = False
         self.td3 = False
         self.policy_freq = 2
+        self.per_flag=per_flag
         # adjust different types of replay buffer
         #self.replay_buffer = Split_ReplayBuffer(buffer_size)
-        self.replay_buffer = ReplayBuffer(buffer_size)
+        if not self.per_flag:
+            self.replay_buffer = ReplayBuffer(buffer_size)
+        else:
+            self.replay_buffer = PriReplayBuffer(buffer_size)
         # self.replay_buffer = offline_replay_buffer()
         """self.memory=torch.tensor((buffer_size,self.s_dim*2+self.a_dim+1+1),
             dtype=torch.float32).to(self.device)"""
@@ -294,7 +362,10 @@ class P_DQN:
 
         self.actor_optimizer = torch.optim.Adam(self.actor.parameters(), lr=actor_lr)
         self.critic_optimizer = torch.optim.Adam(self.critic.parameters(), lr=critic_lr)
-        self.loss = nn.MSELoss()
+        if self.per_flag:
+            self.loss = nn.MSELoss(reduction='none')
+        else:
+            self.loss = nn.MSELoss()
 
         # self.steer_noise = OrnsteinUhlenbeckActionNoise(self.sigma, self.theta)
         # self.tb_noise = OrnsteinUhlenbeckActionNoise(self.sigma, self.theta)
@@ -409,7 +480,14 @@ class P_DQN:
         #     self.train = False
         self.replace_a += 1
         self.replace_c += 1
-        b_s, b_a, b_a_param, b_r, b_ns, b_t, b_d = self.replay_buffer.sample(self.batch_size)
+        if not self.per_flag:
+            b_s, b_a, b_a_param, b_r, b_ns, b_t, b_d = self.replay_buffer.sample(self.batch_size)
+        else:
+            b_idx,b_ISWeights,b_transition = self.replay_buffer.sample(self.batch_size)
+            b_s, b_a, b_a_param, b_r, b_ns, b_t, b_d, b_i = b_transition[0], b_transition[1], b_transition[2], b_transition[3], b_transition[4], \
+                b_transition[5], b_transition[6],b_transition[7]
+            self.ISWeights=torch.tensor(b_ISWeights,dtype=torch.float32).view((self.batch_size,-1)).to(self.device)
+
         # 此处得到的batch是否是pytorch.tensor?
         batch_s = torch.tensor(b_s, dtype=torch.float32).view((self.batch_size, -1)).to(self.device)
         batch_ns = torch.tensor(b_ns, dtype=torch.float32).view((self.batch_size, -1)).to(self.device)
@@ -435,7 +513,14 @@ class P_DQN:
         if not self.td3:
             q_values = self.critic(batch_s, batch_a_param)
             q = q_values.gather(1, batch_a.view(-1, 1)).squeeze()
-            loss_q = self.loss(q, q_targets)
+            if not self.per_flag:
+                loss_q = self.loss(q, q_targets)
+            else:
+                loss=self.loss(q,q_targets)
+                abs_loss=torch.abs(q-q_targets)
+                abs_loss=np.array(abs_loss.etach().cpu().numpy())
+                loss_q=torch.mean(loss*self.ISWeights)
+                self.replay_buffer.batch_update(b_idx,abs_loss)
         else:
             q_values1, q_values2 = self.critic(batch_s, batch_a_param)
             q_values = torch.min(q_values1, q_values2)
@@ -510,8 +595,27 @@ class P_DQN:
 
     def store_transition(self, state, action, action_param, reward, next_state, truncated, done, info):  
         # how to store the episodic data to buffer
-        state=self._compress(state)
-        next_state=self._compress(next_state)
+        def _compress(state):
+            # print('state: ', state)
+            state_left_wps = np.array(state['left_waypoints'], dtype=np.float32).reshape((1, -1))
+            state_center_wps = np.array(state['center_waypoints'], dtype=np.float32).reshape((1, -1))
+            state_right_wps = np.array(state['right_waypoints'], dtype=np.float32).reshape((1, -1))
+            state_veh_left_front = np.array(state['vehicle_info'][0], dtype=np.float32).reshape((1, -1))
+            state_veh_front = np.array(state['vehicle_info'][1], dtype=np.float32).reshape((1, -1))
+            state_veh_right_front = np.array(state['vehicle_info'][2], dtype=np.float32).reshape((1, -1))
+            state_veh_left_rear = np.array(state['vehicle_info'][3], dtype=np.float32).reshape((1, -1))
+            state_veh_rear = np.array(state['vehicle_info'][4], dtype=np.float32).reshape((1, -1))
+            state_veh_right_rear = np.array(state['vehicle_info'][5], dtype=np.float32).reshape((1, -1))
+            state_ev = np.array(state['ego_vehicle'], dtype=np.float32).reshape((1, -1))
+            state_light = np.array(state['light'], dtype=np.float32).reshape((1, -1))
+            state_ = np.concatenate((state_left_wps, state_veh_left_front, state_veh_left_rear, state_light,
+                                        state_center_wps, state_veh_front, state_veh_rear, state_light,
+                                        state_right_wps, state_veh_right_front, state_veh_right_rear, state_light, state_ev), axis=1)
+            return state_
+
+        state=_compress(state)
+        next_state=_compress(next_state)
+
         if not truncated:
             lane_center = info["offlane"]
             reward_ttc = info["TTC"]
@@ -523,33 +627,17 @@ class P_DQN:
         #     self.change_buffer.append((state, action, action_param, reward, next_state, truncated, done))
         # if truncated:
         #     self.change_buffer.append((state, action, action_param, reward, next_state, truncated, done))
-        # if action == 0 or action == 2:
-        #     self.replay_buffer.add((state, action, action_param, reward, next_state, truncated, done),False)
-        self.replay_buffer.add((state, action, action_param, reward, next_state, truncated, done),False)
-        self.replay_buffer.add((state, action, action_param, reward, next_state, truncated, done),True)
+        if not self.per_flag:
+            if action == 0 or action == 2:
+                self.replay_buffer.add((state, action, action_param, reward, next_state, truncated, done),False)
+            self.replay_buffer.add((state, action, action_param, reward, next_state, truncated, done),True)
+        else:
+            self.replay_buffer.add((state, action, action_param, reward, next_state, truncated, done))
         # print("their shapes", state, action, next_state, reward_list, truncated, done)
         # state: [1, 28], action: [1, 2], next_state: [1, 28], reward_list = [1, 6], truncated = [1, 1], done = [1, 1]
         # all: [1, 66]
 
         return
-
-    def _compress(self, state):
-        # print('state: ', state)
-        state_left_wps = np.array(state['left_waypoints'], dtype=np.float32).reshape((1, -1))
-        state_center_wps = np.array(state['center_waypoints'], dtype=np.float32).reshape((1, -1))
-        state_right_wps = np.array(state['right_waypoints'], dtype=np.float32).reshape((1, -1))
-        state_veh_left_front = np.array(state['vehicle_info'][0], dtype=np.float32).reshape((1, -1))
-        state_veh_front = np.array(state['vehicle_info'][1], dtype=np.float32).reshape((1, -1))
-        state_veh_right_front = np.array(state['vehicle_info'][2], dtype=np.float32).reshape((1, -1))
-        state_veh_left_rear = np.array(state['vehicle_info'][3], dtype=np.float32).reshape((1, -1))
-        state_veh_rear = np.array(state['vehicle_info'][4], dtype=np.float32).reshape((1, -1))
-        state_veh_right_rear = np.array(state['vehicle_info'][5], dtype=np.float32).reshape((1, -1))
-        state_ev = np.array(state['ego_vehicle'], dtype=np.float32).reshape((1, -1))
-        state_light = np.array(state['light'], dtype=np.float32).reshape((1, -1))
-        state_ = np.concatenate((state_left_wps, state_veh_left_front, state_veh_left_rear, state_light,
-                                    state_center_wps, state_veh_front, state_veh_rear, state_light,
-                                    state_right_wps, state_veh_right_front, state_veh_right_rear, state_light, state_ev), axis=1)
-        return state_
 
     def save_net(self,file='./out/ddpg_final.pth'):
         state = {

@@ -1,3 +1,4 @@
+import logging
 import random, collections
 import numpy as np
 
@@ -238,13 +239,18 @@ class SumTree(object):
         self.tree = np.zeros(2 * capacity - 1)
         # [--------------Parent nodes-------------][-------leaves to recode priority-------]
         #             size: capacity - 1                       size: capacity
-        self.data = np.zeros(capacity, dtype=object)  # for all transitions
+        #self.data = np.zeros(capacity, dtype=object)  # for all transitions
+        self.data=collections.deque(maxlen=capacity)
         # [--------------data frame-------------]
         #             size: capacity
 
-    def add(self, p, data):
+    def add(self, p, transition):
         tree_idx = self.data_pointer + self.capacity - 1
-        self.data[self.data_pointer] = data  # update data_frame
+        #self.data[self.data_pointer] = data  # update data_frame
+        if self.size<self.capacity:
+            self.data.append(transition)
+        else:
+            self.data[self.data_pointer]=transition
         self.update(tree_idx, p)  # update tree_frame
 
         self.data_pointer += 1
@@ -294,9 +300,14 @@ class SumTree(object):
     def total_p(self):
         return self.tree[0]  # the root
 
+    @property
+    def size(self):
+        return len(self.data)
 
-class Memory(object):  # stored as ( s, a, r, s_ ) in SumTree
+
+class PriReplayBuffer(object):  # stored as ( s, a, r, s_ ) in SumTree
     """
+    Prioritized experience replay
     This Memory class is modified based on the original code from:
     https://github.com/jaara/AI-blog/blob/master/Seaquest-DDQN-PER.py
     Detailed information:
@@ -311,26 +322,39 @@ class Memory(object):  # stored as ( s, a, r, s_ ) in SumTree
     def __init__(self, capacity):
         self.tree = SumTree(capacity)
 
-    def store(self, transition):
+    def add(self, transition):
         max_p = np.max(self.tree.tree[-self.tree.capacity:])
         if max_p == 0:
             max_p = self.abs_err_upper
         self.tree.add(max_p, transition)   # set the max p for new p
 
     def sample(self, n):
-        b_idx, b_memory, ISWeights = np.empty((n,), dtype=np.int32), np.empty((n, self.tree.data[0].size)), np.empty((n, 1))
+        if self.tree.size!=self.tree.capacity:
+            logging.error("Prioritized Experience Replay Buffer Should Not Sample Before Full!")
+        b_idx, ISWeights = np.empty((n,), dtype=np.int32), np.empty((n, 1))
+        b_state,b_action,b_reward,b_next_state,b_truncated,b_done,b_info=[],[],[],[],[],[],[]
         pri_seg = self.tree.total_p / n       # priority segment
         self.beta = np.min([1., self.beta + self.beta_increment_per_sampling])  # max = 1
-
+        
         min_prob = np.min(self.tree.tree[-self.tree.capacity:]) / self.tree.total_p     # for later calculate ISweight
         for i in range(n):
             a, b = pri_seg * i, pri_seg * (i + 1)
-            v = np.random.uniform(a, b)
+            v = np.random.uniform(a, b) #sample from  [a, b) 
             idx, p, data = self.tree.get_leaf(v)
             prob = p / self.tree.total_p
             ISWeights[i, 0] = np.power(prob/min_prob, -self.beta)
-            b_idx[i], b_memory[i, :] = idx, data
-        return b_idx, b_memory, ISWeights
+            b_idx[i]=idx
+            b_state.append(data[0])
+            b_action.append(data[1])
+            b_reward.append(data[2])
+            b_next_state.append(data[3])
+            b_truncated.append(data[4])
+            b_done.append(data[5])
+            b_info.append(data[6])
+
+        # print(self.tree.tree)
+        # print(b_idx)
+        return b_idx, ISWeights, (b_state,b_action,b_reward,b_next_state,b_truncated,b_done,b_info)
 
     def batch_update(self, tree_idx, abs_errors):
         abs_errors += self.epsilon  # convert to abs and avoid 0
@@ -338,3 +362,6 @@ class Memory(object):  # stored as ( s, a, r, s_ ) in SumTree
         ps = np.power(clipped_errors, self.alpha)
         for ti, p in zip(tree_idx, ps):
             self.tree.update(ti, p)
+    
+    def size(self):
+        return self.tree.size

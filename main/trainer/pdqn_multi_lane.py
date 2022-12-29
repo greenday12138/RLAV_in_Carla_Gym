@@ -24,7 +24,7 @@ LR_CRITIC = 0.0002
 GAMMA = 0.9  # q值更新系数
 TAU = 0.01  # 软更新参数
 EPSILON = 0.5  # epsilon-greedy
-BUFFER_SIZE = 40000
+BUFFER_SIZE = 10000
 MINIMAL_SIZE = 10000
 BATCH_SIZE = 128
 REPLACE_A = 500
@@ -32,6 +32,7 @@ REPLACE_C = 300
 TOTAL_EPISODE = 5000
 SIGMA_DECAY = 0.9999
 TTC_threshold = 4.001
+PER_FLAG=True
 modify_change_steer=False
 clip_grad = 10
 zero_index_gradients = True
@@ -57,14 +58,14 @@ def main():
     a_dim = 2
 
     time=datetime.datetime.now().strftime('%Y%m%d%H%M%S')
-    episode_writer=SummaryWriter(f"./out/runs/pdqn/{time}")
+    episode_writer=SummaryWriter(f"./out/runs/multi_lane/pdqn/{time}")
     n_run = 3
     rosiolling_window = 100  # 100 car following events, average score
     result = []
 
     for run in [base_name]:
         agent = P_DQN(s_dim, a_dim, a_bound, GAMMA, TAU, SIGMA_STEER, SIGMA, SIGMA_ACC, THETA, EPSILON, BUFFER_SIZE, BATCH_SIZE, LR_ACTOR,
-                     LR_CRITIC, clip_grad, zero_index_gradients, inverting_gradients, DEVICE)
+                     LR_CRITIC, clip_grad, zero_index_gradients, inverting_gradients,PER_FLAG, DEVICE)
 
         # training part
         max_rolling_score = np.float32('-5')
@@ -117,7 +118,6 @@ def main():
 
                             state = next_state
                             score += reward
-                            
                             if not truncated:
                                 ttc += info['TTC']
                                 efficiency += info['Efficiency']

@@ -1,409 +1,9 @@
 import random, collections
 import numpy as np
 import torch
-from torch import nn
 import torch.nn.functional as F
-
-
-# class ReplayBuffer:
-#     """经验回放池"""
-
-#     def __init__(self, capacity) -> None:
-#         self.buffer = collections.deque(maxlen=capacity)  # 队列，先进先出
-#         self.change_buffer = collections.deque(maxlen=capacity//10)
-#         self.tmp_buffer = collections.deque(maxlen=10)
-#         self.number = 0
-#         # self.all_buffer = np.zeros((1000000, 66), dtype=np.float32)
-#         # with open('./out/replay_buffer_test.txt', 'w') as f:
-#         #     pass
-
-#     def add(self, state, action, reward, next_state, truncated, done, info):
-#         # first compress state info, then add
-#         state = self._compress(state)
-#         next_state = self._compress(next_state)
-#         self.tmp_buffer.append((state, action, reward, next_state, truncated, done))
-#         lane_center = info["offlane"]
-#         reward_ttc = info["TTC"]
-#         if reward_ttc < -0.1:
-#             self.change_buffer.append((state, action, reward, next_state, truncated, done))
-#         if lane_center > 1.0:
-#             self.change_buffer.append((state, action, reward, next_state, truncated, done))
-#         if abs(info['lane_changing_reward']) > 0.1:
-#             for buf in self.tmp_buffer:
-#                 self.change_buffer.append(buf)
-#         self.buffer.append((state, action, reward, next_state, truncated, done))
-#         reward_com = info["Comfort"]
-
-#         reward_eff = info["velocity"]
-#         reward_yaw = info["yaw_diff"]
-#         # reward_list = np.array([[reward, reward_ttc, reward_com, reward_eff, reward_lan, reward_yaw]])
-#         print("reward_eff: ", reward_eff)
-#         # print("their shapes", state, action, next_state, reward_list, truncated, done)
-#         # state: [1, 28], action: [1, 2], next_state: [1, 28], reward_list = [1, 6], truncated = [1, 1], done = [1, 1]
-#         # all: [1, 66]
-#         if truncated == False or truncated == 0:
-#             truncated = 0
-#         else:
-#             truncated = 1
-#         if done == False or done == 0:
-#             done = 0
-#         else:
-#             done = 1
-
-
-#     def sample(self, batch_size):  # 从buffer中采样数据,数量为batch_size
-#         pri_size = min(batch_size // 4, len(self.change_buffer))
-#         normal_size = batch_size - pri_size
-#         transition = random.sample(self.buffer, normal_size)
-#         state, action, reward, next_state, truncated, done = zip(*transition)
-#         pri_transition = random.sample(self.change_buffer, pri_size)
-#         pri_state, pri_action, pri_reward, pri_next_state, pri_truncated, pri_done = zip(*pri_transition)
-#         state = np.concatenate((state, pri_state), axis=0)
-#         action = np.concatenate((action, pri_action), axis=0)
-#         reward = np.concatenate((reward, pri_reward), axis=0)
-#         next_state = np.concatenate((next_state, pri_next_state), axis=0)
-#         truncated = np.concatenate((truncated, pri_truncated), axis=0)
-#         done = np.concatenate((done, pri_done), axis=0)
-#         return state, action, reward, next_state, truncated, done
-
-#     def size(self):
-#         return len(self.buffer)
-
-#     def _compress(self, state):
-#         # print('state: ', state)
-#         state_left_wps = np.array(state['left_waypoints'], dtype=np.float32).reshape((1, -1))
-#         state_center_wps = np.array(state['center_waypoints'], dtype=np.float32).reshape((1, -1))
-#         state_right_wps = np.array(state['right_waypoints'], dtype=np.float32).reshape((1, -1))
-#         state_veh_left_front = np.array(state['vehicle_info'][0], dtype=np.float32).reshape((1, -1))
-#         state_veh_front = np.array(state['vehicle_info'][1], dtype=np.float32).reshape((1, -1))
-#         state_veh_right_front = np.array(state['vehicle_info'][2], dtype=np.float32).reshape((1, -1))
-#         state_veh_left_rear = np.array(state['vehicle_info'][3], dtype=np.float32).reshape((1, -1))
-#         state_veh_rear = np.array(state['vehicle_info'][4], dtype=np.float32).reshape((1, -1))
-#         state_veh_right_rear = np.array(state['vehicle_info'][5], dtype=np.float32).reshape((1, -1))
-#         state_ev = np.array(state['ego_vehicle'], dtype=np.float32).reshape((1, -1))
-
-#         state_ = np.concatenate((state_left_wps, state_veh_left_front, state_veh_left_rear,
-#                                  state_center_wps, state_veh_front, state_veh_rear,
-#                                  state_right_wps, state_veh_right_front, state_veh_right_rear, state_ev), axis=1)
-#         return state_
-
-class ReplayBuffer:
-
-    def __init__(self, capacity) -> None:
-        self.buffer = collections.deque(maxlen=capacity)  # 队列，先进先出
-        self.change_buffer = collections.deque(maxlen=capacity//10)
-        self.tmp_buffer = collections.deque(maxlen=10)
-        self.number = 0
-
-    def add(self, state, action, action_param, reward, next_state, truncated, done, info):
-        # first compress state info, then add
-        state = self._compress(state)
-        next_state = self._compress(next_state)
-        if not truncated:
-            lane_center = info["offlane"]
-            reward_ttc = info["TTC"]
-            reward_eff = info["velocity"]
-            reward_com = info["Comfort"]
-            reward_eff = info["velocity"]
-            reward_yaw = info["yaw_diff"]
-        # if reward_ttc < -0.1 or reward_eff < 3:
-        #     self.change_buffer.append((state, action, action_param, reward, next_state, truncated, done))
-        # if truncated:
-        #     self.change_buffer.append((state, action, action_param, reward, next_state, truncated, done))
-        if action == 0 or action == 2:
-            self.change_buffer.append((state, action, action_param, reward, next_state, truncated, done))
-        self.tmp_buffer.append((state, action, action_param, reward, next_state, truncated, done))
-        # if info['lane_changing_reward'] > 0.1:
-        #     for buf in self.tmp_buffer:
-        #         self.change_buffer.append(buf)
-        self.buffer.append((state, action, action_param, reward, next_state, truncated, done))
-        # print("their shapes", state, action, next_state, reward_list, truncated, done)
-        # state: [1, 28], action: [1, 2], next_state: [1, 28], reward_list = [1, 6], truncated = [1, 1], done = [1, 1]
-        # all: [1, 66]
-
-    def sample(self, batch_size):  # 从buffer中采样数据,数量为batch_size
-        pri_size = min(batch_size // 2, len(self.change_buffer))
-        normal_size = batch_size - pri_size
-        transition = random.sample(self.buffer, normal_size)
-        state, action, action_param, reward, next_state, truncated, done = zip(*transition)
-        pri_transition = random.sample(self.change_buffer, pri_size)
-        pri_state, pri_action, pri_action_param, pri_reward, pri_next_state, pri_truncated, pri_done = zip(*pri_transition)
-        state = np.concatenate((state, pri_state), axis=0)
-        action = np.concatenate((action, pri_action), axis=0)
-        action_param = np.concatenate((action_param, pri_action_param), axis=0)
-        reward = np.concatenate((reward, pri_reward), axis=0)
-        next_state = np.concatenate((next_state, pri_next_state), axis=0)
-        truncated = np.concatenate((truncated, pri_truncated), axis=0)
-        done = np.concatenate((done, pri_done), axis=0)
-        return state, action, action_param, reward, next_state, truncated, done
-
-    def size(self):
-        return len(self.buffer)
-
-    def _compress(self, state):
-        # print('state: ', state)
-        state_left_wps = np.array(state['left_waypoints'], dtype=np.float32).reshape((1, -1))
-        state_center_wps = np.array(state['center_waypoints'], dtype=np.float32).reshape((1, -1))
-        state_right_wps = np.array(state['right_waypoints'], dtype=np.float32).reshape((1, -1))
-        state_veh_left_front = np.array(state['vehicle_info'][0], dtype=np.float32).reshape((1, -1))
-        state_veh_front = np.array(state['vehicle_info'][1], dtype=np.float32).reshape((1, -1))
-        state_veh_right_front = np.array(state['vehicle_info'][2], dtype=np.float32).reshape((1, -1))
-        state_veh_left_rear = np.array(state['vehicle_info'][3], dtype=np.float32).reshape((1, -1))
-        state_veh_rear = np.array(state['vehicle_info'][4], dtype=np.float32).reshape((1, -1))
-        state_veh_right_rear = np.array(state['vehicle_info'][5], dtype=np.float32).reshape((1, -1))
-        state_ev = np.array(state['ego_vehicle'], dtype=np.float32).reshape((1, -1))
-        state_light = np.array(state['light'], dtype=np.float32).reshape((1, -1))
-        state_ = np.concatenate((state_left_wps, state_veh_left_front, state_veh_left_rear, state_light,
-                                 state_center_wps, state_veh_front, state_veh_rear, state_light,
-                                 state_right_wps, state_veh_right_front, state_veh_right_rear, state_light, state_ev), axis=1)
-        return state_
-
-# class PolicyNet(torch.nn.Module):
-#     def __init__(self, state_dim, action_bound, train=True) -> None:
-#         # the action bound and state_dim here are dicts
-#         super().__init__()
-#         self.state_dim = state_dim
-#         self.action_bound = action_bound
-#         self.train = train
-#         # self.LaneEncoder = LaneEncoder()
-#         # self.layer_norm=nn.LayerNorm(128)
-#         # self.batch_norm=nn.BatchNorm2d(128)
-#         self.dropout = nn.Dropout(0.2)
-
-#         self.fc1_1 = nn.Linear(state_dim['waypoints'], 64)
-#         self.fc1_2 = nn.Linear(state_dim['ego_vehicle'],32)
-#         self.fc1_3 = nn.Linear(state_dim['vehicle_front'], 32)
-#         # concat the first layer output and input to second layer
-#         self.fc2 = nn.Linear(128,128)
-#         self.fc_out = nn.Linear(128, 2)
-
-#         # torch.nn.init.normal_(self.fc1_1.weight.data,0,0.01)
-#         # torch.nn.init.normal_(self.fc1_2.weight.data,0,0.01)
-#         # torch.nn.init.normal_(self.fc_out.weight.data,0,0.01)
-#         # torch.nn.init.normal_(self.fc_out.weight.data,0,0.01)
-#         # torch.nn.init.xavier_normal_(self.fc1_1.weight.data)
-#         # torch.nn.init.xavier_normal_(self.fc1_2.weight.data)
-#         # torch.nn.init.xavier_normal_(self.fc_out.weight.data)
-
-#     def forward(self, state):
-#         # state : waypoints info+ vehicle_front info, shape: batch_size*22, first 20 elements are waypoints info,
-#         # the rest are vehicle info
-#         state_wp = state[:, :self.state_dim['waypoints']]
-#         state_ev = state[:,-self.state_dim['vehicle_front']-self.state_dim['ego_vehicle']:-self.state_dim['vehicle_front']]
-#         state_vf = state[:, -self.state_dim['vehicle_front']:]
-#         state_wp = F.relu(self.fc1_1(state_wp))
-#         state_ev=F.relu((self.fc1_2(state_ev)))
-#         state_vf = F.relu(self.fc1_3(state_vf))
-#         state_ = torch.cat((state_wp,state_ev, state_vf), dim=1)
-#         hidden = F.relu(self.fc2(state_))
-#         action = torch.tanh(self.fc_out(hidden))
-#         # steer,throttle_brake=torch.split(out,split_size_or_sections=[1,1],dim=1)
-#         # steer=steer.clone()
-#         # throttle_brake=throttle_brake.clone()
-#         # steer*=self.action_bound['steer']
-#         # throttle=throttle_brake.clone()
-#         # brake=throttle_brake.clone()
-#         # for i in range(throttle.shape[0]):
-#         #     if throttle[i][0]<0:
-#         #         throttle[i][0]=0
-#         #     if brake[i][0]>0:
-#         #         brake[i][0]=0
-#         # throttle*=self.action_bound['throttle']
-#         # brake*=self.action_bound['brake']
-
-#         return action
-
-# class veh_lane_encoder(torch.nn.Module):
-#     def __init__(self, state_dim, train=True):
-#         super().__init__()
-#         self.state_dim = state_dim
-#         self.train = train
-#         self.lane_encoder = nn.Linear(state_dim['waypoints'], 32)
-#         self.veh_encoder = nn.Linear(state_dim['companion_vehicle'] * 2, 32)
-#         self.agg = nn.Linear(64, 64)
-
-#     def forward(self, lane_veh):
-#         lane = lane_veh[:, :self.state_dim["waypoints"]]
-#         veh = lane_veh[:, self.state_dim["waypoints"]:]
-#         lane_enc = F.relu(self.lane_encoder(lane))
-#         veh_enc = F.relu(self.veh_encoder(veh))
-#         state_cat = torch.cat((lane_enc, veh_enc), dim=1)
-#         state_enc = F.relu(self.agg(state_cat))
-#         return state_enc
-
-
-# class PolicyNet_multi(torch.nn.Module):
-#     def __init__(self, state_dim, action_bound, train=True) -> None:
-#         # the action bound and state_dim here are dicts
-#         super().__init__()
-#         self.state_dim = state_dim
-#         self.action_bound = action_bound
-#         self.train = train
-#         self.left_encoder = veh_lane_encoder(self.state_dim)
-#         self.center_encoder = veh_lane_encoder(self.state_dim)
-#         self.right_encoder = veh_lane_encoder(self.state_dim)
-#         self.ego_encoder = nn.Linear(self.state_dim['ego_vehicle'], 64)
-#         self.fc = nn.Linear(256, 256)
-#         self.fc_out = nn.Linear(256, 2)
-#         # torch.nn.init.normal_(self.fc1_1.weight.data,0,0.01)
-#         # torch.nn.init.normal_(self.fc1_2.weight.data,0,0.01)
-#         # torch.nn.init.normal_(self.fc_out.weight.data,0,0.01)
-#         # torch.nn.init.normal_(self.fc_out.weight.data,0,0.01)
-#         # torch.nn.init.xavier_normal_(self.fc1_1.weight.data)
-#         # torch.nn.init.xavier_normal_(self.fc1_2.weight.data)
-#         # torch.nn.init.xavier_normal_(self.fc_out.weight.data)
-
-#     def forward(self, state):
-#         # state: (waypoints + 2 * companion_vehicle * 3
-#         one_state_dim = self.state_dim['waypoints'] + self.state_dim['companion_vehicle'] * 2
-#         left_enc = self.left_encoder(state[:, :one_state_dim])
-#         center_enc = self.center_encoder(state[:, one_state_dim:2*one_state_dim])
-#         right_enc = self.right_encoder(state[:, 2*one_state_dim:3*one_state_dim])
-#         ego_enc = self.ego_encoder(state[:, 3*one_state_dim:])
-#         state_ = torch.cat((left_enc, center_enc, right_enc, ego_enc), dim=1)
-#         hidden = F.relu(self.fc(state_))
-#         action = torch.tanh(self.fc_out(hidden))
-#         # steer,throttle_brake=torch.split(out,split_size_or_sections=[1,1],dim=1)
-#         # steer=steer.clone()
-#         # throttle_brake=throttle_brake.clone()
-#         # steer*=self.action_bound['steer']
-#         # throttle=throttle_brake.clone()
-#         # brake=throttle_brake.clone()
-#         # for i in range(throttle.shape[0]):
-#         #     if throttle[i][0]<0:
-#         #         throttle[i][0]=0
-#         #     if brake[i][0]>0:
-#         #         brake[i][0]=0
-#         # throttle*=self.action_bound['throttle']
-#         # brake*=self.action_bound['brake']
-
-#         return action
-
-
-# class QValueNet_multi(torch.nn.Module):
-#     def __init__(self, state_dim, action_dim) -> None:
-#         # parameter state_dim here is a dict
-#         super().__init__()
-#         self.state_dim = state_dim
-#         self.action_dim = action_dim
-#         self.left_encoder = veh_lane_encoder(self.state_dim)
-#         self.center_encoder = veh_lane_encoder(self.state_dim)
-#         self.right_encoder = veh_lane_encoder(self.state_dim)
-#         self.ego_encoder = nn.Linear(self.state_dim['ego_vehicle'], 32)
-#         self.action_encoder = nn.Linear(self.action_dim, 32)
-#         self.fc = nn.Linear(256, 256)
-#         self.fc_out = nn.Linear(256, 1)
-
-#         # torch.nn.init.normal_(self.fc1.weight.data,0,0.01)
-#         # torch.nn.init.normal_(self.fc_out.weight.data,0,0.01)
-#         # torch.nn.init.xavier_normal_(self.fc1.weight.data)
-#         # torch.nn.init.xavier_normal_(self.fc_out.weight.data)
-
-#     def forward(self, state, action):
-#         one_state_dim = self.state_dim['waypoints'] + self.state_dim['companion_vehicle'] * 2
-#         left_enc = self.left_encoder(state[:, :one_state_dim])
-#         center_enc = self.center_encoder(state[:, one_state_dim:2*one_state_dim])
-#         right_enc = self.right_encoder(state[:, 2*one_state_dim:3*one_state_dim])
-#         ego_enc = self.ego_encoder(state[:, 3*one_state_dim:])
-#         action_enc = self.action_encoder(action)
-#         state_ = torch.cat((left_enc, center_enc, right_enc, ego_enc, action_enc), dim=1)
-#         hidden = F.relu(self.fc(state_))
-#         out = self.fc_out(hidden)
-#         return out
-
-
-# class QValueNet(torch.nn.Module):
-#     def __init__(self, state_dim, action_dim) -> None:
-#         # parameter state_dim here is a dict
-#         super().__init__()
-
-#         #self.state_dim = state_dim['waypoints'] + state_dim['ego_vehicle']+state_dim['vehicle_front']
-#         self.state_dim=state_dim
-
-#         self.action_dim = action_dim
-#         self.layer_norm = nn.LayerNorm(128)
-#         self.batch_norm = nn.BatchNorm1d(128)
-#         self.dropout = nn.Dropout(0.2)
-#         #self.fc1 = nn.Linear(self.state_dim + action_dim, 64)
-
-#         self.fc1_1=nn.Linear(self.state_dim['waypoints'],32)
-#         self.fc1_2=nn.Linear(self.state_dim['ego_vehicle'],32)
-#         self.fc1_3=nn.Linear(self.state_dim['vehicle_front'],32)
-#         self.fc1_4=nn.Linear(self.action_dim,32)
-#         self.fc2=nn.Linear(128,128)
-#         self.fc_out = nn.Linear(128, 1)
-
-#         # torch.nn.init.normal_(self.fc1.weight.data,0,0.01)
-#         # torch.nn.init.normal_(self.fc_out.weight.data,0,0.01)
-#         # torch.nn.init.xavier_normal_(self.fc1.weight.data)
-#         # torch.nn.init.xavier_normal_(self.fc_out.weight.data)
-
-#     def forward(self, state, action):
-
-#         # state : waypoints info+ vehicle_front info, shape: batch_size*22, first 20 elements are waypoints info,
-#         # the rest are vehicle info
-#         state_wp = state[:, :self.state_dim['waypoints']]
-#         state_ev = state[:, -self.state_dim['vehicle_front']-self.state_dim['ego_vehicle']:-self.state_dim['vehicle_front']]
-#         state_vf = state[:, -self.state_dim['vehicle_front']:]
-#         state_wp=F.relu(self.fc1_1(state_wp))
-#         state_ev=F.relu(self.fc1_2(state_ev))
-#         state_vf=F.relu(self.fc1_3(state_vf))
-#         state_ac=F.relu(self.fc1_4(action))
-#         state = torch.cat((state_wp,state_ev,state_vf, state_ac), dim=1)
-#         hidden=F.relu(self.fc2(state))
-#         out = self.fc_out(hidden)
-
-#         return out
-
-# class MLP(nn.Module):
-#     r"""
-#     Construct a MLP in LaneEncoder, include a single fully-connected layer,
-#     followed by layer normalization and then ReLU.
-#     """
-
-#     def __init__(self, input_size, hidden_size=64):
-#         r"""
-#         self.norm is layer normalization.
-#         Args:
-#             input_size: the size of input layer.
-#             hidden_size: the size of output layer.
-#         """
-#         super(MLP, self).__init__()
-#         self.fc1 = nn.Linear(input_size, hidden_size)
-#         self.norm = torch.nn.LayerNorm(hidden_size)
-#         # self.fc2 = nn.Linear(hidden_size, output_size)
-
-#     def forward(self, x):
-#         r"""
-#         Args:
-#             x: x.shape = [batch_size, n, input_size]
-#         """
-#         x = self.fc1(x)
-#         x = self.norm(x)
-#         x = F.relu(x)
-#         # x = self.fc2(x)
-#         return x
-
-
-# class LaneEncoder(torch.nn.Module):
-#     def __init__(self, waypoint_dim, hidden_size):
-#         super(LaneEncoder, self).__init__()
-#         self.waypoint_dim = waypoint_dim
-#         self.hidden_size = hidden_size
-#         self.MLP = MLP(self.waypoint_dim, self.hidden_size)
-
-#     def forward(self, waypoints):
-#         """
-#         :param waypoints: [batch_size, n, input_size]
-#         :return: (batch_size, n, input_size*2)
-#         """
-#         x = self.MLP(waypoints)
-#         batch_size, n, input_size = x.shape
-#         x2 = x.permute(0, 2, 1)  # [batch_size, input_size, n]
-#         x2 = F.max_pool1d(x2, kernel_size=x2.shape[2])  # [batch_size, input_size, 1]
-#         x2 = torch.cat([x2]*n, dim=2)  # [batch_size, input_size, n]
-#         y = torch.cat((x2.permute(0, 2, 1), x), dim=2)  # [batch_size, n, input_size*2]
-#         return y
+from torch import nn
+from algs.util.replay_buffer import ReplayBuffer,PriReplayBuffer
 
 
 class veh_lane_encoder(torch.nn.Module):
@@ -554,7 +154,7 @@ class QValueNet_multi(torch.nn.Module):
 
 class DDPG:
     def __init__(self, state_dim, action_dim, action_bound, gamma, tau, sigma, theta, epsilon,
-                 buffer_size, batch_size, actor_lr, critic_lr, clip_grad, device) -> None:
+                 buffer_size, batch_size, actor_lr, critic_lr, clip_grad,per_flag, device) -> None:
         self.learn_time = 0
         self.replace_a = 0
         self.replace_c = 0
@@ -563,22 +163,26 @@ class DDPG:
         self.a_dim, self.a_bound = action_dim, action_bound
         self.theta = theta
         self.gamma, self.tau, self.sigma, self.epsilon = gamma, tau, sigma, epsilon  # sigma:高斯噪声的标准差，均值直接设置为0
-        self.buffer_size, self.batch_size, self.device = buffer_size, batch_size, device
+        self.batch_size, self.device = batch_size, device
         self.actor_lr, self.critic_lr = actor_lr, critic_lr
         self.clip_grad = clip_grad
+        self.per_flag=per_flag
         # adjust different types of replay buffer
         #self.replay_buffer = Split_ReplayBuffer(buffer_size)
-        self.replay_buffer = ReplayBuffer(buffer_size)
+        if self.per_flag:
+            self.replay_buffer = PriReplayBuffer(buffer_size)
+        else:
+            self.replay_buffer = ReplayBuffer(buffer_size)
         # self.replay_buffer = offline_replay_buffer()
         """self.memory=torch.tensor((buffer_size,self.s_dim*2+self.a_dim+1+1),
             dtype=torch.float32).to(self.device)"""
         self.pointer = 0  # serve as updating the memory data
         self.train = True
-        self.actor = PolicyNet_multi(self.s_dim, self.a_bound).to(self.device)
-        self.actor_target = PolicyNet_multi(self.s_dim, self.a_bound).to(self.device)
+        self.actor = PolicyNet_multi(self.s_dim, self.a_dim, self.a_bound).to(self.device)
+        self.actor_target = PolicyNet_multi(self.s_dim, self.a_dim, self.a_bound).to(self.device)
         self.actor_target.load_state_dict(self.actor.state_dict())
-        self.critic = QValueNet_multi(self.s_dim, self.a_dim).to(self.device)
-        self.critic_target = QValueNet_multi(self.s_dim, self.a_dim).to(self.device)
+        self.critic = QValueNet_multi(self.s_dim, self.a_dim, 1).to(self.device)
+        self.critic_target = QValueNet_multi(self.s_dim, self.a_dim, 1).to(self.device)
         # self.actor = PolicyNet(self.s_dim, self.a_bound).to(self.device)
         # self.actor_target = PolicyNet(self.s_dim, self.a_bound).to(self.device)
         # self.actor_target.load_state_dict(self.actor.state_dict())
@@ -588,7 +192,10 @@ class DDPG:
 
         self.actor_optimizer = torch.optim.Adam(self.actor.parameters(), lr=actor_lr)
         self.critic_optimizer = torch.optim.Adam(self.critic.parameters(), lr=critic_lr)
-        self.loss = nn.MSELoss()
+        if self.per_flag:
+            self.loss = nn.MSELoss(reduction='none')
+        else:
+            self.loss = nn.MSELoss()
 
         self.steer_noise = OrnsteinUhlenbeckActionNoise(self.sigma, self.theta)
         self.tb_noise = OrnsteinUhlenbeckActionNoise(self.sigma, self.theta)
@@ -604,10 +211,11 @@ class DDPG:
         state_veh_left_rear = torch.tensor(state['vehicle_info'][3], dtype=torch.float32).view(1, -1).to(self.device)
         state_veh_rear = torch.tensor(state['vehicle_info'][4], dtype=torch.float32).view(1, -1).to(self.device)
         state_veh_right_rear = torch.tensor(state['vehicle_info'][5], dtype=torch.float32).view(1, -1).to(self.device)
+        state_light = torch.tensor(state['light'], dtype=torch.float32).view(1, -1).to(self.device)
         state_ev = torch.tensor(state['ego_vehicle'],dtype=torch.float32).view(1,-1).to(self.device)
-        state_ = torch.cat((state_left_wps, state_veh_left_front, state_veh_left_rear,
-                            state_center_wps, state_veh_front, state_veh_rear,
-                            state_right_wps, state_veh_right_front, state_veh_right_rear, state_ev), dim=1)
+        state_ = torch.cat((state_left_wps, state_veh_left_front, state_veh_left_rear, state_light,
+                            state_center_wps, state_veh_front, state_veh_rear, state_light,
+                            state_right_wps, state_veh_right_front, state_veh_right_rear, state_light, state_ev), dim=1)
         # print(state_.shape)
         action = self.actor(state_)
         print(f'Network Output - Steer: {action[0][0]}, Throttle_brake: {action[0][1]}')
@@ -638,27 +246,43 @@ class DDPG:
         #     self.train = False
         self.replace_a += 1
         self.replace_c += 1
-        b_s, b_a, b_r, b_ns, b_t, b_d = self.replay_buffer.sample(self.batch_size)
-        # 此处得到的batch是否是pytorch.tensor?
-        batch_s = torch.tensor(b_s, dtype=torch.float32).view((self.batch_size, -1)).to(self.device)
-        batch_ns = torch.tensor(b_ns, dtype=torch.float32).view((self.batch_size, -1)).to(self.device)
-        batch_a = torch.tensor(b_a, dtype=torch.float32).view((self.batch_size, -1)).to(self.device)
-        batch_r = torch.tensor(b_r, dtype=torch.float32).view((self.batch_size, -1)).to(self.device)
-        batch_d = torch.tensor(b_d, dtype=torch.float32).view((self.batch_size, -1)).to(self.device)
-        batch_t = torch.tensor(b_t, dtype=torch.float32).view((self.batch_size, -1)).to(self.device)
+        if not self.per_flag:
+            b_s, b_a, b_r, b_ns, b_t, b_d, b_i = self.replay_buffer.sample(self.batch_size)
+        else:
+            b_idx,b_ISWeights,b_transition = self.replay_buffer.sample(self.batch_size)
+            b_s, b_a, b_r, b_ns, b_t, b_d, b_i = b_transition[0], b_transition[1], b_transition[2], b_transition[3], b_transition[4], \
+                b_transition[5], b_transition[6]
+            self.ISWeights=torch.tensor(b_ISWeights,dtype=torch.float32).view((self.batch_size,-1)).to(self.device)
+
+        batch_s = torch.tensor(np.array(b_s), dtype=torch.float32).view((self.batch_size, -1)).to(self.device)
+        batch_ns = torch.tensor(np.array(b_ns), dtype=torch.float32).view((self.batch_size, -1)).to(self.device)
+        batch_a = torch.tensor(np.array(b_a), dtype=torch.float32).view((self.batch_size, -1)).to(self.device)
+        batch_r = torch.tensor(np.array(b_r), dtype=torch.float32).view((self.batch_size, -1)).to(self.device)
+        batch_d = torch.tensor(np.array(b_d), dtype=torch.float32).view((self.batch_size, -1)).to(self.device)
+        batch_t = torch.tensor(np.array(b_t), dtype=torch.float32).view((self.batch_size, -1)).to(self.device)
+
         # compute the target Q value using the information of next state
         action_target = self.actor_target(batch_ns)
         next_q_values = self.critic_target(batch_ns, action_target)
         q_targets = batch_r + self.gamma * next_q_values * (1 - batch_t)
         q_ = self.critic(batch_s, batch_a)
-        critic_loss = self.loss(q_, q_targets)
-        td_max = 0
-        index = 0
-        for i in range(self.batch_size):
-            if abs(q_[i]-q_targets[i]) > td_max:
-                td_max = abs(q_[i]-q_targets[i])
-                index = i
-        print(f'TD-error:{critic_loss}', td_max, index)
+        
+        if not self.per_flag:
+            critic_loss = self.loss(q_, q_targets)
+        else:
+            loss=self.loss(q_, q_targets)
+            abs_loss=torch.abs(q_-q_targets)
+            abs_loss=np.array(abs_loss.detach().cpu().numpy())
+            #print(self.ISWeights)
+            critic_loss = torch.mean(loss*self.ISWeights)
+            self.replay_buffer.batch_update(b_idx,abs_loss)
+        # td_max = 0
+        # index = 0
+        # for i in range(self.batch_size):
+        #     if abs(q_[i]-q_targets[i]) > td_max:
+        #         td_max = abs(q_[i]-q_targets[i])
+        #         index = i
+        print(f'TD-error:{critic_loss}')
         # print(batch_s[index], batch_ns[index], batch_a[index], batch_r[index], batch_t[index])
         self.critic_optimizer.zero_grad()
         critic_loss.backward()
@@ -699,18 +323,30 @@ class DDPG:
     def hard_update(self, net, target_net):
         net.load_state_dict(target_net.state_dict())
 
-    def store_transition(self, transition_dict):  # how to store the episodic data to buffer
-        index = self.pointer % self.buffer_size
-        states = torch.tensor(transition_dict['states'],
-                              dtype=torch.float32).view(-1, 1).to(self.device)
-        actions = torch.tensor(transition_dict['actions'],
-                               dtype=torch.float32).to(self.device)
-        rewards = torch.tensor(transition_dict['rewards'],
-                               dtype=torch.float32).to(self.device)
-        states_next = torch.tensor(transition_dict['states_next'],
-                                   dtype=torch.float32).view(-1, 1).to(self.device)
-        dones = torch.tensor(transition_dict['dones'],
-                             dtype=torch.float32).to(self.device)
+    def store_transition(self, state, action, reward, next_state, truncated, done, info):  # how to store the episodic data to buffer
+        def _compress(state):
+            # print('state: ', state)
+            state_left_wps = np.array(state['left_waypoints'], dtype=np.float32).reshape((1, -1))
+            state_center_wps = np.array(state['center_waypoints'], dtype=np.float32).reshape((1, -1))
+            state_right_wps = np.array(state['right_waypoints'], dtype=np.float32).reshape((1, -1))
+            state_veh_left_front = np.array(state['vehicle_info'][0], dtype=np.float32).reshape((1, -1))
+            state_veh_front = np.array(state['vehicle_info'][1], dtype=np.float32).reshape((1, -1))
+            state_veh_right_front = np.array(state['vehicle_info'][2], dtype=np.float32).reshape((1, -1))
+            state_veh_left_rear = np.array(state['vehicle_info'][3], dtype=np.float32).reshape((1, -1))
+            state_veh_rear = np.array(state['vehicle_info'][4], dtype=np.float32).reshape((1, -1))
+            state_veh_right_rear = np.array(state['vehicle_info'][5], dtype=np.float32).reshape((1, -1))
+            state_ev = np.array(state['ego_vehicle'], dtype=np.float32).reshape((1, -1))
+            state_light = np.array(state['light'], dtype=np.float32).reshape((1, -1))
+            state_ = np.concatenate((state_left_wps, state_veh_left_front, state_veh_left_rear, state_light,
+                                        state_center_wps, state_veh_front, state_veh_rear, state_light,
+                                        state_right_wps, state_veh_right_front, state_veh_right_rear, state_light, state_ev), axis=1)
+            return state_
+
+        state=_compress(state)
+        next_state=_compress(next_state)
+
+        self.replay_buffer.add((state, action, reward, next_state, truncated, done,info))
+
         return
 
     def save_net(self,file='./out/ddpg_final.pth'):
