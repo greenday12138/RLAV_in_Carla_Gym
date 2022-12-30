@@ -95,14 +95,22 @@ def process_lane_wp(wps_list, ego_vehicle_z, ego_forward_vector, my_sample_ratio
     wps = []
     idx = 0
 
-    for wp in wps_list:
+    # for wp in wps_list:
+    #     delta_z = wp.transform.location.z - ego_vehicle_z
+    #     yaw_diff = math.degrees(get_yaw_diff(wp.transform.get_forward_vector(), ego_forward_vector))
+    #     yaw_diff = yaw_diff / 90
+    #     if idx % my_sample_ratio == my_sample_ratio-1:
+    #         wps.append([delta_z/2, yaw_diff, lane_offset])
+    #     idx = idx + 1
+    # return np.array(wps)
+    for i in range(10):
+        wp = wps_list[i]
         delta_z = wp.transform.location.z - ego_vehicle_z
         yaw_diff = math.degrees(get_yaw_diff(wp.transform.get_forward_vector(), ego_forward_vector))
         yaw_diff = yaw_diff / 90
-        if idx % my_sample_ratio == my_sample_ratio-1:
-            wps.append([delta_z/3, yaw_diff, lane_offset])
-        idx = idx + 1
+        wps.append([delta_z/3, yaw_diff, lane_offset])
     return np.array(wps)
+
 
 def process_veh(ego_vehicle, vehs_info, left_wall, right_wall,vehicle_proximity):
     vehicle_inlane=[vehs_info.left_front_veh,vehs_info.center_front_veh,vehs_info.right_front_veh,
