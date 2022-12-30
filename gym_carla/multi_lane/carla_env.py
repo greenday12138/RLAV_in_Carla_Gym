@@ -622,15 +622,15 @@ class CarlaEnv:
         v_3d = self.ego_vehicle.get_velocity()
         v_s,v_t=get_projection(v_3d,yaw_forward)
         speed_1,speed_2=self.speed_limit, self.speed_limit
-        # if self.lights_info and self.lights_info.state!=carla.TrafficLightState.Green:
-        #     wps=self.lights_info.get_stop_waypoints()
-        #     for wp in wps:
-        #         if wp.lane_id==lane_center.lane_id:
-        #             dis=self.ego_vehicle.get_location().distance(wp.transform.location)
-        #             if dis<self.traffic_light_proximity:
-        #                 speed_1=(dis+0.0001)/self.traffic_light_proximity*self.speed_limit
-        # if self.vehs_info.center_front_veh is not None:
-        #     speed_2=self.vehs_info.distance_to_front_vehicles[1]/self.vehicle_proximity*self.speed_limit
+        if self.lights_info and self.lights_info.state!=carla.TrafficLightState.Green:
+            wps=self.lights_info.get_stop_waypoints()
+            for wp in wps:
+                if wp.lane_id==lane_center.lane_id:
+                    dis=self.ego_vehicle.get_location().distance(wp.transform.location)
+                    if dis<self.traffic_light_proximity:
+                        speed_1=(dis+0.0001)/self.traffic_light_proximity*self.speed_limit
+        if self.vehs_info.center_front_veh is not None:
+            speed_2=self.vehs_info.distance_to_front_vehicles[1]/self.vehicle_proximity*self.speed_limit
         max_speed=min(speed_1,speed_2)
         if v_s * 3.6 > max_speed:
             # fEff = 1
@@ -680,7 +680,7 @@ class CarlaEnv:
                           'lane_changing_reward': lane_changing_reward,'impact': impact, 
                           'change_in_lane_follow': change_in_lane_follow})
         
-        return fTTC + fEff + fCom + fLcen + lane_changing_reward
+        return fTTC + fEff + fYaw + fCom + fLcen + lane_changing_reward
 
     def _lane_change_reward(self, last_action, last_lane, current_lane, current_action, distance_to_front_vehicles, distance_to_rear_vehicles):
         print('distance_to_front_vehicles, distance_to_rear_vehicles: ', distance_to_front_vehicles, distance_to_rear_vehicles)
@@ -749,7 +749,7 @@ class CarlaEnv:
         # if self.step_info['Lane_center'] <=-1.0:
         #     logging.warn('drive out of road, lane invasion occur')
         #     return True
-        if yaw_diff>=90:
+        if yaw_diff>90:
             logging.warn('moving in opposite direction')
             return Truncated.OPPOSITE_DIRECTION
         if self.lights_info and self.lights_info.state!=carla.TrafficLightState.Green:

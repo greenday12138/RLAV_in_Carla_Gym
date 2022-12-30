@@ -15,8 +15,8 @@ from main.util.process import start_process, kill_process
 SIGMA = 0.5
 THETA = 0.05
 DEVICE = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
-LR_ACTOR = 0.001
-LR_CRITIC = 0.002
+LR_ACTOR = 0.0001
+LR_CRITIC = 0.0002
 GAMMA = 0.9  # q值更新系数
 TAU = 0.01  # 软更新参数
 EPSILON = 0.5  # epsilon-greedy
@@ -25,11 +25,10 @@ MINIMAL_SIZE = 10000
 BATCH_SIZE = 128
 REPLACE_A = 500
 REPLACE_C = 300
-TOTAL_EPISODE = 3000
-SIGMA_DECAY = 0.9998
+TOTAL_EPISODE = 5000
+SIGMA_DECAY = 0.9999
 TTC_threshold = 4.001
 PER_FLAG=True
-clip_grad = 10
 base_name = f'origin_{TTC_threshold}_NOCA'
 
 
@@ -59,7 +58,7 @@ def main():
 
     for run in [base_name]:
         agent = DDPG(s_dim, a_dim, a_bound, GAMMA, TAU, SIGMA, THETA, EPSILON, BUFFER_SIZE, BATCH_SIZE,
-                LR_ACTOR,LR_CRITIC, clip_grad, PER_FLAG,DEVICE)
+                LR_ACTOR,LR_CRITIC, PER_FLAG,DEVICE)
 
         # training part
         max_rolling_score = np.float32('-5')

@@ -38,6 +38,7 @@ clip_grad = 10
 zero_index_gradients = True
 inverting_gradients = True
 base_name = f'origin_{TTC_threshold}_NOCA'
+SAVE_PATH='./out'
 
 
 def main():
@@ -58,7 +59,7 @@ def main():
     a_dim = 2
 
     time=datetime.datetime.now().strftime('%Y%m%d%H%M%S')
-    episode_writer=SummaryWriter(f"./out/runs/multi_lane/pdqn/{time}")
+    episode_writer=SummaryWriter(f"{SAVE_PATH}/runs/multi_lane/pdqn/{time}")
     n_run = 3
     rosiolling_window = 100  # 100 car following events, average score
     result = []
@@ -112,7 +113,7 @@ def main():
                                         f"reward:{reward}, truncated:{truncated}, done:{done}")
                             print()
 
-                            if agent.replay_buffer.size() > MINIMAL_SIZE:
+                            if agent.replay_buffer.size() >= MINIMAL_SIZE:
                                 logging.info("Learn begin: %f %f", SIGMA_STEER,SIGMA_ACC)
                                 agent.learn()
 
@@ -128,7 +129,7 @@ def main():
                                 lane_change_reward += info['lane_changing_reward']
 
                             if env.total_step == args.pre_train_steps:
-                                agent.save_net('./out/pdqn_pre_trained.pth')
+                                agent.save_net(f"{SAVE_PATH}/pdqn_pre_trained.pth")
                             
                             if env.rl_control_step > 10000 and env.is_effective_action() and \
                                     env.RL_switch and SIGMA_ACC > 0.01:
@@ -165,7 +166,7 @@ def main():
 
                             if max_score < score:
                                 max_score = score
-                                agent.save_net('./out/pdqn_optimal.pth')
+                                agent.save_net(F"{SAVE_PATH}/pdqn_optimal.pth")
 
                         """ if rolling_score[rolling_score.__len__-1]>max_rolling_score:
                             max_rolling_score=rolling_score[rolling_score.__len__-1]
@@ -178,8 +179,9 @@ def main():
                                 'score': '%.2f' % score
                             })
                         pbar.update(1)
+                        agent.save_net(f"{SAVE_PATH}/pdqn_final.pth")
 
-            np.save(f'./out/result_{run}.npy', result)
+            np.save(f"{SAVE_PATH}/result_{run}.npy", result)
         except KeyboardInterrupt:
             logging.info("Premature Terminated")
         # except BaseException as e:
@@ -187,7 +189,7 @@ def main():
         finally:
             env.__del__()
             episode_writer.close()
-            agent.save_net('./out/pdqn_final.pth')
+            agent.save_net(f"{SAVE_PATH}/pdqn_final.pth")
             logging.info('\nDone.')
 
 def replay_buffer_adder(agent,impact_deque, state, next_state, action,all_action_param,reward, truncated, done, info):

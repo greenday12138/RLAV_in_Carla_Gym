@@ -305,7 +305,7 @@ class SumTree(object):
         return len(self.data)
 
 
-class PriReplayBuffer(object):  # stored as ( s, a, r, s_ ) in SumTree
+class PriReplayBuffer(object):  # stored as ( s, a, r, s_, i ) in SumTree
     """
     Prioritized experience replay
     This Memory class is modified based on the original code from:
@@ -354,7 +354,8 @@ class PriReplayBuffer(object):  # stored as ( s, a, r, s_ ) in SumTree
 
         # print(self.tree.tree)
         # print(b_idx)
-        return b_idx, ISWeights, (b_state,b_action,b_reward,b_next_state,b_truncated,b_done,b_info)
+        return b_idx, ISWeights, (np.array(b_state),np.array(b_action),np.array(b_reward),np.array(b_next_state),
+            np.array(b_truncated),np.array(b_done),np.array(b_info))
 
     def batch_update(self, tree_idx, abs_errors):
         abs_errors += self.epsilon  # convert to abs and avoid 0

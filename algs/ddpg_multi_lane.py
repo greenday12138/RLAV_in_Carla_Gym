@@ -154,7 +154,7 @@ class QValueNet_multi(torch.nn.Module):
 
 class DDPG:
     def __init__(self, state_dim, action_dim, action_bound, gamma, tau, sigma, theta, epsilon,
-                 buffer_size, batch_size, actor_lr, critic_lr, clip_grad,per_flag, device) -> None:
+                 buffer_size, batch_size, actor_lr, critic_lr,per_flag, device) -> None:
         self.learn_time = 0
         self.replace_a = 0
         self.replace_c = 0
@@ -165,7 +165,6 @@ class DDPG:
         self.gamma, self.tau, self.sigma, self.epsilon = gamma, tau, sigma, epsilon  # sigma:高斯噪声的标准差，均值直接设置为0
         self.batch_size, self.device = batch_size, device
         self.actor_lr, self.critic_lr = actor_lr, critic_lr
-        self.clip_grad = clip_grad
         self.per_flag=per_flag
         # adjust different types of replay buffer
         #self.replay_buffer = Split_ReplayBuffer(buffer_size)
@@ -218,7 +217,8 @@ class DDPG:
                             state_right_wps, state_veh_right_front, state_veh_right_rear, state_light, state_ev), dim=1)
         # print(state_.shape)
         action = self.actor(state_)
-        print(f'Network Output - Steer: {action[0][0]}, Throttle_brake: {action[0][1]}')
+        q=self.critic(state_,action)
+        print(f'Network Output - Steer: {action[0][0]}, Throttle_brake: {action[0][1]}, Q_value: {q.item()}')
         if (action[0, 0].is_cuda):
             action = np.array([action[:, 0].detach().cpu().numpy(), action[:, 1].detach().cpu().numpy()]).reshape((-1, 2))
         else:
@@ -253,13 +253,14 @@ class DDPG:
             b_s, b_a, b_r, b_ns, b_t, b_d, b_i = b_transition[0], b_transition[1], b_transition[2], b_transition[3], b_transition[4], \
                 b_transition[5], b_transition[6]
             self.ISWeights=torch.tensor(b_ISWeights,dtype=torch.float32).view((self.batch_size,-1)).to(self.device)
+            #print(self.ISWeights)
 
-        batch_s = torch.tensor(np.array(b_s), dtype=torch.float32).view((self.batch_size, -1)).to(self.device)
-        batch_ns = torch.tensor(np.array(b_ns), dtype=torch.float32).view((self.batch_size, -1)).to(self.device)
-        batch_a = torch.tensor(np.array(b_a), dtype=torch.float32).view((self.batch_size, -1)).to(self.device)
-        batch_r = torch.tensor(np.array(b_r), dtype=torch.float32).view((self.batch_size, -1)).to(self.device)
-        batch_d = torch.tensor(np.array(b_d), dtype=torch.float32).view((self.batch_size, -1)).to(self.device)
-        batch_t = torch.tensor(np.array(b_t), dtype=torch.float32).view((self.batch_size, -1)).to(self.device)
+        batch_s = torch.tensor(b_s, dtype=torch.float32).view((self.batch_size, -1)).to(self.device)
+        batch_ns = torch.tensor(b_ns, dtype=torch.float32).view((self.batch_size, -1)).to(self.device)
+        batch_a = torch.tensor(b_a, dtype=torch.float32).view((self.batch_size, -1)).to(self.device)
+        batch_r = torch.tensor(b_r, dtype=torch.float32).view((self.batch_size, -1)).to(self.device)
+        batch_d = torch.tensor(b_d, dtype=torch.float32).view((self.batch_size, -1)).to(self.device)
+        batch_t = torch.tensor(b_t, dtype=torch.float32).view((self.batch_size, -1)).to(self.device)
 
         # compute the target Q value using the information of next state
         action_target = self.actor_target(batch_ns)
@@ -286,8 +287,6 @@ class DDPG:
         # print(batch_s[index], batch_ns[index], batch_a[index], batch_r[index], batch_t[index])
         self.critic_optimizer.zero_grad()
         critic_loss.backward()
-        if self.clip_grad > 0:
-            torch.nn.utils.clip_grad_norm_(self.critic.parameters(), self.clip_grad)
         self.critic_optimizer.step()
 
         action = self.actor(batch_s)
@@ -295,8 +294,6 @@ class DDPG:
         actor_loss = -torch.mean(q)
         self.actor_optimizer.zero_grad()
         actor_loss.backward()
-        if self.clip_grad > 0:
-            torch.nn.utils.clip_grad_norm_(self.actor.parameters(), self.clip_grad)
         self.actor_optimizer.step()
 
         self.soft_update(self.actor, self.actor_target)

@@ -60,7 +60,7 @@ def main():
     for run in [base_name]:
         param = torch.load('./out/pdqn_final.pth')
         agent = P_DQN(s_dim, a_dim, a_bound, GAMMA, TAU, SIGMA_STEER, SIGMA, SIGMA_ACC, THETA, EPSILON, BUFFER_SIZE, BATCH_SIZE, LR_ACTOR,
-                     LR_CRITIC, clip_grad, zero_index_gradients, inverting_gradients, DEVICE)
+                     LR_CRITIC, clip_grad, zero_index_gradients, inverting_gradients,False, DEVICE)
         agent.load_net(param)
         agent.train = False
         env.RL_switch=True
