@@ -518,7 +518,7 @@ class P_DQN:
             else:
                 loss=self.loss(q,q_targets)
                 abs_loss=torch.abs(q-q_targets)
-                abs_loss=np.array(abs_loss.etach().cpu().numpy())
+                abs_loss=np.array(abs_loss.detach().cpu().numpy())
                 loss_q=torch.mean(loss*self.ISWeights)
                 self.replay_buffer.batch_update(b_idx,abs_loss)
         else:
@@ -632,7 +632,7 @@ class P_DQN:
                 self.replay_buffer.add((state, action, action_param, reward, next_state, truncated, done),False)
             self.replay_buffer.add((state, action, action_param, reward, next_state, truncated, done),True)
         else:
-            self.replay_buffer.add((state, action, action_param, reward, next_state, truncated, done))
+            self.replay_buffer.add((state, action, action_param, reward, next_state, truncated, done,info))
         # print("their shapes", state, action, next_state, reward_list, truncated, done)
         # state: [1, 28], action: [1, 2], next_state: [1, 28], reward_list = [1, 6], truncated = [1, 1], done = [1, 1]
         # all: [1, 66]

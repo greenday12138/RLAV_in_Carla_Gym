@@ -24,15 +24,15 @@ LR_CRITIC = 0.0002
 GAMMA = 0.9  # q值更新系数
 TAU = 0.01  # 软更新参数
 EPSILON = 0.5  # epsilon-greedy
-BUFFER_SIZE = 10000
-MINIMAL_SIZE = 10000
+BUFFER_SIZE = 5000
+MINIMAL_SIZE = 5000
 BATCH_SIZE = 128
 REPLACE_A = 500
 REPLACE_C = 300
 TOTAL_EPISODE = 5000
 SIGMA_DECAY = 0.9999
 TTC_threshold = 4.001
-PER_FLAG=False
+PER_FLAG=True
 modify_change_steer=False
 clip_grad = 10
 zero_index_gradients = True
@@ -118,15 +118,16 @@ def main():
                                 agent.learn()
 
                             state = next_state
-                            score += reward
-                            if not truncated:
-                                ttc += info['TTC']
-                                efficiency += info['Efficiency']
-                                comfort += info['Comfort']
-                                lcen += info['Lane_center']
-                                yaw += info['Yaw']
-                                impact += info['impact']
-                                lane_change_reward += info['lane_changing_reward']
+                            if env.is_effective_action() and not info['Abandon']:
+                                score += reward
+                                if not truncated:
+                                    ttc += info['TTC']
+                                    efficiency += info['Efficiency']
+                                    comfort += info['Comfort']
+                                    lcen += info['Lane_center']
+                                    yaw += info['Yaw']
+                                    impact += info['impact']
+                                    lane_change_reward += info['lane_changing_reward']
 
                             if env.total_step == args.pre_train_steps:
                                 agent.save_net(f"{SAVE_PATH}/pdqn_pre_trained.pth")

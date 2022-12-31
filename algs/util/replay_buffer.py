@@ -329,8 +329,7 @@ class PriReplayBuffer(object):  # stored as ( s, a, r, s_, i ) in SumTree
         self.tree.add(max_p, transition)   # set the max p for new p
 
     def sample(self, n):
-        if self.tree.size!=self.tree.capacity:
-            logging.error("Prioritized Experience Replay Buffer Should Not Sample Before Full!")
+        assert self.tree.size==self.tree.capacity
         b_idx, ISWeights = np.empty((n,), dtype=np.int32), np.empty((n, 1))
         b_state,b_action,b_reward,b_next_state,b_truncated,b_done,b_info=[],[],[],[],[],[],[]
         pri_seg = self.tree.total_p / n       # priority segment

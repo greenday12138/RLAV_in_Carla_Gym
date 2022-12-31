@@ -629,14 +629,12 @@ class CarlaEnv:
                     dis=self.ego_vehicle.get_location().distance(wp.transform.location)
                     if dis<self.traffic_light_proximity:
                         speed_1=(dis+0.0001)/self.traffic_light_proximity*self.speed_limit
-        if self.vehs_info.center_front_veh is not None:
-            speed_2=self.vehs_info.distance_to_front_vehicles[1]/self.vehicle_proximity*self.speed_limit
         max_speed=min(speed_1,speed_2)
         if v_s * 3.6 > max_speed:
             # fEff = 1
-            fEff = math.exp(max_speed - v_s * 3.6)-1
+            fEff = math.exp(max_speed - v_s * 3.6)
         else:
-            fEff = v_s * 3.6 / max_speed-1
+            fEff = v_s * 3.6 / max_speed
 
         a_3d=self.ego_vehicle.get_acceleration()
         cur_acc,a_t=get_projection(a_3d,yaw_forward)
@@ -916,42 +914,6 @@ class CarlaEnv:
         array = array[:, :, :3]
         sensor_queue.put((sensor_data.frame, array))
 
-    def _create_vehicle_blueprint(self, actor_filter, ego=False, color=None, number_of_wheels=[4]):
-        """Create the blueprint for a specific actor type.
-
-        Args:
-            actor_filter: a string indicating the actor type, e.g, 'vehicle.lincoln*'.
-
-        Returns:
-            bp: the blueprint object of carla.
-        """
-        blueprints = list(self.sim_world.get_blueprint_library().filter(actor_filter))
-        if not ego:
-            for bp in blueprints:
-                if bp.has_attribute(self.ego_filter):
-                    blueprints.remove(bp)
-
-        blueprint_library = []
-        for nw in number_of_wheels:
-            blueprint_library = blueprint_library + [x for x in blueprints if
-                                                     int(x.get_attribute('number_of_wheels')) == nw]
-        bp = random.choice(blueprint_library)
-        if bp.has_attribute('color'):
-            if color is None:
-                color='0,0,0'
-                #color = random.choice(bp.get_attribute('color').recommended_values)
-            bp.set_attribute('color', color)
-        if bp.has_attribute('driver_id'):
-            driver_id = random.choice(bp.get_attribute('driver_id').recommended_values)
-            bp.set_attribute('driver_id', driver_id)
-        if not ego:
-            bp.set_attribute('role_name', 'autopilot')
-        else:
-            bp.set_attribute('role_name', 'hero')
-
-        # bp.set_attribute('sticky_control', False)
-        return bp
-
     def _tick(self):
         self.clock.tick()
         #self.sim_world.tick()
@@ -992,7 +954,7 @@ class CarlaEnv:
         # Set physical mode only for cars around ego vehicle to save computation
         if self.hybrid:
             self.traffic_manager.set_hybrid_physics_mode(True)
-            self.traffic_manager.set_hybrid_physics_radius(100.0)
+            self.traffic_manager.set_hybrid_physics_radius(200.0)
 
         """The default global speed limit is 30 m/s
         Vehicles' target speed is 70% of their current speed limit unless any other value is set."""
