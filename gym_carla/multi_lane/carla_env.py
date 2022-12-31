@@ -474,7 +474,7 @@ class CarlaEnv:
                 self.rl_control_step += 1
             # new_action \in [-1, 0, 1], but saved action is the index of max Q(s, a), and thus change \in [0, 1, 2]
             control_info = {'Steer': self.control.steer, 'Throttle': self.control.throttle, 'Brake': self.control.brake, 
-                    'Change': self.current_action.value+1, 'control_state': self.RL_switch}
+                    'Change': self.current_action, 'control_state': self.RL_switch}
 
             l_c=self.map.get_waypoint(self.ego_vehicle.get_location())
             print(f"Episode:{self.reset_step}, Total_step:{self.total_step}, Time_step:{self.time_step}, RL_control_step:{self.rl_control_step}\n"
@@ -629,6 +629,8 @@ class CarlaEnv:
             fEff = math.exp(max_speed - v_s * 3.6)
         else:
             fEff = v_s * 3.6 / max_speed
+        # if max_speed<self.speed_min:
+        #     fEff=1
 
         a_3d=self.ego_vehicle.get_acceleration()
         cur_acc,a_t=get_projection(a_3d,yaw_forward)

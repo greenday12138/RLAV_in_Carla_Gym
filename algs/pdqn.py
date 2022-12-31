@@ -4,7 +4,7 @@ import torch,logging
 from torch import nn
 import torch.nn.functional as F
 from torch.autograd import Variable
-from algs.util.replay_buffer import SumTree
+from algs.util.replay_buffer import SumTree,SplitReplayBuffer
 
 
 class PriReplayBuffer(object):  # stored as ( s, a, r, s_ ) in SumTree
@@ -68,41 +68,6 @@ class PriReplayBuffer(object):  # stored as ( s, a, r, s_ ) in SumTree
     
     def size(self):
         return self.tree.size
-
-
-class ReplayBuffer:
-
-    def __init__(self, capacity) -> None:
-        self.buffer = collections.deque(maxlen=capacity)  # 队列，先进先出
-        self.change_buffer = collections.deque(maxlen=capacity//10)
-        self.number = 0
-
-    def add(self, transition, buffer=True):
-        """Transiton: the rl transition need to sava
-        buffer: True, add transition to self.buffer; False, add transition to self.change_buffer"""
-        if buffer:
-            self.buffer.append(transition)
-        else:
-            self.change_buffer.append(transition)
-
-    def sample(self, batch_size):  # 从buffer中采样数据,数量为batch_size
-        pri_size = min(batch_size // 2, len(self.change_buffer))
-        normal_size = batch_size - pri_size
-        transition = random.sample(self.buffer, normal_size)
-        state, action, action_param, reward, next_state, truncated, done = zip(*transition)
-        pri_transition = random.sample(self.change_buffer, pri_size)
-        pri_state, pri_action, pri_action_param, pri_reward, pri_next_state, pri_truncated, pri_done = zip(*pri_transition)
-        state = np.concatenate((state, pri_state), axis=0)
-        action = np.concatenate((action, pri_action), axis=0)
-        action_param = np.concatenate((action_param, pri_action_param), axis=0)
-        reward = np.concatenate((reward, pri_reward), axis=0)
-        next_state = np.concatenate((next_state, pri_next_state), axis=0)
-        truncated = np.concatenate((truncated, pri_truncated), axis=0)
-        done = np.concatenate((done, pri_done), axis=0)
-        return state, action, action_param, reward, next_state, truncated, done
-
-    def size(self):
-        return len(self.buffer)
 
 
 class veh_lane_encoder(torch.nn.Module):
@@ -336,7 +301,7 @@ class P_DQN:
         # adjust different types of replay buffer
         #self.replay_buffer = Split_ReplayBuffer(buffer_size)
         if not self.per_flag:
-            self.replay_buffer = ReplayBuffer(buffer_size)
+            self.replay_buffer = SplitReplayBuffer(buffer_size)
         else:
             self.replay_buffer = PriReplayBuffer(buffer_size)
         # self.replay_buffer = offline_replay_buffer()

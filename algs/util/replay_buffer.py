@@ -21,138 +21,37 @@ class ReplayBuffer:
 
 
 class SplitReplayBuffer:
-    """经验回放池"""
 
     def __init__(self, capacity) -> None:
-        self.number = 0
-        split_capacity = capacity // 8
-        self.dangerous_buffer = collections.deque(maxlen=split_capacity)
-        self.off_center_buffer = collections.deque(maxlen=split_capacity)
-        self.low_efficiency_buffer = collections.deque(maxlen=split_capacity)
-        self.on_curve_buffer = collections.deque(maxlen=split_capacity)
-        self.large_steering = collections.deque(maxlen=split_capacity)
-        self.large_th_br = collections.deque(maxlen=split_capacity)
-        self.normal_buffer = collections.deque(maxlen=capacity)
-        self.all_buffer = np.zeros((1000000, 66), dtype=np.float32)
-        self.ttc_thr = -0.00001
-        self.lane_thr = 0.5
-        self.eff_thr = 5
-        self.curve_thr = 0.1
-        # with open('./out/replay_buffer_test.txt', 'w') as f:
-        #     pass
+        self.buffer = collections.deque(maxlen=capacity)  # 队列，先进先出
+        self.change_buffer = collections.deque(maxlen=capacity//10)
 
-    def add(self, state, action, reward, next_state, truncated, done, info):
-        wps = np.array(state['waypoints'], dtype=np.float32).reshape((1, -1))
-        fcurve = abs(wps[0][1] - wps[0][19])
-        # first compress state info, then add
-        state = self._compress(state)
-        next_state = self._compress(next_state)
-        # state.shape: [1, 28], action.shape: [1, 2], others are float and boolean
-        reward_ttc = info["TTC"]
-        reward_com = info["Comfort"]
-        reward_eff = info["velocity"]
-        reward_lan = info["offlane"]
-        reward_yaw = info["yaw_diff"]
-        print("fttc: ", reward_ttc, "flane: ", reward_lan, "feff: ", reward_eff, "fcurve: ", fcurve)
-        if reward_ttc < self.ttc_thr:
-            # print(fTTC)
-            self.dangerous_buffer.append((state, action, np.array([[reward]]), next_state, np.array([[truncated]]), np.array([[done]])))
-        elif reward_lan > self.lane_thr:
-            self.off_center_buffer.append((state, action, np.array([[reward]]), next_state, np.array([[truncated]]), np.array([[done]])))
-        elif reward_eff < self.eff_thr:
-            self.low_efficiency_buffer.append((state, action, np.array([[reward]]), next_state, np.array([[truncated]]), np.array([[done]])))
-        elif fcurve > self.curve_thr:
-            self.on_curve_buffer.append((state, action, np.array([[reward]]), next_state, np.array([[truncated]]), np.array([[done]])))
-        elif abs(action[0][0]) > 0.8:
-            self.large_steering.append((state, action, np.array([[reward]]), next_state, np.array([[truncated]]), np.array([[done]])))
-        elif abs(action[0][1]) > 0.8:
-            self.large_th_br.append((state, action, np.array([[reward]]), next_state, np.array([[truncated]]), np.array([[done]])))
+    def add(self, transition, buffer=True):
+        """Transiton: the rl transition need to sava
+        buffer: True, add transition to self.buffer; False, add transition to self.change_buffer"""
+        if buffer:
+            self.buffer.append(transition)
         else:
-            self.normal_buffer.append((state, action, np.array([[reward]]), next_state, np.array([[truncated]]), np.array([[done]])))
-
-        reward_list = np.array([[reward, reward_ttc, reward_com, reward_eff, reward_lan, reward_yaw]])
-        # print("reward_eff: ", reward_eff)
-        # print("their shapes", state, action, next_state, reward_list, truncated, done)
-        # state: [1, 28], action: [1, 2], next_state: [1, 28], reward_list = [1, 6], truncated = [1, 1], done = [1, 1]
-        # all: [1, 66]
-        if truncated == False or truncated == 0:
-            truncated = 0
-        else:
-            truncated = 1
-        if done == False or done == 0:
-            done = 0
-        else:
-            done = 1
-        self.save_all(state, action, next_state, reward_list, np.array([truncated]), np.array([done]))
-
-
-    def save_all(self, state, action, next_state, reward_list, truncated, done):
-        if self.number < 100000:
-            state_ = np.reshape(state, (-1, 1))
-            action_ = np.reshape(action, (-1, 1))
-            next_state_ = np.reshape(next_state, (-1, 1))
-            reward_list_ = np.reshape(reward_list, (-1, 1))
-            truncated_ = np.reshape(truncated, (-1, 1))
-            done_ = np.reshape(done, (-1, 1))
-            all_feature = np.concatenate((state_, action_, next_state_, reward_list_, truncated_, done_), axis=0)
-            self.all_buffer[self.number, :] = np.squeeze(all_feature)
-            self.number = self.number + 1
-        if self.number == 100000:
-            np.save("./out/all_replay_buffer.npy", self.all_buffer)
-            self.number = self.number + 1
-
+            self.change_buffer.append(transition)
 
     def sample(self, batch_size):  # 从buffer中采样数据,数量为batch_size
-        specific_size = batch_size // 8
-        normal_size = batch_size - 6 * specific_size
-        dangerous_transition = random.sample(self.dangerous_buffer, specific_size)
-        d_state, d_action, d_reward, d_next_state, d_truncated, d_done = zip(*dangerous_transition)
-        off_center_transition = random.sample(self.off_center_buffer, specific_size)
-        o_state, o_action, o_reward, o_next_state, o_truncated, o_done = zip(*off_center_transition)
-        low_efficiency_transition = random.sample(self.low_efficiency_buffer, specific_size)
-        l_state, l_action, l_reward, l_next_state, l_truncated, l_done = zip(*low_efficiency_transition)
-        on_curve_transition = random.sample(self.on_curve_buffer, specific_size)
-        c_state, c_action, c_reward, c_next_state, c_truncated, c_done = zip(*on_curve_transition)
-        steer_transition = random.sample(self.large_steering, specific_size)
-        s_state, s_action, s_reward, s_next_state, s_truncated, s_done = zip(*steer_transition)
-        th_br_transition = random.sample(self.large_th_br, specific_size)
-        t_state, t_action, t_reward, t_next_state, t_truncated, t_done = zip(*th_br_transition)
-        normal_transition = random.sample(self.normal_buffer, normal_size)
-        n_state, n_action, n_reward, n_next_state, n_truncated, n_done = zip(*normal_transition)
-
-        state = np.concatenate((d_state, o_state, l_state, c_state, n_state, s_state, t_state), axis=0)
-        action = np.concatenate((d_action, o_action, l_action, c_action, n_action, s_action, t_action), axis=0)
-        reward = np.concatenate((d_reward, o_reward, l_reward, c_reward, n_reward, s_reward, t_reward), axis=0)
-        next_state = np.concatenate((d_next_state, o_next_state, l_next_state, c_next_state, n_next_state, s_next_state, t_next_state), axis=0)
-        truncated = np.concatenate((d_truncated, o_truncated, l_truncated, c_truncated, n_truncated, s_truncated, t_truncated), axis=0)
-        done = np.concatenate((d_done, o_done, l_done, c_done, n_done, s_done, t_done), axis=0)
-
-        return state, action, reward, next_state, truncated, done
+        pri_size = min(batch_size // 2, len(self.change_buffer))
+        normal_size = batch_size - pri_size
+        transition = random.sample(self.buffer, normal_size)
+        state, action, action_param, reward, next_state, truncated, done = zip(*transition)
+        pri_transition = random.sample(self.change_buffer, pri_size)
+        pri_state, pri_action, pri_action_param, pri_reward, pri_next_state, pri_truncated, pri_done = zip(*pri_transition)
+        state = np.concatenate((state, pri_state), axis=0)
+        action = np.concatenate((action, pri_action), axis=0)
+        action_param = np.concatenate((action_param, pri_action_param), axis=0)
+        reward = np.concatenate((reward, pri_reward), axis=0)
+        next_state = np.concatenate((next_state, pri_next_state), axis=0)
+        truncated = np.concatenate((truncated, pri_truncated), axis=0)
+        done = np.concatenate((done, pri_done), axis=0)
+        return state, action, action_param, reward, next_state, truncated, done
 
     def size(self):
-        return len(self.normal_buffer)
-
-    def all_size(self):
-        return len(self.dangerous_buffer), len(self.off_center_buffer), len(self.on_curve_buffer), \
-               len(self.large_steering), len(self.large_th_br), len(self.low_efficiency_buffer), len(self.normal_buffer)
-
-    def running_mean_std(self):
-        d_size, o_size, c_size, l_size, n_size = self.all_size()
-        uniform_size = min(d_size//8, o_size, c_size, l_size, n_size)
-
-        mean = 0
-        std = 0
-        return mean, std
-
-    def _compress(self, state):
-        """return state : waypoints info+ vehicle_front info, shape: 1*22,
-        first 20 elements are waypoints info, the rest are vehicle info"""
-        wps = np.array(state['waypoints'], dtype=np.float32).reshape((1, -1))
-        ev = np.array(state['ego_vehicle'],dtype=np.float32).reshape((1,-1))
-        vf = np.array(state['vehicle_front'], dtype=np.float32).reshape((1, -1))
-        state_ = np.concatenate((wps, ev, vf), axis=1)
-
-        return state_
+        return len(self.buffer)
 
 
 class OfflineReplayBuffer:

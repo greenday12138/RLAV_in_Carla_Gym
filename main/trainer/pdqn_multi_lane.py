@@ -10,7 +10,7 @@ from algs.pdqn import P_DQN
 from gym_carla.multi_lane.settings import ARGS
 from gym_carla.multi_lane.carla_env import CarlaEnv
 from main.util.process import start_process, kill_process
-from gym_carla.multi_lane.util.wrapper import fill_action_param,recover_steer
+from gym_carla.multi_lane.util.wrapper import fill_action_param,recover_steer,Action
 from tensorboardX import SummaryWriter
 
 # neural network hyper parameters
@@ -24,8 +24,8 @@ LR_CRITIC = 0.0002
 GAMMA = 0.9  # q值更新系数
 TAU = 0.01  # 软更新参数
 EPSILON = 0.5  # epsilon-greedy
-BUFFER_SIZE = 5000
-MINIMAL_SIZE = 5000
+BUFFER_SIZE = 10000
+MINIMAL_SIZE = 10000
 BATCH_SIZE = 128
 REPLACE_A = 500
 REPLACE_C = 300
@@ -197,31 +197,35 @@ def replay_buffer_adder(agent,impact_deque, state, next_state, action,all_action
     """Input all the state info into agent's replay buffer"""
     if 'Throttle' in info:
         control_state = info['control_state']
+        throttle_brake = -info['Brake'] if info['Brake'] > 0 else info['Throttle']
+        if info['Change']==Action.LANE_FOLLOW:
+            action=1
+        elif info['Change']==Action.LANE_CHANGE_LEFT:
+            action=0
+        elif info['Change']==Action.LANE_CHANGE_RIGHT:
+            action=2
+        # action_param = np.array([[info['Steer'], throttle_brake]])
+        saved_action_param = fill_action_param(action, info['Steer'], throttle_brake,
+                                                all_action_param,modify_change_steer)
+        print(f"Control In Replay Buffer: {action}, {saved_action_param}")
         if control_state:
             # under rl control
             if truncated:
-                agent.store_transition(state, action, all_action_param, reward, next_state,
+                agent.store_transition(state, action, saved_action_param, reward, next_state,
                                     truncated, done, info)
             else:
                 impact = info['impact'] / 9
-                impact_deque.append([state, action, all_action_param, reward, next_state,
+                impact_deque.append([state, action, saved_action_param, reward, next_state,
                                         truncated, done, info])
                 if len(impact_deque) == 2:
                     experience = impact_deque[0]
                     agent.store_transition(experience[0], experience[1], experience[2],
                                             experience[3] + impact, experience[4], experience[5],
                                             experience[6], experience[7])
-                # agent.replay_buffer.add(state, action, all_action_param, reward, next_state,
+                # agent.replay_buffer.add(state, action, saved_action_param, reward, next_state,
                 #                         truncated, done, info)
-                print('rl control in replay buffer: ', action, all_action_param)
         else:
             # Input the guided action to replay buffer
-            throttle_brake = -info['Brake'] if info['Brake'] > 0 else info['Throttle']
-            action = info['Change']
-            # action_param = np.array([[info['Steer'], throttle_brake]])
-            saved_action_param = fill_action_param(action, info['Steer'], throttle_brake,
-                                                    all_action_param,modify_change_steer)
-            print('agent control in replay buffer: ', action, saved_action_param)
             if truncated:
                 agent.store_transition(state,action,saved_action_param,reward,next_state,
                     truncated,done,info)

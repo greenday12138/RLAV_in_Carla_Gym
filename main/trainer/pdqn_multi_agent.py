@@ -1,15 +1,18 @@
 import logging
 import torch
+import datetime
 import random, collections
 import numpy as np
 import matplotlib.pyplot as plt
 from tqdm import tqdm
+from collections import deque
 from algs.pdqn import P_DQN
+from tensorboardX import SummaryWriter
+from multiprocessing import Process,Queue,Pipe
 from gym_carla.multi_agent.settings import ARGS
 from gym_carla.multi_agent.carla_env import CarlaEnv
 from main.util.process import start_process, kill_process
 from gym_carla.multi_agent.util.wrapper import fill_action_param,recover_steer
-from collections import deque
 
 # neural network hyper parameters
 SIGMA = 0.5
@@ -22,27 +25,26 @@ LR_CRITIC = 0.0002
 GAMMA = 0.9  # q值更新系数
 TAU = 0.01  # 软更新参数
 EPSILON = 0.5  # epsilon-greedy
-BUFFER_SIZE = 40000
+BUFFER_SIZE = 10000
 MINIMAL_SIZE = 10000
 BATCH_SIZE = 128
 REPLACE_A = 500
 REPLACE_C = 300
-TOTAL_EPISODE = 50000
+TOTAL_EPISODE = 5000
 SIGMA_DECAY = 0.9999
 TTC_threshold = 4.001
+PER_FLAG=True
 modify_change_steer=False
 clip_grad = 10
 zero_index_gradients = True
 inverting_gradients = True
 base_name = f'origin_{TTC_threshold}_NOCA'
-
+SAVE_PATH='./out'
 
 def main():
     args = ARGS.parse_args()
-
     log_level = logging.DEBUG if args.debug else logging.INFO
     logging.basicConfig(format='%(levelname)s: %(message)s', level=log_level)
-
     # env=gym.make('CarlaEnv-v0')
     env = CarlaEnv(args)
     globals()['modify_change_steer'] = args.modify_change_steer
@@ -56,6 +58,8 @@ def main():
     a_bound = env.get_action_bound()
     a_dim = 2
 
+    time=datetime.datetime.now().strftime('%Y%m%d%H%M%S')
+    episode_writer=SummaryWriter(f"{SAVE_PATH}/runs/multi_agent/pdqn/{time}")
     n_run = 3
     rosiolling_window = 100  # 100 car following events, average score
     result = []
@@ -65,15 +69,15 @@ def main():
                      LR_CRITIC, clip_grad, zero_index_gradients, inverting_gradients, DEVICE)
 
         # training part
-        max_rolling_score = np.float('-5')
-        max_score = np.float('-5')
+        max_rolling_score = np.float32('-5')
+        max_score = np.float32('-30')
         var = 3
         collision_train = 0
         episode_score = []
         rolling_score = []
         cum_collision_num = []
 
-        score_safe = []
+        score_safe = []     
         score_efficiency = []
         score_comfort = []
 
@@ -84,7 +88,7 @@ def main():
                         states = env.reset()
                         agent.reset_noise()
                         score = 0
-                        score_s, score_e, score_c = 0, 0, 0  # part objective scores
+                        ttc, efficiency,comfort,lcen,yaw,impact,lane_change_reward = 0, 0, 0, 0, 0, 0, 0  # part objective scores
                         impact_deques=[deque(maxlen=2) for _ in range(len(states))]
                         while not done and not truncated:
                             actions,action_params,all_action_params=[],[],[]
@@ -128,7 +132,7 @@ def main():
                                 
                             print()
 
-                            if agent.replay_buffer.size() > MINIMAL_SIZE:
+                            if agent.replay_buffer.size() >=MINIMAL_SIZE:
                                 logging.info("Learn begin: %f %f", SIGMA_STEER,SIGMA_ACC)
                                 agent.learn()
 
@@ -182,6 +186,12 @@ def main():
         finally:
             env.__del__()
             logging.info('\nDone.')
+
+def learn_mp(q: Queue, args):
+    agent=P_DQN(args['s_dim'], args['a_dim'], args['a_bound'], args['GAMMA'], args['TAU'], args['SIGMA_STEER'], args['SIGMA'], args['SIGMA_ACC'], 
+            args['THETA'], args['EPSILON'], args['BUFFER_SIZE'], args['BATCH_SIZE'], args['LR_ACTOR'],args['LR_CRITIC'], 
+            args['clip_grad'], args['zero_index_gradients'], args['inverting_gradients'],args['PER_FLAG'], args['DEVICE'])
+    
 
 def replay_buffer_adder(agent,impact_deque, state, next_state, action,all_action_param,reward, truncated, done, info):
     """Input all the state info into agent's replay buffer"""
