@@ -1050,7 +1050,7 @@ class CarlaEnv:
                 self.traffic_manager.ignore_signs_percentage(
                         self.sim_world.get_actor(response.actor_id), 100)
                 self.traffic_manager.auto_lane_change(
-                    self.sim_world.get_actor(response.actor_id), True)
+                    self.sim_world.get_actor(response.actor_id), False)
                 # modify change probability
                 self.traffic_manager.random_left_lanechange_percentage(
                     self.sim_world.get_actor(response.actor_id), 0)
