@@ -169,12 +169,6 @@ class CarlaEnv:
         # Get actors polygon list
         vehicle_poly_dict = get_actor_polygons(self.sim_world, 'vehicle.*')
         self.vehicle_polygons.append(vehicle_poly_dict)
-        #set traffic light elpse time
-        lights_list=self.sim_world.get_actors().filter("*traffic_light*")
-        for light in lights_list:
-            light.set_green_time(10)
-            light.set_red_time(5)
-            light.set_yellow_time(0)
 
         # try to spawn ego vehicle
         while self.ego_vehicle is None:
@@ -622,13 +616,13 @@ class CarlaEnv:
         v_3d = self.ego_vehicle.get_velocity()
         v_s,v_t=get_projection(v_3d,yaw_forward)
         speed_1,speed_2=self.speed_limit, self.speed_limit
-        if self.lights_info and self.lights_info.state!=carla.TrafficLightState.Green:
-            wps=self.lights_info.get_stop_waypoints()
-            for wp in wps:
-                if wp.lane_id==lane_center.lane_id:
-                    dis=self.ego_vehicle.get_location().distance(wp.transform.location)
-                    if dis<self.traffic_light_proximity:
-                        speed_1=(dis+0.0001)/self.traffic_light_proximity*self.speed_limit
+        # if self.lights_info and self.lights_info.state!=carla.TrafficLightState.Green:
+        #     wps=self.lights_info.get_stop_waypoints()
+        #     for wp in wps:
+        #         if wp.lane_id==lane_center.lane_id:
+        #             dis=self.ego_vehicle.get_location().distance(wp.transform.location)
+        #             if dis<self.traffic_light_proximity:
+        #                 speed_1=(dis+0.0001)/self.traffic_light_proximity*self.speed_limit
         max_speed=min(speed_1,speed_2)
         if v_s * 3.6 > max_speed:
             # fEff = 1
@@ -962,6 +956,12 @@ class CarlaEnv:
         # Let the companion vehicles drive a bit faster than ego speed limit
         self.traffic_manager.global_percentage_speed_difference(-100)
         self.traffic_manager.set_synchronous_mode(self.sync)
+        #set traffic light elpse time
+        lights_list=self.sim_world.get_actors().filter("*traffic_light*")
+        for light in lights_list:
+            light.set_green_time(15)
+            light.set_red_time(0)
+            light.set_yellow_time(0)
 
     def _try_spawn_ego_vehicle_at(self, transform):
         """Try to spawn a  vehicle at specific transform

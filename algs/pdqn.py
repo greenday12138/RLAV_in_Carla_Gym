@@ -531,8 +531,8 @@ class P_DQN:
 
         self.critic_optimizer.zero_grad()
         loss_q.backward()
-        # if self.clip_grad > 0:
-        #     torch.nn.utils.clip_grad_norm_(self.critic.parameters(), self.clip_grad)
+        if self.clip_grad > 0:
+            torch.nn.utils.clip_grad_norm_(self.critic.parameters(), self.clip_grad)
         self.critic_optimizer.step()
 
         if self.learn_time % self.policy_freq == 0:
@@ -565,8 +565,8 @@ class P_DQN:
             out = -torch.mul(delta_a, action_param)
             self.actor.zero_grad()
             out.backward(torch.ones(out.shape).to(self.device))
-            # if self.clip_grad > 0:
-            #     torch.nn.utils.clip_grad_norm_(self.actor.parameters(), self.clip_grad)
+            if self.clip_grad > 0:
+                torch.nn.utils.clip_grad_norm_(self.actor.parameters(), self.clip_grad)
             self.actor_optimizer.step()
             self.soft_update(self.actor, self.actor_target)
             self.soft_update(self.critic, self.critic_target)
