@@ -254,7 +254,7 @@ class CarlaEnv:
         # Set physical mode only for cars around ego vehicle to save computation
         if self.hybrid:
             self.traffic_manager.set_hybrid_physics_mode(True)
-            self.traffic_manager.set_hybrid_physics_radius(100.0)
+            self.traffic_manager.set_hybrid_physics_radius(200.0)
 
         """The default global speed limit is 30 m/s
         Vehicles' target speed is 70% of their current speed limit unless any other value is set."""
@@ -262,6 +262,12 @@ class CarlaEnv:
         # Let the companion vehicles drive a bit faster than ego speed limit
         self.traffic_manager.global_percentage_speed_difference(-100)
         self.traffic_manager.set_synchronous_mode(self.sync)
+        #set traffic light elpse time
+        lights_list=self.sim_world.get_actors().filter("*traffic_light*")
+        for light in lights_list:
+            light.set_green_time(15)
+            light.set_red_time(0)
+            light.set_yellow_time(0)
 
     def _spawn_companion_vehicles(self):
         """
@@ -306,27 +312,26 @@ class CarlaEnv:
                 logging.warn(response.error)
             else:
                 # print("Future Actor",response.actor_id)
-                self.companion_vehicles.append(self.sim_world.get_actor(response.actor_id))
-                if self.ignore_traffic_light:
-                    self.traffic_manager.ignore_lights_percentage(
-                        self.sim_world.get_actor(response.actor_id), 100)
-                    self.traffic_manager.ignore_walkers_percentage(
-                        self.sim_world.get_actor(response.actor_id), 100)
-                self.traffic_manager.ignore_signs_percentage(
-                        self.sim_world.get_actor(response.actor_id), 100)
-                self.traffic_manager.auto_lane_change(
-                    self.sim_world.get_actor(response.actor_id), False)
-                # modify change probability
-                self.traffic_manager.random_left_lanechange_percentage(
-                    self.sim_world.get_actor(response.actor_id), 50)
-                self.traffic_manager.random_right_lanechange_percentage(
-                    self.sim_world.get_actor(response.actor_id), 50)
+                vehicle=self.sim_world.get_actor(response.actor_id)
+                self.companion_vehicles.append(vehicle)
                 
-                self.traffic_manager.set_route(self.sim_world.get_actor(response.actor_id),
+                if self.ignore_traffic_light:
+                    self.traffic_manager.ignore_lights_percentage(vehicle, 100)
+                    self.traffic_manager.ignore_walkers_percentage(vehicle, 100)
+                else:
+                    self.traffic_manager.ignore_lights_percentage(vehicle, 50)
+                    self.traffic_manager.ignore_walkers_percentage(vehicle, 50)
+                self.traffic_manager.ignore_signs_percentage(vehicle, 100)
+                self.traffic_manager.auto_lane_change(vehicle, True)
+                # modify change probability
+                self.traffic_manager.random_left_lanechange_percentage(vehicle, 0)
+                self.traffic_manager.random_right_lanechange_percentage(vehicle, 0)
+                self.traffic_manager.vehicle_percentage_speed_difference(vehicle,
+                        random.choice([30,20,10,0,-20-40,-60,-80,-100,-100,-100]))
+                self.traffic_manager.set_route(vehicle,
                                                ['Straight', 'Straight', 'Straight', 'Straight', 'Straight', 'Straight', 'Straight', 'Straight', 'Straight', 'Straight'])
-                self.traffic_manager.update_vehicle_lights(
-                    self.sim_world.get_actor(response.actor_id), True)
-                # print(self.sim_world.get_actor(response.actor_id).attributes)
+                self.traffic_manager.update_vehicle_lights(vehicle, True)
+                # print(vehicle.attributes)
 
         msg = 'requested %d vehicles, generate %d vehicles, press Ctrl+C to exit.'
         logging.info(msg, num_of_vehicles, len(self.companion_vehicles))

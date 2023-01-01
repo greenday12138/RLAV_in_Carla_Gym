@@ -72,6 +72,7 @@ class Truncated(Enum):
     OUT_OF_ROAD=4
     OPPOSITE_DIRECTION=5
     TRAFFIC_LIGHT_BREAK=6
+    CHANGE_TO_WRONG_LANE=7
 
 class SpeedState(Enum):
     """Different ego vehicle speed state

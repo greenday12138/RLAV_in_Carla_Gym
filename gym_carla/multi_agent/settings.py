@@ -94,7 +94,7 @@ ARGS.add_argument(
 ARGS.add_argument(
     '-n', '--num_of_vehicles', type=list,
     help='Total vehicles number which run in simulation',
-    default=[10*3, 15*3, 20*3])
+    default=[ 15*3])
 ARGS.add_argument(
     '-sa', '--sampling_resolution', type=float,
     help='Distance between generated two waypoints',
@@ -175,11 +175,11 @@ ARGS.add_argument(
     help='Let the RL controller and PID controller alternatively take control every 500 steps')
 ARGS.add_argument(
     '--vehicle_proximity', type=float,
-    default=50.0,
+    default=80.0,
     help='Distance for searching vehicles in front of ego vehicle, unit -- meters')
 ARGS.add_argument(
     '--traffic_light_proximity', type=float,
-    default=40.0,
+    default=80.0,
     help='Distance for searching traffic light in front of ego vehicle, unit -- meters,'
     'attention: this value is tricky')
 ARGS.add_argument(

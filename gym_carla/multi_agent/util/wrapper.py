@@ -72,6 +72,7 @@ class Truncated(Enum):
     OUT_OF_ROAD=4
     OPPOSITE_DIRECTION=5
     TRAFFIC_LIGHT_BREAK=6
+    CHANGE_TO_WRONG_LANE=7
 
 class SpeedState(Enum):
     """Different ego vehicle speed state
@@ -110,6 +111,7 @@ def process_lane_wp(wps_list, ego_vehicle_z, ego_forward_vector, my_sample_ratio
         yaw_diff = yaw_diff / 90
         wps.append([delta_z/3, yaw_diff, lane_offset])
     return np.array(wps)
+
 
 def process_veh(ego_vehicle, vehs_info, left_wall, right_wall,vehicle_proximity):
     vehicle_inlane=[vehs_info.left_front_veh,vehs_info.center_front_veh,vehs_info.right_front_veh,
@@ -230,7 +232,7 @@ def ttc_reward(ego_veh,target_veh,min_dis,TTC_THRESHOLD):
 def comfort(fps, last_acc, acc, last_yaw, yaw):
     acc_jerk = -((acc - last_acc) * fps) ** 2 / ((6 * fps) ** 2)
     yaw_diff = math.degrees(get_yaw_diff(last_yaw, yaw))
-    Yaw_jerk = -abs(yaw_diff) / 90
+    Yaw_jerk = -abs(yaw_diff) / 60
     return np.clip(acc_jerk * 0.5 + Yaw_jerk, -1, 0), yaw_diff
 
 def lane_center_reward(lane_center, ego_location):

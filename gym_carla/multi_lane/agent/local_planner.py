@@ -128,9 +128,9 @@ class LocalPlanner:
 
     def _get_vehicles(self):
         # retrieve relevant elements for safe navigation, i.e.: other vehicles
-        def caculate_dis(wps,dis_list,veh):
+        def caculate_dis(wps,veh):
             if len(wps)==0:
-                dis_list.append(0)
+                return 0
             else:
                 if veh:
                     pre_wps=wps[0].previous(self._sampling_radius)
@@ -141,10 +141,10 @@ class LocalPlanner:
                         for i, wp in enumerate(pre_wps):
                             if wp.road_id in ROADS:
                                 pre_wp = wp
-                        
-                    dis_list.append(pre_wp.transform.location.distance(veh.get_location()))
+                    
+                    return pre_wp.transform.location.distance(veh.get_location())
                 else:
-                    dis_list.append(self.vehicle_proximity)
+                    return self.vehicle_proximity
 
         vehicle_list=self._world.get_actors().filter("*vehicle*")
         left_front_veh=self._get_vehicles_one_lane(vehicle_list,True,-1)
@@ -156,12 +156,12 @@ class LocalPlanner:
 
         distance_to_front_vehicles=[]
         distance_to_rear_vehicles=[]
-        caculate_dis(self.waypoints_info['left_front_wps'],distance_to_front_vehicles,left_front_veh)
-        caculate_dis(self.waypoints_info['center_front_wps'],distance_to_front_vehicles,center_front_veh)
-        caculate_dis(self.waypoints_info['right_front_wps'],distance_to_front_vehicles,right_front_veh)
-        caculate_dis(self.waypoints_info['left_rear_wps'],distance_to_rear_vehicles,left_rear_veh)
-        caculate_dis(self.waypoints_info['center_rear_wps'],distance_to_rear_vehicles,center_rear_veh)
-        caculate_dis(self.waypoints_info['right_rear_wps'],distance_to_rear_vehicles,right_rear_veh)
+        distance_to_front_vehicles.append(caculate_dis(self.waypoints_info['left_front_wps'],left_front_veh))
+        distance_to_front_vehicles.append(caculate_dis(self.waypoints_info['center_front_wps'],center_front_veh))
+        distance_to_front_vehicles.append(caculate_dis(self.waypoints_info['right_front_wps'],right_front_veh))
+        distance_to_rear_vehicles.append(caculate_dis(self.waypoints_info['left_rear_wps'],left_rear_veh))
+        distance_to_rear_vehicles.append(caculate_dis(self.waypoints_info['center_rear_wps'],center_rear_veh))
+        distance_to_rear_vehicles.append(caculate_dis(self.waypoints_info['right_rear_wps'],right_rear_veh))
 
         return {'left_front_veh':left_front_veh,
                 'left_rear_veh':left_rear_veh,

@@ -426,11 +426,11 @@ class EgoClient:
             self.time_step += 1
             self.total_step += 1
             self.vel_buffer.append(self.step_info['velocity'])
-            if self.speed_state == SpeedState.RUNNING and self.RL_switch == True:
+            if self.RL_switch == True:
                 self.rl_control_step += 1
             # new_action \in [-1, 0, 1], but saved action is the index of max Q(s, a), and thus change \in [0, 1, 2]
             control_info = {'Steer': self.control.steer, 'Throttle': self.control.throttle, 'Brake': self.control.brake, 
-                    'Change': self.current_action.value+1, 'control_state': self.RL_switch}
+                    'Change': self.current_action, 'control_state': self.RL_switch}
 
             l_c=self.map.get_waypoint(self.ego_vehicle.get_location())
             print(f"Client {self.id} Episode:{self.reset_step}, Total_step:{self.total_step}, Time_step:{self.time_step}, RL_control_step:{self.rl_control_step}\n"
@@ -599,21 +599,25 @@ class EgoClient:
 
         lane_center = get_lane_center(self.map, self.ego_vehicle.get_location())
         yaw_forward = lane_center.transform.get_forward_vector().make_unit_vector()
+        
         v_3d = self.ego_vehicle.get_velocity()
         v_s,v_t=get_projection(v_3d,yaw_forward)
-        max_speed=self.speed_limit
-        if self.lights_info and self.lights_info.state!=carla.TrafficLightState.Green:
-            wps=self.lights_info.get_stop_waypoints()
-            for wp in wps:
-                if wp.lane_id==lane_center.lane_id:
-                    dis=self.ego_vehicle.get_location().distance(wp.transform.location)
-                    if dis<self.traffic_light_proximity:
-                        max_speed=(dis+0.0001)/self.traffic_light_proximity*self.speed_limit
+        speed_1,speed_2=self.speed_limit, self.speed_limit
+        # if self.lights_info and self.lights_info.state!=carla.TrafficLightState.Green:
+        #     wps=self.lights_info.get_stop_waypoints()
+        #     for wp in wps:
+        #         if wp.lane_id==lane_center.lane_id:
+        #             dis=self.ego_vehicle.get_location().distance(wp.transform.location)
+        #             if dis<self.traffic_light_proximity:
+        #                 speed_1=(dis+0.0001)/self.traffic_light_proximity*self.speed_limit
+        max_speed=min(speed_1,speed_2)
         if v_s * 3.6 > max_speed:
             # fEff = 1
-            fEff = math.exp(max_speed - v_s * 3.6)-1
+            fEff = math.exp(max_speed - v_s * 3.6)
         else:
-            fEff = v_s * 3.6 / max_speed-1
+            fEff = v_s * 3.6 / max_speed
+        # if max_speed<self.speed_min:
+        #     fEff=1
 
         a_3d=self.ego_vehicle.get_acceleration()
         cur_acc,a_t=get_projection(a_3d,yaw_forward)
@@ -624,6 +628,7 @@ class EgoClient:
         # jerk = ((cur_acc.x - self.last_acc.x) * self.fps) ** 2 + ((cur_acc.y - self.last_acc.y) * self.fps) ** 2
         # # whick still requires further testing, longitudinal and lateral
         # fCom = -jerk / ((6 * self.fps) ** 2 + (12 * self.fps) ** 2)
+
         if self.guide_change:
             Lcen, fLcen = calculate_guide_lane_center(self.ego_vehicle.get_location(),lane_center, self.ego_vehicle.get_location(), 
                     self.vehs_info.distance_to_front_vehicles,self.vehs_info.distance_to_rear_vehicles)
@@ -656,7 +661,7 @@ class EgoClient:
                           'lane_changing_reward': lane_changing_reward,'impact': impact, 
                           'change_in_lane_follow': change_in_lane_follow})
         
-        return fTTC + fEff + fCom + fLcen + lane_changing_reward
+        return fTTC + fEff + fYaw + fCom + fLcen + lane_changing_reward
 
     def _lane_change_reward(self, last_action, last_lane, current_lane, current_action, distance_to_front_vehicles, distance_to_rear_vehicles):
         print('distance_to_front_vehicles, distance_to_rear_vehicles: ', distance_to_front_vehicles, distance_to_rear_vehicles)
@@ -703,12 +708,18 @@ class EgoClient:
             # Here we judge speed state because there might be collision event when spawning vehicles
             logging.warn('collison happend')
             return Truncated.COLLISION
-        if self.current_action == Action.LANE_FOLLOW and self.current_lane != self.last_lane:
-            logging.warn('change lane in lane following mode')
-            return Truncated.CHANGE_LANE_IN_LANE_FOLLOW
         if not test_waypoint(lane_center,False):
             logging.warn('vehicle drive out of road')
             return Truncated.OUT_OF_ROAD
+        if self.current_action == Action.LANE_FOLLOW and self.current_lane != self.last_lane:
+            logging.warn('change lane in lane following mode')
+            return Truncated.CHANGE_LANE_IN_LANE_FOLLOW
+        if self.current_action == Action.LANE_CHANGE_LEFT and self.current_lane-self.last_lane<0:
+            logging.warn('vehicle change to wrong lane')
+            return Truncated.CHANGE_TO_WRONG_LANE
+        if self.current_action == Action.LANE_CHANGE_RIGHT and self.current_lane-self.last_lane>0:
+            logging.warn('vehicle change to wrong lane')
+            return Truncated.CHANGE_TO_WRONG_LANE
         if self.speed_state!=SpeedState.START and not self.vehs_info.center_front_veh:
             if not self.lights_info or self.lights_info.state!=carla.TrafficLightState.Red:
                 if len(self.vel_buffer)==self.vel_buffer.maxlen:
@@ -725,7 +736,7 @@ class EgoClient:
         # if self.step_info['Lane_center'] <=-1.0:
         #     logging.warn('drive out of road, lane invasion occur')
         #     return True
-        if yaw_diff>=90:
+        if yaw_diff>90:
             logging.warn('moving in opposite direction')
             return Truncated.OPPOSITE_DIRECTION
         if self.lights_info and self.lights_info.state!=carla.TrafficLightState.Green:

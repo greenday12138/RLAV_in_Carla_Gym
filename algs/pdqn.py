@@ -298,6 +298,7 @@ class P_DQN:
         self.td3 = False
         self.policy_freq = 2
         self.per_flag=per_flag
+        self.learn_time=0
         # adjust different types of replay buffer
         #self.replay_buffer = Split_ReplayBuffer(buffer_size)
         if not self.per_flag:
@@ -616,9 +617,16 @@ class P_DQN:
         torch.save(state, file)
 
     def load_net(self, state):
-        self.critic.load_state_dict(state['critic'])
-        self.critic_target.load_state_dict(state['critic_target'])
-        self.actor.load_state_dict(state['actor'])
-        self.actor_target.load_state_dict(state['actor_target'])
-        self.actor_optimizer.load_state_dict(state['actor_optimizer'])
-        self.critic_optimizer.load_state_dict(state['critic_optimizer'])
+        if state is not None:
+            if 'critic' in state:
+                self.critic.load_state_dict(state['critic'])
+            if 'critic_target' in state:
+                self.critic_target.load_state_dict(state['critic_target'])
+            if 'actor' in state:
+                self.actor.load_state_dict(state['actor'])
+            if 'actor_target' in state:
+                self.actor_target.load_state_dict(state['actor_target'])
+            if 'actor_optimizer' in state:
+                self.actor_optimizer.load_state_dict(state['actor_optimizer'])
+            if 'critic_optimizer' in state:
+                self.critic_optimizer.load_state_dict(state['critic_optimizer'])

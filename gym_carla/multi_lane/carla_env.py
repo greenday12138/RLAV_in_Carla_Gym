@@ -721,12 +721,18 @@ class CarlaEnv:
             # Here we judge speed state because there might be collision event when spawning vehicles
             logging.warn('collison happend')
             return Truncated.COLLISION
-        if self.current_action == Action.LANE_FOLLOW and self.current_lane != self.last_lane:
-            logging.warn('change lane in lane following mode')
-            return Truncated.CHANGE_LANE_IN_LANE_FOLLOW
         if not test_waypoint(lane_center,False):
             logging.warn('vehicle drive out of road')
             return Truncated.OUT_OF_ROAD
+        if self.current_action == Action.LANE_FOLLOW and self.current_lane != self.last_lane:
+            logging.warn('change lane in lane following mode')
+            return Truncated.CHANGE_LANE_IN_LANE_FOLLOW
+        if self.current_action == Action.LANE_CHANGE_LEFT and self.current_lane-self.last_lane<0:
+            logging.warn('vehicle change to wrong lane')
+            return Truncated.CHANGE_TO_WRONG_LANE
+        if self.current_action == Action.LANE_CHANGE_RIGHT and self.current_lane-self.last_lane>0:
+            logging.warn('vehicle change to wrong lane')
+            return Truncated.CHANGE_TO_WRONG_LANE
         if self.speed_state!=SpeedState.START and not self.vehs_info.center_front_veh:
             if not self.lights_info or self.lights_info.state!=carla.TrafficLightState.Red:
                 if len(self.vel_buffer)==self.vel_buffer.maxlen:
@@ -1041,27 +1047,26 @@ class CarlaEnv:
                 logging.warn(response.error)
             else:
                 # print("Future Actor",response.actor_id)
-                self.companion_vehicles.append(self.sim_world.get_actor(response.actor_id))
-                if self.ignore_traffic_light:
-                    self.traffic_manager.ignore_lights_percentage(
-                        self.sim_world.get_actor(response.actor_id), 100)
-                    self.traffic_manager.ignore_walkers_percentage(
-                        self.sim_world.get_actor(response.actor_id), 100)
-                self.traffic_manager.ignore_signs_percentage(
-                        self.sim_world.get_actor(response.actor_id), 100)
-                self.traffic_manager.auto_lane_change(
-                    self.sim_world.get_actor(response.actor_id), False)
-                # modify change probability
-                self.traffic_manager.random_left_lanechange_percentage(
-                    self.sim_world.get_actor(response.actor_id), 0)
-                self.traffic_manager.random_right_lanechange_percentage(
-                    self.sim_world.get_actor(response.actor_id), 0)
+                vehicle=self.sim_world.get_actor(response.actor_id)
+                self.companion_vehicles.append(vehicle)
                 
-                self.traffic_manager.set_route(self.sim_world.get_actor(response.actor_id),
+                if self.ignore_traffic_light:
+                    self.traffic_manager.ignore_lights_percentage(vehicle, 100)
+                    self.traffic_manager.ignore_walkers_percentage(vehicle, 100)
+                else:
+                    self.traffic_manager.ignore_lights_percentage(vehicle, 50)
+                    self.traffic_manager.ignore_walkers_percentage(vehicle, 50)
+                self.traffic_manager.ignore_signs_percentage(vehicle, 100)
+                self.traffic_manager.auto_lane_change(vehicle, True)
+                # modify change probability
+                self.traffic_manager.random_left_lanechange_percentage(vehicle, 0)
+                self.traffic_manager.random_right_lanechange_percentage(vehicle, 0)
+                self.traffic_manager.vehicle_percentage_speed_difference(vehicle,
+                        random.choice([30,20,10,0,-20-40,-60,-80,-100,-100,-100]))
+                self.traffic_manager.set_route(vehicle,
                                                ['Straight', 'Straight', 'Straight', 'Straight', 'Straight', 'Straight', 'Straight', 'Straight', 'Straight', 'Straight'])
-                self.traffic_manager.update_vehicle_lights(
-                    self.sim_world.get_actor(response.actor_id), True)
-                # print(self.sim_world.get_actor(response.actor_id).attributes)
+                self.traffic_manager.update_vehicle_lights(vehicle, True)
+                # print(vehicle.attributes)
 
         msg = 'requested %d vehicles, generate %d vehicles, press Ctrl+C to exit.'
         logging.info(msg, num_of_vehicles, len(self.companion_vehicles))

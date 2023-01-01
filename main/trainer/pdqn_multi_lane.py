@@ -7,11 +7,11 @@ import matplotlib.pyplot as plt
 from tqdm import tqdm
 from collections import deque
 from algs.pdqn import P_DQN
+from tensorboardX import SummaryWriter
 from gym_carla.multi_lane.settings import ARGS
 from gym_carla.multi_lane.carla_env import CarlaEnv
 from main.util.process import start_process, kill_process
 from gym_carla.multi_lane.util.wrapper import fill_action_param,recover_steer,Action
-from tensorboardX import SummaryWriter
 
 # neural network hyper parameters
 SIGMA = 0.5
@@ -24,8 +24,8 @@ LR_CRITIC = 0.0002
 GAMMA = 0.9  # q值更新系数
 TAU = 0.01  # 软更新参数
 EPSILON = 0.5  # epsilon-greedy
-BUFFER_SIZE = 10000
-MINIMAL_SIZE = 10000
+BUFFER_SIZE = 40000
+MINIMAL_SIZE = 40000
 BATCH_SIZE = 128
 REPLACE_A = 500
 REPLACE_C = 300
@@ -59,7 +59,7 @@ def main():
     a_dim = 2
 
     time=datetime.datetime.now().strftime('%Y%m%d%H%M%S')
-    episode_writer=SummaryWriter(f"{SAVE_PATH}/runs/multi_lane/pdqn/{time}")
+    episode_writer=SummaryWriter(f"{SAVE_PATH}/multi_lane/runs/pdqn/{time}")
     n_run = 3
     rosiolling_window = 100  # 100 car following events, average score
     result = []
@@ -94,7 +94,7 @@ def main():
                             action, action_param, all_action_param = agent.take_action(state)
                             next_state, reward, truncated, done, info = env.step(action, action_param)
                             if env.is_effective_action() and not info['Abandon']:
-                                replay_buffer_adder(agent,impact_deque,state,next_state,action,all_action_param,reward,truncated,done,info)
+                                replay_buffer_adder(agent,impact_deque,state,next_state,all_action_param,reward,truncated,done,info)
                             
                                 print(
                                         f"state -- vehicle_info:{state['vehicle_info']}\n"
@@ -130,7 +130,7 @@ def main():
                                     lane_change_reward += info['lane_changing_reward']
 
                             if env.total_step == args.pre_train_steps:
-                                agent.save_net(f"{SAVE_PATH}/pdqn_pre_trained.pth")
+                                agent.save_net(f"{SAVE_PATH}/multi_lane/pdqn_pre_trained.pth")
                             
                             if env.rl_control_step > 10000 and env.is_effective_action() and \
                                     env.RL_switch and SIGMA_ACC > 0.01:
@@ -167,7 +167,7 @@ def main():
 
                             if max_score < score:
                                 max_score = score
-                                agent.save_net(F"{SAVE_PATH}/pdqn_optimal.pth")
+                                agent.save_net(F"{SAVE_PATH}/multi_lane/pdqn_optimal.pth")
 
                         """ if rolling_score[rolling_score.__len__-1]>max_rolling_score:
                             max_rolling_score=rolling_score[rolling_score.__len__-1]
@@ -180,9 +180,9 @@ def main():
                                 'score': '%.2f' % score
                             })
                         pbar.update(1)
-                        agent.save_net(f"{SAVE_PATH}/pdqn_final.pth")
+                        agent.save_net(f"{SAVE_PATH}/multi_lane/pdqn_final.pth")
 
-            np.save(f"{SAVE_PATH}/result_{run}.npy", result)
+            np.save(f"{SAVE_PATH}/multi_lane/result_{run}.npy", result)
         except KeyboardInterrupt:
             logging.info("Premature Terminated")
         # except BaseException as e:
@@ -190,10 +190,10 @@ def main():
         finally:
             env.__del__()
             episode_writer.close()
-            agent.save_net(f"{SAVE_PATH}/pdqn_final.pth")
+            agent.save_net(f"{SAVE_PATH}/multi_lane/pdqn_final.pth")
             logging.info('\nDone.')
 
-def replay_buffer_adder(agent,impact_deque, state, next_state, action,all_action_param,reward, truncated, done, info):
+def replay_buffer_adder(agent,impact_deque, state, next_state,all_action_param,reward, truncated, done, info):
     """Input all the state info into agent's replay buffer"""
     if 'Throttle' in info:
         control_state = info['control_state']
