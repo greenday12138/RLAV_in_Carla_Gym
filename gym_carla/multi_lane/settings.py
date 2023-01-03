@@ -171,7 +171,7 @@ ARGS.add_argument(
     help='Brake bound for ego vehicle controller')
 ARGS.add_argument(
     '--pre_train_steps', type=int,
-    default=40000,
+    default=80000,
     help='Let the RL controller and PID controller alternatively take control every 500 steps')
 ARGS.add_argument(
     '--vehicle_proximity', type=float,

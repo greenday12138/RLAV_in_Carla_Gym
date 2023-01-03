@@ -8,10 +8,11 @@ from tqdm import tqdm
 from collections import deque
 from algs.pdqn import P_DQN
 from tensorboardX import SummaryWriter
-from gym_carla.multi_lane.settings import ARGS
-from gym_carla.multi_lane.carla_env import CarlaEnv
+from multiprocessing import Process,Queue,Pipe
+from gym_carla.multi_agent.settings import ARGS
+from gym_carla.multi_agent.carla_env import CarlaEnv
 from main.util.process import start_process, kill_process
-from gym_carla.multi_lane.util.wrapper import fill_action_param,recover_steer,Action
+from gym_carla.multi_agent.util.wrapper import fill_action_param,recover_steer,Action
 
 # neural network hyper parameters
 SIGMA = 0.5
@@ -26,7 +27,7 @@ TAU = 0.01  # 软更新参数
 EPSILON = 0.5  # epsilon-greedy
 BUFFER_SIZE = 80000
 MINIMAL_SIZE = 80000
-BATCH_SIZE = 256
+BATCH_SIZE = 128
 REPLACE_A = 500
 REPLACE_C = 300
 TOTAL_EPISODE = 5000
@@ -39,7 +40,6 @@ zero_index_gradients = True
 inverting_gradients = True
 base_name = f'origin_{TTC_threshold}_NOCA'
 SAVE_PATH='./out'
-
 
 def main():
     args = ARGS.parse_args()
@@ -59,14 +59,14 @@ def main():
     a_dim = 2
 
     time=datetime.datetime.now().strftime('%Y%m%d%H%M%S')
-    episode_writer=SummaryWriter(f"{SAVE_PATH}/multi_lane/runs/pdqn/{time}")
+    episode_writer=SummaryWriter(f"{SAVE_PATH}/runs/multi_agent/pdqn/{time}")
     n_run = 3
     rosiolling_window = 100  # 100 car following events, average score
     result = []
 
     for run in [base_name]:
         agent = P_DQN(s_dim, a_dim, a_bound, GAMMA, TAU, SIGMA_STEER, SIGMA, SIGMA_ACC, THETA, EPSILON, BUFFER_SIZE, BATCH_SIZE, LR_ACTOR,
-                     LR_CRITIC, clip_grad, zero_index_gradients, inverting_gradients,PER_FLAG, DEVICE)
+                     LR_CRITIC, clip_grad, zero_index_gradients, inverting_gradients, PER_FLAG,DEVICE)
 
         # training part
         max_rolling_score = np.float32('-5')
@@ -85,59 +85,75 @@ def main():
             for i in range(10):
                 with tqdm(total=TOTAL_EPISODE // 10, desc="Iteration %d" % i) as pbar:
                     for i_episode in range(TOTAL_EPISODE // 10):
-                        state = env.reset()
+                        states = env.reset()
                         agent.reset_noise()
                         score = 0
                         ttc, efficiency,comfort,lcen,yaw,impact,lane_change_reward = 0, 0, 0, 0, 0, 0, 0  # part objective scores
-                        impact_deque = deque(maxlen=2)
+                        impact_deques=[deque(maxlen=2) for _ in range(len(states))]
                         while not done and not truncated:
-                            action, action_param, all_action_param = agent.take_action(state)
-                            next_state, reward, truncated, done, info = env.step(action, action_param)
-                            if env.is_effective_action() and not info['Abandon']:
-                                replay_buffer_adder(agent,impact_deque,state,next_state,all_action_param,reward,truncated,done,info)
-                            
-                                print(
-                                        f"state -- vehicle_info:{state['vehicle_info']}\n"
+                            actions,action_params,all_action_params=[],[],[]
+                            for state in states:
+                                action, action_param, all_action_param = agent.take_action(state)
+                                actions.append(action)
+                                action_params.append(action_param)
+                                all_action_params.append(all_action_param)
+                            next_states, rewards, truncateds, dones, infos = env.step(actions, action_params)
+                            for i in range(len(next_states)):
+                                if env.is_effective_action(i) and not infos[i]['Abandon']:
+                                    logging.info(f"CLIENT {i} INFO")
+                                    replay_buffer_adder(agent,impact_deques[i],states[i],next_states[i],all_action_params[i],
+                                        rewards[i],truncateds[i],dones[i],infos[i])
+   
+                                    print(
+                                        f"state -- vehicle_info:{states[i]['vehicle_info']}\n"
                                         #f"waypoints:{state['left_waypoints']}, \n"
-                                        f"waypoints:{state['center_waypoints']}, \n"
+                                        #f"waypoints:{states[i]['center_waypoints']}, \n"
                                         #f"waypoints:{state['right_waypoints']}, \n"
-                                        f"ego_vehicle:{state['ego_vehicle']}, \n"
-                                        f"light info: {state['light']}\n"
-                                        f"next_state -- vehicle_info:{next_state['vehicle_info']}\n"
+                                        f"ego_vehicle:{states[i]['ego_vehicle']}, \n"
+                                        f"light info: {states[i]['light']}\n"
+                                        f"next_state -- vehicle_info:{next_states[i]['vehicle_info']}\n"
                                         #f"waypoints:{next_state['left_waypoints']}, \n"
-                                        f"waypoints:{next_state['center_waypoints']}, \n"
+                                        #f"waypoints:{next_states[i]['center_waypoints']}, \n"
                                         #f"waypoints:{next_state['right_waypoints']}, \n"
-                                        f"ego_vehicle:{next_state['ego_vehicle']}\n"
-                                        f"light info: {next_state['light']}\n"
-                                        f"action:{action}, action_param:{action_param}, all_action_param:{all_action_param}\n"
-                                        f"reward:{reward}, truncated:{truncated}, done:{done}")
+                                        f"ego_vehicle:{next_states[i]['ego_vehicle']}\n"
+                                        f"light info: {next_states[i]['light']}\n"
+                                        f"action:{actions[i]}, action_param:{action_params[i]}, all_action_param:{all_action_params[i]}\n"
+                                        f"reward:{rewards[i]}, truncated:{truncateds[i]}, done:{dones[i]}")
                             print()
 
                             if agent.replay_buffer.size() >= MINIMAL_SIZE:
                                 logging.info("Learn begin: %f %f", SIGMA_STEER,SIGMA_ACC)
                                 agent.learn()
 
-                            state = next_state
-                            if env.is_effective_action() and not info['Abandon']:
-                                score += reward
-                                if not truncated:
-                                    ttc += info['TTC']
-                                    efficiency += info['Efficiency']
-                                    comfort += info['Comfort']
-                                    lcen += info['Lane_center']
-                                    yaw += info['Yaw']
-                                    impact += info['impact']
-                                    lane_change_reward += info['lane_changing_reward']
-
-                            if env.total_step == args.pre_train_steps:
-                                agent.save_net(f"{SAVE_PATH}/multi_lane/pdqn_pre_trained.pth")
+                            for t in truncateds:
+                                if t:
+                                    truncated=True
+                            for d in dones:
+                                if d and not truncated:
+                                    done=True
+                            states = next_states
                             
-                            if env.rl_control_step > 10000 and env.is_effective_action() and \
-                                    env.RL_switch and SIGMA_ACC > 0.01:
-                                globals()['SIGMA'] *= SIGMA_DECAY
-                                globals()['SIGMA_STEER'] *= SIGMA_DECAY
-                                globals()['SIGMA_ACC'] *= SIGMA_DECAY
-                                agent.set_sigma(SIGMA_STEER, SIGMA_ACC)
+                            #only record the first vehicle reward
+                            if env.ego_clients[0].total_step == args.pre_train_steps:
+                                agent.save_net(f"{SAVE_PATH}/multi_agent/pdqn_pre_trained.pth")
+                            if env.is_effective_action(0) and not infos[0]['Abandon']:
+                                score += rewards[0]
+                                if not truncateds[0]:
+                                    ttc += infos[0]['TTC']
+                                    efficiency += infos[0]['Efficiency']
+                                    comfort += infos[0]['Comfort']
+                                    lcen += infos[0]['Lane_center']
+                                    yaw += infos[0]['Yaw']
+                                    impact += infos[0]['impact']
+                                    lane_change_reward += infos[0]['lane_changing_reward']
+
+                            if env.is_effective_action():
+                                print(f"Joint RL control steps:{env.rl_control_step}")     
+                                if env.rl_control_step > 10000 and SIGMA_ACC > 0.01:
+                                    globals()['SIGMA'] *= SIGMA_DECAY
+                                    globals()['SIGMA_STEER'] *= SIGMA_DECAY
+                                    globals()['SIGMA_ACC'] *= SIGMA_DECAY
+                                    agent.set_sigma(SIGMA_STEER, SIGMA_ACC)
 
                         if done or truncated:
                             # restart the training
@@ -145,18 +161,19 @@ def main():
                             truncated = False
 
                         # record episode results
-                        if env.RL_switch:
+                        if env.ego_clients[0].RL_switch:
                             episode_writer.add_scalar('Total_Reward',score,i*(TOTAL_EPISODE // 10)+i_episode)
-                            score/=env.time_step+1
+                            time_step=env.ego_clients[0].time_step
+                            score/=time_step+1
                             episode_writer.add_scalar('Avg_Reward',score,i*(TOTAL_EPISODE // 10)+i_episode)
-                            episode_writer.add_scalar('Time_Steps',env.time_step,i*(TOTAL_EPISODE // 10)+i_episode)
-                            episode_writer.add_scalar('TTC',ttc/(env.time_step+1), i*(TOTAL_EPISODE // 10)+i_episode)
-                            episode_writer.add_scalar('Efficiency',efficiency/(env.time_step+1), i*(TOTAL_EPISODE // 10)+i_episode)
-                            episode_writer.add_scalar('Comfort',comfort/(env.time_step+1), i*(TOTAL_EPISODE // 10)+i_episode)
-                            episode_writer.add_scalar('Lcen',lcen/(env.time_step+1), i*(TOTAL_EPISODE // 10)+i_episode)
-                            episode_writer.add_scalar('Yaw',yaw/(env.time_step+1), i*(TOTAL_EPISODE // 10)+i_episode)
-                            episode_writer.add_scalar('Impact',impact/(env.time_step+1), i*(TOTAL_EPISODE // 10)+i_episode)
-                            episode_writer.add_scalar('Lane_change_reward',lane_change_reward/(env.time_step+1), i*(TOTAL_EPISODE // 10)+i_episode)
+                            episode_writer.add_scalar('Time_Steps',time_step,i*(TOTAL_EPISODE // 10)+i_episode)
+                            episode_writer.add_scalar('TTC',ttc/(time_step+1), i*(TOTAL_EPISODE // 10)+i_episode)
+                            episode_writer.add_scalar('Efficiency',efficiency/(time_step+1), i*(TOTAL_EPISODE // 10)+i_episode)
+                            episode_writer.add_scalar('Comfort',comfort/(time_step+1), i*(TOTAL_EPISODE // 10)+i_episode)
+                            episode_writer.add_scalar('Lcen',lcen/(time_step+1), i*(TOTAL_EPISODE // 10)+i_episode)
+                            episode_writer.add_scalar('Yaw',yaw/(time_step+1), i*(TOTAL_EPISODE // 10)+i_episode)
+                            episode_writer.add_scalar('Impact',impact/(time_step+1), i*(TOTAL_EPISODE // 10)+i_episode)
+                            episode_writer.add_scalar('Lane_change_reward',lane_change_reward/(time_step+1), i*(TOTAL_EPISODE // 10)+i_episode)
                             
                             episode_score.append(score)
                             score_safe.append(ttc)
@@ -167,7 +184,7 @@ def main():
 
                             if max_score < score:
                                 max_score = score
-                                agent.save_net(F"{SAVE_PATH}/multi_lane/pdqn_optimal.pth")
+                                agent.save_net(F"{SAVE_PATH}/multi_agent/pdqn_optimal.pth")
 
                         """ if rolling_score[rolling_score.__len__-1]>max_rolling_score:
                             max_rolling_score=rolling_score[rolling_score.__len__-1]
@@ -180,18 +197,25 @@ def main():
                                 'score': '%.2f' % score
                             })
                         pbar.update(1)
-                        agent.save_net(f"{SAVE_PATH}/multi_lane/pdqn_final.pth")
+                        agent.save_net(f"{SAVE_PATH}/multi_agent/pdqn_final.pth")
 
-            np.save(f"{SAVE_PATH}/multi_lane/result_{run}.npy", result)
+            np.save(f"{SAVE_PATH}/multi_agent/result_{run}.npy", result)
         except KeyboardInterrupt:
             logging.info("Premature Terminated")
         # except BaseException as e:
         #      logging.info(e.args)
         finally:
             env.__del__()
+            #process[-1].join() # waiting for learner
             episode_writer.close()
-            agent.save_net(f"{SAVE_PATH}/multi_lane/pdqn_final.pth")
+            agent.save_net(f"{SAVE_PATH}/multi_agent/pdqn_final.pth")
             logging.info('\nDone.')
+
+def learn_mp(q: Queue, args):
+    agent=P_DQN(args['s_dim'], args['a_dim'], args['a_bound'], args['GAMMA'], args['TAU'], args['SIGMA_STEER'], args['SIGMA'], args['SIGMA_ACC'], 
+            args['THETA'], args['EPSILON'], args['BUFFER_SIZE'], args['BATCH_SIZE'], args['LR_ACTOR'],args['LR_CRITIC'], 
+            args['clip_grad'], args['zero_index_gradients'], args['inverting_gradients'],args['PER_FLAG'], args['DEVICE'])
+    
 
 def replay_buffer_adder(agent,impact_deque, state, next_state,all_action_param,reward, truncated, done, info):
     """Input all the state info into agent's replay buffer"""
@@ -244,7 +268,6 @@ def replay_buffer_adder(agent,impact_deque, state, next_state,all_action_param,r
     #     # not work
     #     # Input the agent action to replay buffer
     #     agent.replay_buffer.add(state, action, all_action_param, reward, next_state, truncated, done, info)
-
 
 if __name__ == '__main__':
     try:

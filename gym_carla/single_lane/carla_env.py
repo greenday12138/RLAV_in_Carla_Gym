@@ -575,7 +575,8 @@ class CarlaEnv:
         if self._truncated():
             history, tags = self.collision_sensor.get_collision_history()
             if len(history) != 0:
-                if SemanticTags.Vehicles in tags:
+                if SemanticTags.Car in tags or SemanticTags.Truck in tags or SemanticTags.Bus in tags or SemanticTags.Motorcycle in tags \
+                        or SemanticTags.Rider in tags or SemanticTags.Bicycle in tags:
                     return - self.penalty
                 else:
                     # If ego vehicle collides with traffic lights and stop signs, do not add penalty

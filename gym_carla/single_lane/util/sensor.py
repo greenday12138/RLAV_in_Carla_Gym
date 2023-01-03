@@ -6,29 +6,36 @@ from enum import Enum
 
 
 class SemanticTags(Enum):
-    Unlabeled = 0
-    Building = 1
-    Fence = 2
-    Other = 3
-    Pedestrian = 4
-    Pole = 5
-    RoadLine = 6
-    Road = 7
-    SideWalk = 8
-    Vegetation = 9
-    Vehicles = 10
-    Wall = 11
-    TrafficSign = 12
-    Sky = 13
-    Ground = 14
-    Bridge = 15
-    RailTrack = 16
-    GuardRail = 17
-    TrafficLight = 18
-    Static = 19
-    Dynamic = 20
-    Water = 21
-    Terrain = 22
+    NONE=0,
+    Roads=1,
+    Sidewalks=2,
+    Buildings = 3,
+    Walls = 4,
+    Fences = 5,
+    Poles = 6,
+    TrafficLight = 7,
+    TrafficSigns = 8,
+    Vegetation = 9,
+    Terrain = 10,
+    Sky = 11,
+    Pedestrians = 12,
+    Rider = 13,
+    Car = 14,
+    Truck = 15,
+    Bus = 16,
+    Train = 17,
+    Motorcycle = 18,
+    Bicycle = 19,
+    Static = 20,
+    Dynamic = 21,
+    Other = 22,
+    Water = 23,
+    RoadLines = 24,
+    Ground = 25,
+    Bridge = 26,
+    RailTrack = 27,
+    GuardRail = 28,
+    Any=255
 
 
 def get_actor_display_name(actor, truncate=250):

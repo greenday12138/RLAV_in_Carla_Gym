@@ -322,7 +322,7 @@ class CarlaEnv:
                     self.traffic_manager.ignore_lights_percentage(vehicle, 50)
                     self.traffic_manager.ignore_walkers_percentage(vehicle, 50)
                 self.traffic_manager.ignore_signs_percentage(vehicle, 100)
-                self.traffic_manager.auto_lane_change(vehicle, True)
+                self.traffic_manager.auto_lane_change(vehicle, False)
                 # modify change probability
                 self.traffic_manager.random_left_lanechange_percentage(vehicle, 0)
                 self.traffic_manager.random_right_lanechange_percentage(vehicle, 0)

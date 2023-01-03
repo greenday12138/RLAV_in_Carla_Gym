@@ -587,7 +587,8 @@ class EgoClient:
                 return -self.lane_penalty
             elif truncated==Truncated.COLLISION:
                 history, tags = self.collision_sensor.get_collision_history()
-                if SemanticTags.Vehicles in tags:
+                if SemanticTags.Car in tags or SemanticTags.Truck in tags or SemanticTags.Bus in tags or SemanticTags.Motorcycle in tags \
+                        or SemanticTags.Rider in tags or SemanticTags.Bicycle in tags:
                     return -self.penalty
                 else:
                     #Abandon the experience that ego vehicle collide with other obstacle

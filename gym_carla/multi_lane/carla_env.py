@@ -600,7 +600,8 @@ class CarlaEnv:
                 return -self.lane_penalty
             elif truncated==Truncated.COLLISION:
                 history, tags = self.collision_sensor.get_collision_history()
-                if SemanticTags.Vehicles in tags:
+                if SemanticTags.Car in tags or SemanticTags.Truck in tags or SemanticTags.Bus in tags or SemanticTags.Motorcycle in tags \
+                        or SemanticTags.Rider in tags or SemanticTags.Bicycle in tags:
                     return -self.penalty
                 else:
                     #Abandon the experience that ego vehicle collide with other obstacle
@@ -1057,7 +1058,7 @@ class CarlaEnv:
                     self.traffic_manager.ignore_lights_percentage(vehicle, 50)
                     self.traffic_manager.ignore_walkers_percentage(vehicle, 50)
                 self.traffic_manager.ignore_signs_percentage(vehicle, 100)
-                self.traffic_manager.auto_lane_change(vehicle, True)
+                self.traffic_manager.auto_lane_change(vehicle, False)
                 # modify change probability
                 self.traffic_manager.random_left_lanechange_percentage(vehicle, 0)
                 self.traffic_manager.random_right_lanechange_percentage(vehicle, 0)
