@@ -196,7 +196,7 @@ ARGS.add_argument(
     help='Set the vehicles in simulation to ignore traffic lights or not')
 ARGS.add_argument(
     '--ego_num', type=int,
-    default=4,
+    default=1,
     help='The number of RL controlled ego vehicle')
 ARGS.add_argument(
     '--modify_change_steer', type=bool,
@@ -205,7 +205,7 @@ ARGS.add_argument(
          and the steer < 0 when current action is Action.CHANGE_LANE_LEFT')
 ARGS.add_argument(
     '--pygame', type=bool,
-    default=True,
+    default=False,
     help='Render another pygame window for ego vehicle and the window style looks like automatic_control.py')
 ARGS.add_argument(
     '--alg', type=str,

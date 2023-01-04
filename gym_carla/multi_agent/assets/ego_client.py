@@ -737,7 +737,7 @@ class EgoClient:
         # if self.step_info['Lane_center'] <=-1.0:
         #     logging.warn('drive out of road, lane invasion occur')
         #     return True
-        if yaw_diff>90:
+        if abs(yaw_diff)>90:
             logging.warn('moving in opposite direction')
             return Truncated.OPPOSITE_DIRECTION
         if self.lights_info and self.lights_info.state!=carla.TrafficLightState.Green:

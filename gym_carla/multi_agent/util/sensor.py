@@ -6,35 +6,35 @@ from enum import Enum
 from gym_carla.multi_agent.util.misc import get_actor_display_name,create_vehicle_blueprint
 
 class SemanticTags(Enum):
-    NONE=0,
-    Roads=1,
-    Sidewalks=2,
-    Buildings = 3,
-    Walls = 4,
-    Fences = 5,
-    Poles = 6,
-    TrafficLight = 7,
-    TrafficSigns = 8,
-    Vegetation = 9,
-    Terrain = 10,
-    Sky = 11,
-    Pedestrians = 12,
-    Rider = 13,
-    Car = 14,
-    Truck = 15,
-    Bus = 16,
-    Train = 17,
-    Motorcycle = 18,
-    Bicycle = 19,
-    Static = 20,
-    Dynamic = 21,
-    Other = 22,
-    Water = 23,
-    RoadLines = 24,
-    Ground = 25,
-    Bridge = 26,
-    RailTrack = 27,
-    GuardRail = 28,
+    NONE=0
+    Roads=1
+    Sidewalks=2
+    Buildings = 3
+    Walls = 4
+    Fences = 5
+    Poles = 6
+    TrafficLight = 7
+    TrafficSigns = 8
+    Vegetation = 9
+    Terrain = 10
+    Sky = 11
+    Pedestrians = 12
+    Rider = 13
+    Car = 14
+    Truck = 15
+    Bus = 16
+    Train = 17
+    Motorcycle = 18
+    Bicycle = 19
+    Static = 20
+    Dynamic = 21
+    Other = 22
+    Water = 23
+    RoadLines = 24
+    Ground = 25
+    Bridge = 26
+    RailTrack = 27
+    GuardRail = 28
     Any=255
 
 

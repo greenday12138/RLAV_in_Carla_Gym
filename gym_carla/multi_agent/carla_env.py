@@ -117,10 +117,10 @@ class CarlaEnv:
             else:
                 self.sim_world.tick()
 
-                # spectator = self.sim_world.get_spectator()
-                # transform = self.ego_vehicle.get_transform()
-                # spectator.set_transform(carla.Transform(transform.location + carla.Location(z=100),
-                #                                         carla.Rotation(pitch=-90)))
+                spectator = self.sim_world.get_spectator()
+                transform = self.ego_clients[0].ego_vehicle.get_transform()
+                spectator.set_transform(carla.Transform(transform.location + carla.Location(z=100),
+                                                        carla.Rotation(pitch=-90)))
 
             # code for synchronous mode
             # camera_bp = self.sim_world.get_blueprint_library().find('sensor.camera.rgb')
@@ -149,10 +149,10 @@ class CarlaEnv:
                 self._tick()
             else:
                 self.sim_world.tick()
-                # spectator = self.sim_world.get_spectator()
-                # transform = self.ego_clients[0].ego_vehicle.get_transform()
-                # spectator.set_transform(carla.Transform(transform.location + carla.Location(z=80),
-                #                                         carla.Rotation(pitch=-90)))
+                spectator = self.sim_world.get_spectator()
+                transform = self.ego_clients[0].ego_vehicle.get_transform()
+                spectator.set_transform(carla.Transform(transform.location + carla.Location(z=80),
+                                                        carla.Rotation(pitch=-90)))
 
             # camera_data = self.sensor_queue.get(block=True)
             """Attention: the server's tick function only returns after it ran a fixed_delta_seconds, so the client need not to wait for

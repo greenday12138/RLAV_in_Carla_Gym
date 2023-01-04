@@ -1,1 +1,1 @@
-CARLA_PATH = 'D:\ProgramFiles\Carla\WindowsNoEditor'
+CARLA_PATH = 'D:\ProgramFiles\CARLA_0.9.14\WindowsNoEditor'

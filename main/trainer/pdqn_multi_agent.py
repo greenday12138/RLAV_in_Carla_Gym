@@ -1,15 +1,16 @@
 import logging
 import torch
-import datetime
+import datetime,time
 import random, collections
 import numpy as np
 import matplotlib.pyplot as plt
 import multiprocessing as mp
 from tqdm import tqdm
+from copy import deepcopy
 from collections import deque
 from algs.pdqn import P_DQN
 from tensorboardX import SummaryWriter
-from multiprocessing import Process,Queue,Pipe
+from multiprocessing import Process,Queue,Pipe,connection
 from gym_carla.multi_agent.settings import ARGS
 from gym_carla.multi_agent.carla_env import CarlaEnv
 from main.util.process import start_process, kill_process
@@ -26,12 +27,12 @@ LR_CRITIC = 0.0002
 GAMMA = 0.9  # q值更新系数
 TAU = 0.01  # 软更新参数
 EPSILON = 0.5  # epsilon-greedy
-BUFFER_SIZE = 40000
-MINIMAL_SIZE = 40000
+BUFFER_SIZE = 5000
+MINIMAL_SIZE = 5000
 BATCH_SIZE = 128
 REPLACE_A = 500
 REPLACE_C = 300
-TOTAL_EPISODE = 50000
+TOTAL_EPISODE = 5000
 SIGMA_DECAY = 0.9999
 TTC_threshold = 4.001
 PER_FLAG=True
@@ -43,12 +44,12 @@ base_name = f'origin_{TTC_threshold}_NOCA'
 SAVE_PATH='./out'
 
 def main():
-    args = ARGS.parse_args()
-    log_level = logging.DEBUG if args.debug else logging.INFO
+    Args = ARGS.parse_args()
+    log_level = logging.DEBUG if Args.debug else logging.INFO
     logging.basicConfig(format='%(levelname)s: %(message)s', level=log_level)
     # env=gym.make('CarlaEnv-v0')
-    env = CarlaEnv(args)
-    globals()['modify_change_steer'] = args.modify_change_steer
+    env = CarlaEnv(Args)
+    globals()['modify_change_steer'] = Args.modify_change_steer
 
     done = False
     truncated = False
@@ -66,17 +67,20 @@ def main():
     result = []
 
     for run in [base_name]:
-        worker_agent = P_DQN(s_dim, a_dim, a_bound, GAMMA, TAU, SIGMA_STEER, SIGMA, SIGMA_ACC, THETA, EPSILON, BUFFER_SIZE, BATCH_SIZE, LR_ACTOR,
+        worker_agent = P_DQN(deepcopy(s_dim), a_dim, a_bound, GAMMA, TAU, SIGMA_STEER, SIGMA, SIGMA_ACC, THETA, EPSILON, BUFFER_SIZE, BATCH_SIZE, LR_ACTOR,
                      LR_CRITIC, clip_grad, zero_index_gradients, inverting_gradients,PER_FLAG, DEVICE)
-        learner_agent = P_DQN(s_dim, a_dim, a_bound, GAMMA, TAU, SIGMA_STEER, SIGMA, SIGMA_ACC, THETA, EPSILON, BUFFER_SIZE, BATCH_SIZE, LR_ACTOR,
-                     LR_CRITIC, clip_grad, zero_index_gradients, inverting_gradients,PER_FLAG, DEVICE)
+        # learner_agent = P_DQN(deepcopy(s_dim), a_dim, a_bound, GAMMA, TAU, SIGMA_STEER, SIGMA, SIGMA_ACC, THETA, EPSILON, BUFFER_SIZE, BATCH_SIZE, LR_ACTOR,
+        #              LR_CRITIC, clip_grad, zero_index_gradients, inverting_gradients,PER_FLAG, DEVICE)
 
         #multi-process training
         process=list()
-        traj_pipe=Queue(maxsize=MINIMAL_SIZE)
-        agent_pipe=Queue(maxsize=BATCH_SIZE)
+        traj_q=Queue(maxsize=MINIMAL_SIZE)
+        agent_q=Queue(maxsize=1)
+        traj_send,traj_recv=Pipe()
+        agent_send,agent_recv=Pipe()
         mp.set_start_method(method='spawn',force=True)  # force all the multiprocessing to 'spawn' methods
-        process.append(mp.Process(target=learner_mp,args=(learner_agent,traj_pipe,agent_pipe)))
+        #process.append(mp.Process(target=learner_mp,args=(traj_recv,agent_send,(deepcopy(s_dim), a_dim, a_bound),Args.ego_num)))
+        process.append(mp.Process(target=learner_mp,args=(traj_q,agent_q,(deepcopy(s_dim), a_dim, a_bound),Args.ego_num)))
         [p.start() for p in process]
 
         # training part
@@ -100,16 +104,23 @@ def main():
                         worker_agent.reset_noise()
                         score = 0
                         ttc, efficiency,comfort,lcen,yaw,impact,lane_change_reward = 0, 0, 0, 0, 0, 0, 0  # part objective scores
-                        impact_deques=[deque(maxlen=2) for _ in range(len(states))]
                         while not done and not truncated:
                             actions,action_params,all_action_params=[],[],[]
-                            if not agent_pipe.empty():
-                                actor,actor_t,critic,critic_t=agent_pipe.get()
-                                print(actor,actor_t,critic,critic_t,sep='\n')
-                                worker_agent.actor.load_state_dict()
-                                worker_agent.actor_target.load_state_dict()
-                                worker_agent.critic.load_state_dict()
-                                worker_agent.critic_target.load_state_dict()
+                            # if agent_recv.poll():
+                            #     a,a_t,c,c_t=agent_recv.recv()
+                            #     worker_agent.actor.load_state_dict(a)
+                            #     worker_agent.actor_target.load_state_dict(a_t)
+                            #     worker_agent.critic.load_state_dict(c)
+                            #     worker_agent.critic_target.load_state_dict(c_t)
+                            if not agent_q.empty():
+                                actor,actor_t,critic,critic_t=worker_agent.actor.state_dict(),worker_agent.actor_target.state_dict(),\
+                                    worker_agent.critic.state_dict(),worker_agent.critic_target.state_dict()
+                                temp_agent=agent_q.get()
+                                a,c=temp_agent.actor.state_dict(),temp_agent.critic.state_dict()
+                                worker_agent.actor.load_state_dict(temp_agent.actor.state_dict())
+                                worker_agent.critic.load_state_dict(temp_agent.critic.state_dict())
+                                # worker_agent.critic.load_state_dict(c)
+                                # worker_agent.critic_target.load_state_dict(c_t)
 
                             for state in states:
                                 action, action_param, all_action_param = worker_agent.take_action(state)
@@ -120,9 +131,11 @@ def main():
                             for i in range(len(next_states)):
                                 if env.is_effective_action(i) and not infos[i]['Abandon']:
                                     logging.info(f"CLIENT {i} INFO")
-                                    if not traj_pipe.full():
-                                        traj_pipe.put((worker_agent,impact_deques[i],states[i],next_states[i],all_action_params[i],
-                                            rewards[i],truncateds[i],dones[i],infos[i]))
+                                    # traj_send.send((i,states[i],next_states[i],all_action_params[i],
+                                    #      rewards[i],truncateds[i],dones[i],infos[i]))
+                                    #if not traj_q.full():
+                                    traj_q.put((deepcopy(i),deepcopy(states[i]),deepcopy(next_states[i]),deepcopy(all_action_params[i]),
+                                        deepcopy(rewards[i]),deepcopy(truncateds[i]),deepcopy(dones[i]),deepcopy(infos[i])),block=True,timeout=None)
    
                                     print(
                                         f"state -- vehicle_info:{states[i]['vehicle_info']}\n"
@@ -150,7 +163,7 @@ def main():
                             states = next_states
                             
                             #only record the first vehicle reward
-                            if env.ego_clients[0].total_step == args.pre_train_steps:
+                            if env.ego_clients[0].total_step == Args.pre_train_steps:
                                 worker_agent.save_net(f"{SAVE_PATH}/multi_agent/pdqn_pre_trained.pth")
                             if env.is_effective_action(0) and not infos[0]['Abandon']:
                                 score += rewards[0]
@@ -219,13 +232,14 @@ def main():
             np.save(f"{SAVE_PATH}/multi_agent/result_{run}.npy", result)
         except KeyboardInterrupt:
             logging.info("Premature Terminated")
-        # except BaseException as e:
-        #      logging.info(e.args)
+        except BaseException as e:
+             logging.info(e.args)
         finally:
             env.__del__()
             #process[-1].join() # waiting for learner
             episode_writer.close()
             worker_agent.save_net(f"{SAVE_PATH}/multi_agent/pdqn_final.pth")
+            #process[-1].join()
             process_safely_terminate(process)
             logging.info('\nDone.')
 
@@ -236,25 +250,53 @@ def process_safely_terminate(process: list):
         except OSError as e:
             logging.SystemError(e)
 
-def learner_mp(agent, traj_q: Queue, agent_q:Queue):
-    while(True):        
-        if agent.replay_buffer.size()>=MINIMAL_SIZE:
-            if not traj_q.empty():
-                trajectory=traj_q.get(block=True,timeout=1.0)
-                print(trajectory)
-                impact_deque, state, next_state, all_action_param, reward, truncated, done, info=trajectory[0],trajectory[1],trajectory[2],trajectory[3],\
-                    trajectory[4],trajectory[5],trajectory[6],trajectory[7]
-                replay_buffer_adder(agent,impact_deque,state,next_state,all_action_param,reward,truncated,done,info)
+#Pipe version multiprocess
+# def learner_mp(traj_recv:connection.Connection, agent_send:connection.Connection, agent_param, ego_num):
+#     learner_agent=P_DQN(agent_param[0], agent_param[1], agent_param[2], GAMMA, TAU, SIGMA_STEER, SIGMA, SIGMA_ACC, THETA, EPSILON, BUFFER_SIZE, BATCH_SIZE, LR_ACTOR,
+#                      LR_CRITIC, clip_grad, zero_index_gradients, inverting_gradients,PER_FLAG, DEVICE)
+#     impact_deques=[deque(maxlen=2) for _ in range(ego_num)]
+#     while(True):
+#         if traj_recv.poll(timeout=None):
+#             trajectory=traj_recv.recv()
+#             ego_id, state, next_state, all_action_param, reward, truncated, done, info=trajectory[0],trajectory[1],trajectory[2],trajectory[3],\
+#                 trajectory[4],trajectory[5],trajectory[6],trajectory[7]
+#             replay_buffer_adder(learner_agent,impact_deques[ego_id],state,next_state,all_action_param,reward,truncated,done,info)
+
+#         if learner_agent.replay_buffer.size()>=MINIMAL_SIZE:
+#             logging.info("LEARN BEGIN")
+#             learner_agent.learn()
+#             if learner_agent.learn_time!=0 and learner_agent.learn_time%2==0:
+#                 actor,actor_t,critic,critic_t=learner_agent.actor.state_dict(),learner_agent.actor_target.state_dict(), \
+#                     learner_agent.critic.state_dict(),learner_agent.critic_target.state_dict()
+#                 a,a_t,c,c_t=deepcopy(learner_agent.actor.state_dict()),deepcopy(learner_agent.actor_target.state_dict()),\
+#                     deepcopy(learner_agent.critic.state_dict()),deepcopy(learner_agent.critic_target.state_dict())
+#                 agent_send.send((a,a_t,c,c_t))
+
+#Queue vesion multiprocess
+def learner_mp(traj_q: Queue, agent_q:Queue, agent_param, ego_num):
+    learner_agent=P_DQN(deepcopy(agent_param[0]), agent_param[1], agent_param[2], GAMMA, TAU, SIGMA_STEER, SIGMA, SIGMA_ACC, THETA, EPSILON, BUFFER_SIZE, BATCH_SIZE, LR_ACTOR,
+                     LR_CRITIC, clip_grad, zero_index_gradients, inverting_gradients,PER_FLAG, DEVICE)
+    temp_agent=P_DQN(deepcopy(agent_param[0]), agent_param[1], agent_param[2], GAMMA, TAU, SIGMA_STEER, SIGMA, SIGMA_ACC, THETA, EPSILON, BUFFER_SIZE, BATCH_SIZE, LR_ACTOR,
+                     LR_CRITIC, clip_grad, zero_index_gradients, inverting_gradients,PER_FLAG, torch.device('cpu'))
+    impact_deques=[deque(maxlen=2) for _ in range(ego_num)]
+    actor,actor_t,critic,critic_t=None,None,None,None
+    a,a_t,c,c_t=None,None,None,None
+    while(True):
+        trajectory=traj_q.get(block=True,timeout=None)
+        ego_id, state, next_state, all_action_param, reward, truncated, done, info=trajectory[0],trajectory[1],trajectory[2],trajectory[3],\
+                trajectory[4],trajectory[5],trajectory[6],trajectory[7]
+        replay_buffer_adder(learner_agent,impact_deques[ego_id],state,next_state,all_action_param,reward,truncated,done,info)        
+        if learner_agent.replay_buffer.size()>=MINIMAL_SIZE:
             logging.info("LEARN BEGIN")
-            agent.learn()
-            if agent.learn_time!=0 and agent.learn_time%BATCH_SIZE==0:
-                agent_q.put((agent.actor.state_dict(),agent.actor_target.state_dict(),
-                            agent.critic.state_dict(),agent.critic_target.state_dict()),block=True,timeout=None)
-        else:
-            trajectory=traj_q.get(block=True,timeout=None)
-            impact_deque, state, next_state, all_action_param, reward, truncated, done, info=trajectory[0],trajectory[1],trajectory[2],trajectory[3],\
-            trajectory[4],trajectory[5],trajectory[6],trajectory[7]
-            replay_buffer_adder(agent,impact_deque,state,next_state,all_action_param,reward,truncated,done,info)
+            learner_agent.learn()
+            if learner_agent.learn_time!=0 and learner_agent.learn_time%BATCH_SIZE==0:
+                temp_agent.actor.load_state_dict(learner_agent.actor.state_dict())
+                temp_agent.critic.load_state_dict(learner_agent.critic.state_dict())
+                actor,actor_t,critic,critic_t=learner_agent.actor.state_dict(),learner_agent.actor_target.state_dict(), \
+                    learner_agent.critic.state_dict(),learner_agent.critic_target.state_dict()
+                a,a_t,c,c_t=temp_agent.actor.state_dict(),temp_agent.actor_target.state_dict(), \
+                    temp_agent.critic.state_dict(),temp_agent.critic_target.state_dict()
+                agent_q.put(temp_agent,block=True,timeout=None)
 
 def replay_buffer_adder(agent,impact_deque, state, next_state,all_action_param,reward, truncated, done, info):
     """Input all the state info into agent's replay buffer"""
