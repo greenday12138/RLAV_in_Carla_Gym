@@ -27,7 +27,7 @@ LR_CRITIC = 0.0002
 GAMMA = 0.9  # q值更新系数
 TAU = 0.01  # 软更新参数
 EPSILON = 0.5  # epsilon-greedy
-BUFFER_SIZE = 10000
+BUFFER_SIZE = 160000
 MINIMAL_SIZE = 10000
 BATCH_SIZE = 256
 REPLACE_A = 500
@@ -288,7 +288,11 @@ def learner_mp(traj_q: Queue, agent_q:Queue, agent_param, ego_num):
         replay_buffer_adder(learner_agent,impact_deques[ego_id],state,next_state,all_action_param,reward,truncated,done,info)        
         if learner_agent.replay_buffer.size()>=MINIMAL_SIZE:
             logging.info("LEARN BEGIN")
-            learner_agent.learn()
+            #alter the batch_size and update times according to the replay buffer size:
+            #reference: https://zhuanlan.zhihu.com/p/345353294, https://arxiv.org/abs/1711.00489
+            k=1+learner_agent.replay_buffer.size()//MINIMAL_SIZE
+            learner_agent.batch_size=k*BATCH_SIZE
+            [learner_agent.learn() for _ in range(k)]
             if learner_agent.learn_time!=0 and learner_agent.learn_time%128==0:
                 temp_agent.actor.load_state_dict(learner_agent.actor.state_dict())
                 temp_agent.critic.load_state_dict(learner_agent.critic.state_dict())

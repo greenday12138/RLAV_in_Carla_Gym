@@ -182,7 +182,8 @@ class SumTree(object):
         while True:     # the while loop is faster than the method in the reference code
             cl_idx = 2 * parent_idx + 1         # this leaf's left and right kids
             cr_idx = cl_idx + 1
-            if cl_idx >= len(self.tree):        # reach bottom, end search
+            if cl_idx >= self.capacity+self.size-1:
+            #if cl_idx >= len(self.tree):        # reach bottom, end search
                 leaf_idx = parent_idx
                 break
             else:       # downward search, always search for a higher priority node
@@ -192,6 +193,9 @@ class SumTree(object):
                     v -= self.tree[cl_idx]
                     parent_idx = cr_idx
 
+        if leaf_idx<self.capacity-1:
+            #not leaf, banch node
+            leaf_idx=self.capacity-1+self.size-1
         data_idx = leaf_idx - self.capacity + 1
         return leaf_idx, self.tree[leaf_idx], self.data[data_idx]
 
@@ -228,13 +232,14 @@ class PriReplayBuffer(object):  # stored as ( s, a, r, s_, i ) in SumTree
         self.tree.add(max_p, transition)   # set the max p for new p
 
     def sample(self, n):
-        assert self.tree.size==self.tree.capacity
+        #assert self.tree.size==self.tree.capacity
         b_idx, ISWeights = np.empty((n,), dtype=np.int32), np.empty((n, 1))
         b_state,b_action,b_reward,b_next_state,b_truncated,b_done,b_info=[],[],[],[],[],[],[]
         pri_seg = self.tree.total_p / n       # priority segment
         self.beta = np.min([1., self.beta + self.beta_increment_per_sampling])  # max = 1
         
-        min_prob = np.min(self.tree.tree[-self.tree.capacity:]) / self.tree.total_p     # for later calculate ISweight
+        min_prob = np.min(self.tree.tree[self.tree.capacity:self.tree.capacity+self.size()]) / self.tree.total_p
+        #min_prob = np.min(self.tree.tree[-self.tree.capacity:]) / self.tree.total_p     # for later calculate ISweight
         for i in range(n):
             a, b = pri_seg * i, pri_seg * (i + 1)
             v = np.random.uniform(a, b) #sample from  [a, b) 

@@ -24,8 +24,8 @@ LR_CRITIC = 0.0002
 GAMMA = 0.9  # q值更新系数
 TAU = 0.01  # 软更新参数
 EPSILON = 0.5  # epsilon-greedy
-BUFFER_SIZE = 80000
-MINIMAL_SIZE = 80000
+BUFFER_SIZE = 160000
+MINIMAL_SIZE = 10000
 BATCH_SIZE = 256
 REPLACE_A = 500
 REPLACE_C = 300
@@ -115,7 +115,11 @@ def main():
 
                             if agent.replay_buffer.size() >= MINIMAL_SIZE:
                                 logging.info("Learn begin: %f %f", SIGMA_STEER,SIGMA_ACC)
-                                agent.learn()
+                                #alter the batch_size and update times according to the replay buffer size:
+                                #reference: https://zhuanlan.zhihu.com/p/345353294, https://arxiv.org/abs/1711.00489
+                                k=1+agent.replay_buffer.size()//MINIMAL_SIZE
+                                agent.batch_size=k*BATCH_SIZE
+                                [agent.learn() for _ in range(k)]
 
                             state = next_state
                             if env.is_effective_action() and not info['Abandon']:
