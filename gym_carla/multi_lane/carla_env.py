@@ -689,10 +689,12 @@ class CarlaEnv:
             self.calculate_impact = 1
             center_front_dis = distance_to_front_vehicles[0]
             right_front_dis = distance_to_front_vehicles[1]
-            if right_front_dis > center_front_dis:
-                reward = min((right_front_dis / center_front_dis - 1) * self.lane_change_reward, self.lane_change_reward)
-            else:
-                reward = max((right_front_dis / center_front_dis - 1) * self.lane_change_reward, -self.lane_change_reward)
+            dis=right_front_dis-center_front_dis
+            reward=dis/self.vehicle_proximity*self.lane_change_reward
+            # if right_front_dis > center_front_dis:
+            #     reward = min((right_front_dis / center_front_dis - 1) * self.lane_change_reward, self.lane_change_reward)
+            # else:
+            #     reward = max((right_front_dis / center_front_dis - 1) * self.lane_change_reward, -self.lane_change_reward)
                 # reward = 0
             rear_ttc_reward = ttc_reward(self.vehs_info.center_rear_veh,self.ego_vehicle,self.min_distance,self.TTC_THRESHOLD)
             # add rear_ttc_reward?
@@ -702,10 +704,12 @@ class CarlaEnv:
             self.calculate_impact = -1
             center_front_dis = distance_to_front_vehicles[2]
             left_front_dis = distance_to_front_vehicles[1]
-            if left_front_dis > center_front_dis:
-                reward = min((left_front_dis / center_front_dis - 1) * self.lane_change_reward, self.lane_change_reward)
-            else:
-                reward = max((left_front_dis / center_front_dis - 1) * self.lane_change_reward, -self.lane_change_reward)
+            dis=left_front_dis-center_front_dis
+            reward=dis/self.vehicle_proximity*self.lane_change_reward
+            # if left_front_dis > center_front_dis:
+            #     reward = min((left_front_dis / center_front_dis - 1) * self.lane_change_reward, self.lane_change_reward)
+            # else:
+            #     reward = max((left_front_dis / center_front_dis - 1) * self.lane_change_reward, -self.lane_change_reward)
                 # reward = 0
             rear_ttc_reward = ttc_reward(self.vehs_info.center_rear_veh,self.ego_vehicle,self.min_distance,self.TTC_THRESHOLD)
             print('lane change reward and rear ttc reward: ', reward, rear_ttc_reward)

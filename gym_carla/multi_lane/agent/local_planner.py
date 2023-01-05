@@ -141,8 +141,12 @@ class LocalPlanner:
                         for i, wp in enumerate(pre_wps):
                             if wp.road_id in ROADS:
                                 pre_wp = wp
+                    vehicle_len = max(abs(self._vehicle.bounding_box.extent.x),
+                                    abs(self._vehicle.bounding_box.extent.y)) + \
+                                max(abs(veh.bounding_box.extent.x),
+                                    abs(veh.bounding_box.extent.y))
                     
-                    return pre_wp.transform.location.distance(veh.get_location())
+                    return max(pre_wp.transform.location.distance(veh.get_location())-vehicle_len,0)
                 else:
                     return self.vehicle_proximity
 

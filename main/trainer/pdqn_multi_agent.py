@@ -128,30 +128,30 @@ def main():
                                 action_params.append(action_param)
                                 all_action_params.append(all_action_param)
                             next_states, rewards, truncateds, dones, infos = env.step(actions, action_params)
-                            for i in range(len(next_states)):
-                                if env.is_effective_action(i) and not infos[i]['Abandon']:
-                                    logging.info(f"CLIENT {i} INFO")
-                                    # traj_send.send((i,states[i],next_states[i],all_action_params[i],
-                                    #      rewards[i],truncateds[i],dones[i],infos[i]))
+                            for j in range(len(next_states)):
+                                if env.is_effective_action(j) and not infos[j]['Abandon']:
+                                    logging.info(f"CLIENT {j} INFO")
+                                    # traj_send.send((j,states[j],next_states[j],all_action_params[j],
+                                    #      rewards[j],truncateds[j],dones[j],infos[j]))
                                     #if not traj_q.full():
-                                    traj_q.put((deepcopy(i),deepcopy(states[i]),deepcopy(next_states[i]),deepcopy(all_action_params[i]),
-                                        deepcopy(rewards[i]),deepcopy(truncateds[i]),deepcopy(dones[i]),deepcopy(infos[i])),block=True,timeout=None)
+                                    traj_q.put((deepcopy(j),deepcopy(states[j]),deepcopy(next_states[j]),deepcopy(all_action_params[j]),
+                                        deepcopy(rewards[j]),deepcopy(truncateds[j]),deepcopy(dones[j]),deepcopy(infos[j])),block=True,timeout=None)
    
                                     print(
-                                        f"state -- vehicle_info:{states[i]['vehicle_info']}\n"
-                                        #f"waypoints:{state['left_waypoints']}, \n"
-                                        #f"waypoints:{states[i]['center_waypoints']}, \n"
-                                        #f"waypoints:{state['right_waypoints']}, \n"
-                                        f"ego_vehicle:{states[i]['ego_vehicle']}, \n"
-                                        f"light info: {states[i]['light']}\n"
-                                        f"next_state -- vehicle_info:{next_states[i]['vehicle_info']}\n"
-                                        #f"waypoints:{next_state['left_waypoints']}, \n"
-                                        #f"waypoints:{next_states[i]['center_waypoints']}, \n"
-                                        #f"waypoints:{next_state['right_waypoints']}, \n"
-                                        f"ego_vehicle:{next_states[i]['ego_vehicle']}\n"
-                                        f"light info: {next_states[i]['light']}\n"
-                                        f"action:{actions[i]}, action_param:{action_params[i]}, all_action_param:{all_action_params[i]}\n"
-                                        f"reward:{rewards[i]}, truncated:{truncateds[i]}, done:{dones[i]}")
+                                        f"state -- vehicle_info:{states[j]['vehicle_info']}\n"
+                                        #f"waypoints:{states[j]['left_waypoints']}, \n"
+                                        #f"waypoints:{states[j]['center_waypoints']}, \n"
+                                        #f"waypoints:{states[j]['right_waypoints']}, \n"
+                                        f"ego_vehicle:{states[j]['ego_vehicle']}, \n"
+                                        f"light info: {states[j]['light']}\n"
+                                        f"next_state -- vehicle_info:{next_states[j]['vehicle_info']}\n"
+                                        #f"waypoints:{next_states[j]['left_waypoints']}, \n"
+                                        #f"waypoints:{next_states[j]['center_waypoints']}, \n"
+                                        #f"waypoints:{next_states[j]['right_waypoints']}, \n"
+                                        f"ego_vehicle:{next_states[j]['ego_vehicle']}\n"
+                                        f"light info: {next_states[j]['light']}\n"
+                                        f"action:{actions[j]}, action_param:{action_params[j]}, all_action_param:{all_action_params[j]}\n"
+                                        f"reward:{rewards[j]}, truncated:{truncateds[j]}, done:{dones[j]}")
                                     print()
 
                             for t in truncateds:
@@ -289,7 +289,7 @@ def learner_mp(traj_q: Queue, agent_q:Queue, agent_param, ego_num):
         if learner_agent.replay_buffer.size()>=MINIMAL_SIZE:
             logging.info("LEARN BEGIN")
             learner_agent.learn()
-            if learner_agent.learn_time!=0 and learner_agent.learn_time%BATCH_SIZE==0:
+            if learner_agent.learn_time!=0 and learner_agent.learn_time%128==0:
                 temp_agent.actor.load_state_dict(learner_agent.actor.state_dict())
                 temp_agent.critic.load_state_dict(learner_agent.critic.state_dict())
                 actor,actor_t,critic,critic_t=learner_agent.actor.state_dict(),learner_agent.actor_target.state_dict(), \
