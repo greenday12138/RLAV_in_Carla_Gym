@@ -290,7 +290,7 @@ def learner_mp(traj_q: Queue, agent_q:Queue, agent_param, ego_num):
             logging.info("LEARN BEGIN")
             #alter the batch_size and update times according to the replay buffer size:
             #reference: https://zhuanlan.zhihu.com/p/345353294, https://arxiv.org/abs/1711.00489
-            k=1+learner_agent.replay_buffer.size()//MINIMAL_SIZE
+            k=learner_agent.replay_buffer.size()//MINIMAL_SIZE
             learner_agent.batch_size=k*BATCH_SIZE
             [learner_agent.learn() for _ in range(k)]
             if learner_agent.learn_time!=0 and learner_agent.learn_time%128==0:

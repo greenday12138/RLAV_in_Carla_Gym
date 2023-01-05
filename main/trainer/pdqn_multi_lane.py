@@ -117,7 +117,7 @@ def main():
                                 logging.info("Learn begin: %f %f", SIGMA_STEER,SIGMA_ACC)
                                 #alter the batch_size and update times according to the replay buffer size:
                                 #reference: https://zhuanlan.zhihu.com/p/345353294, https://arxiv.org/abs/1711.00489
-                                k=1+agent.replay_buffer.size()//MINIMAL_SIZE
+                                k=agent.replay_buffer.size()//MINIMAL_SIZE
                                 agent.batch_size=k*BATCH_SIZE
                                 [agent.learn() for _ in range(k)]
 
