@@ -29,7 +29,7 @@ TAU = 0.01  # 软更新参数
 EPSILON = 0.5  # epsilon-greedy
 BUFFER_SIZE = 5000
 MINIMAL_SIZE = 5000
-BATCH_SIZE = 128
+BATCH_SIZE = 256
 REPLACE_A = 500
 REPLACE_C = 300
 TOTAL_EPISODE = 5000
@@ -232,8 +232,8 @@ def main():
             np.save(f"{SAVE_PATH}/multi_agent/result_{run}.npy", result)
         except KeyboardInterrupt:
             logging.info("Premature Terminated")
-        except BaseException as e:
-             logging.info(e.args)
+        # except BaseException as e:
+        #      logging.info(e.args)
         finally:
             env.__del__()
             #process[-1].join() # waiting for learner

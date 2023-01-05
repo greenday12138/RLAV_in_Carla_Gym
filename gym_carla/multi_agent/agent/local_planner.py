@@ -146,7 +146,7 @@ class LocalPlanner:
                                 max(abs(veh.bounding_box.extent.x),
                                     abs(veh.bounding_box.extent.y))
 
-                    return max(pre_wp.transform.location.distance(veh.get_location())-vehicle_len,0)
+                    return max(pre_wp.transform.location.distance(veh.get_location())-vehicle_len,0.0001)
                 else:
                     return self.vehicle_proximity
 

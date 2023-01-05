@@ -327,7 +327,7 @@ class CarlaEnv:
                 self.traffic_manager.random_left_lanechange_percentage(vehicle, 0)
                 self.traffic_manager.random_right_lanechange_percentage(vehicle, 0)
                 self.traffic_manager.vehicle_percentage_speed_difference(vehicle,
-                        random.choice([30,20,10,0,-20-40,-60,-80,-100,-100,-100]))
+                        random.choice([0,-20,-40,-60,-80,-100,-100,-100]))
                 self.traffic_manager.set_route(vehicle,
                                                ['Straight', 'Straight', 'Straight', 'Straight', 'Straight', 'Straight', 'Straight', 'Straight', 'Straight', 'Straight'])
                 self.traffic_manager.update_vehicle_lights(vehicle, True)
