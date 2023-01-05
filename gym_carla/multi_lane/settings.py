@@ -195,6 +195,10 @@ ARGS.add_argument(
     default=False,
     help='Set the vehicles in simulation to ignore traffic lights or not')
 ARGS.add_argument(
+    '--ego_num', type=int,
+    default=1,
+    help='The number of RL controlled ego vehicle')
+ARGS.add_argument(
     '--modify_change_steer', type=bool,
     default=True,
     help='Useful for pdqn training, make sure the steer >0 when current action is ACTION.CHANGE_LANE_LEFT, \

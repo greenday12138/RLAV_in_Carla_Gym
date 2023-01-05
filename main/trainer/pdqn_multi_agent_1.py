@@ -9,10 +9,10 @@ from collections import deque
 from algs.pdqn import P_DQN
 from tensorboardX import SummaryWriter
 from multiprocessing import Process,Queue,Pipe
-from gym_carla.multi_agent.settings import ARGS
-from gym_carla.multi_agent.carla_env import CarlaEnv
+from gym_carla.multi_lane.settings import ARGS
+from gym_carla.multi_lane.carla_env_ma import CarlaEnv
 from main.util.process import start_process, kill_process
-from gym_carla.multi_agent.util.wrapper import fill_action_param,recover_steer,Action
+from gym_carla.multi_lane.util.wrapper import fill_action_param,recover_steer,Action
 
 # neural network hyper parameters
 SIGMA = 0.5

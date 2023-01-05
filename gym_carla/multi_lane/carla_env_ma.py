@@ -8,10 +8,10 @@ import numpy as np
 from enum import Enum
 from queue import Queue
 from collections import deque
-from gym_carla.multi_agent.util.render import World,HUD
-from gym_carla.multi_agent.assets.ego_client import EgoClient
-from gym_carla.multi_agent.agent.global_planner import GlobalPlanner
-from gym_carla.multi_agent.util.misc import draw_waypoints, get_speed, get_acceleration, test_waypoint, \
+from gym_carla.multi_lane.util.render import World,HUD
+from gym_carla.multi_lane.assets.ego_client import EgoClient
+from gym_carla.multi_lane.agent.global_planner import GlobalPlanner
+from gym_carla.multi_lane.util.misc import draw_waypoints, get_speed, get_acceleration, test_waypoint, \
     compute_distance, get_actor_polygons, get_lane_center, remove_unnecessary_objects, get_yaw_diff, \
     get_trafficlight_trigger_location, is_within_distance, get_sign,is_within_distance_ahead,get_projection,\
     create_vehicle_blueprint

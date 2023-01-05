@@ -10,15 +10,15 @@ import numpy as np
 from enum import Enum
 from queue import Queue
 from collections import deque
-from gym_carla.multi_agent.util.render import World,HUD
+from gym_carla.multi_lane.util.render import World,HUD
 #from gym_carla.env.agent.basic_agent import BasicAgent
-from gym_carla.multi_agent.agent.local_planner import LocalPlanner
-from gym_carla.multi_agent.agent.global_planner import GlobalPlanner,RoadOption
-from gym_carla.multi_agent.agent.basic_lanechanging_agent import Basic_Lanechanging_Agent
-from gym_carla.multi_agent.util.sensor import CollisionSensor, LaneInvasionSensor, SemanticTags
-from gym_carla.multi_agent.util.wrapper import WaypointWrapper,VehicleWrapper,Action,SpeedState,Truncated,process_lane_wp,process_veh, \
+from gym_carla.multi_lane.agent.local_planner import LocalPlanner
+from gym_carla.multi_lane.agent.global_planner import GlobalPlanner,RoadOption
+from gym_carla.multi_lane.agent.basic_lanechanging_agent import Basic_Lanechanging_Agent
+from gym_carla.multi_lane.util.sensor import CollisionSensor, LaneInvasionSensor, SemanticTags
+from gym_carla.multi_lane.util.wrapper import WaypointWrapper,VehicleWrapper,Action,SpeedState,Truncated,process_lane_wp,process_veh, \
     process_steer,recover_steer,fill_action_param,ttc_reward,comfort,lane_center_reward,calculate_guide_lane_center
-from gym_carla.multi_agent.util.misc import draw_waypoints, get_speed, get_acceleration, test_waypoint, \
+from gym_carla.multi_lane.util.misc import draw_waypoints, get_speed, get_acceleration, test_waypoint, \
     get_actor_polygons, get_lane_center, get_yaw_diff,is_within_distance_ahead,get_projection,\
     create_vehicle_blueprint
 
