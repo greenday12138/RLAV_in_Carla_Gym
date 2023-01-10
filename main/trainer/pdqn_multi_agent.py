@@ -73,7 +73,7 @@ def main():
 
         #multi-process training
         process=list()
-        traj_q=Queue(maxsize=MINIMAL_SIZE)
+        traj_q=Queue(maxsize=MINIMAL_SIZE*2)
         agent_q=Queue(maxsize=1)
         traj_send,traj_recv=Pipe()
         agent_send,agent_recv=Pipe()

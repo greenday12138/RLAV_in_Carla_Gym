@@ -494,7 +494,7 @@ class CarlaEnv:
                 f"Steer:{control_info['Steer']}, Throttle:{control_info['Throttle']}, Brake:{control_info['Brake']}\n"  
                 f"Reward:{self.step_info['Reward']}, Speed Limit:{self.ego_vehicle.get_speed_limit() * 3.6}, Abandon:{self.step_info['Abandon']}" )
             if truncated==Truncated.FALSE:
-                print(f"TTC:{self.step_info['TTC']}, Comfort:{self.step_info['Comfort']}, Efficiency:{self.step_info['Efficiency']}, "
+                print(f"TTC:{self.step_info['fTTC']}, Comfort:{self.step_info['Comfort']}, Efficiency:{self.step_info['Efficiency']}, "
                     f"Impact: {self.step_info['impact']}, Change_in_lane_follow:{self.step_info['change_in_lane_follow']}, \n"
                     f"Off-Lane:{self.step_info['offlane']}, fLcen:{self.step_info['Lane_center']}, " 
                     f"Yaw_change:{self.step_info['yaw_change']}, Yaw_diff:{self.step_info['yaw_diff']}, fYaw:{self.step_info['Yaw']}")

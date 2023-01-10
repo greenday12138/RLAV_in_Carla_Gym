@@ -440,7 +440,7 @@ class EgoClient:
                 f"Steer:{control_info['Steer']}, Throttle:{control_info['Throttle']}, Brake:{control_info['Brake']}\n"  
                 f"Reward:{self.step_info['Reward']}, Speed Limit:{self.ego_vehicle.get_speed_limit() * 3.6}, Abandon:{self.step_info['Abandon']}" )
             if truncated==Truncated.FALSE:
-                print(f"TTC:{self.step_info['TTC']}, Comfort:{self.step_info['Comfort']}, Efficiency:{self.step_info['Efficiency']}, "
+                print(f"TTC:{self.step_info['fTTC']}, Comfort:{self.step_info['Comfort']}, Efficiency:{self.step_info['Efficiency']}, "
                     f"Impact: {self.step_info['impact']}, Change_in_lane_follow:{self.step_info['change_in_lane_follow']}, \n"
                     f"Off-Lane:{self.step_info['offlane']}, fLcen:{self.step_info['Lane_center']}, " 
                     f"Yaw_change:{self.step_info['yaw_change']}, Yaw_diff:{self.step_info['yaw_diff']}, fYaw:{self.step_info['Yaw']}")
@@ -596,7 +596,7 @@ class EgoClient:
             else:
                 return -self.penalty
 
-        TTC,fTTC=ttc_reward(self.ego_vehicle,self.vehs_info.center_front_veh,self.min_distance,self.TTC_THRESHOLD)
+        ttc,fTTC=ttc_reward(self.ego_vehicle,self.vehs_info.center_front_veh,self.min_distance,self.TTC_THRESHOLD)
 
         lane_center = get_lane_center(self.map, self.ego_vehicle.get_location())
         yaw_forward = lane_center.transform.get_forward_vector().make_unit_vector()
@@ -657,7 +657,7 @@ class EgoClient:
         # flag: In the lane follow mode, the ego vehicle pass the lane
         change_in_lane_follow = self.current_action == 0 and self.current_lane != self.last_lane
 
-        self.step_info.update({'offlane': Lcen, 'yaw_diff': yaw_diff, 'TTC': fTTC, 'Comfort': fCom,
+        self.step_info.update({'offlane': Lcen, 'yaw_diff': yaw_diff, 'TTC':ttc,'fTTC': fTTC, 'Comfort': fCom,
                           'Efficiency': fEff, 'Lane_center': fLcen, 'Yaw': fYaw, 'yaw_change': yaw_change, 
                           'lane_changing_reward': lane_changing_reward,'impact': impact, 
                           'change_in_lane_follow': change_in_lane_follow})
