@@ -90,12 +90,57 @@ def main():
                         score = 0
                         ttc, efficiency,comfort,lcen,yaw,impact,lane_change_reward = 0, 0, 0, 0, 0, 0, 0  # part objective scores
                         impact_deque = deque(maxlen=2)
+
+                        recover_time,lane_change_count,brake_count,delay_index=0,0,0,0
+                        delay_i=deque(maxlen=100)
+                        rear_a=deque(maxlen=5)
+                        rear_v=deque(maxlen=200)
+                        recovery_mode=False
+
                         while not done and not truncated:
                             action, action_param, all_action_param = agent.take_action(state)
                             next_state, reward, truncated, done, info = env.step(action, action_param)
                             if env.is_effective_action() and not info['Abandon']:
                                 replay_buffer_adder(agent,impact_deque,state,next_state,all_action_param,reward,truncated,done,info)
-                            
+                                
+                                if not truncated and not done:
+                                    if info['change_lane'] and info['rear_id']!=-1:
+                                        recovery_mode=True
+                                        lane_change_count+=1
+                                    if recovery_mode==True:
+                                        rear_a.append(info['rear_a'])
+                                        if info['rear_id']==-1:
+                                            avg_v=0
+                                            for n in range(len(rear_v)-1):
+                                                avg_v+=rear_v[n+1]/(len(rear_v)-1)
+                                            ind=rear_v[0]/avg_v if rear_v[0]/avg_v>1.0 else 1.0
+                                            delay_i.append(ind)
+
+                                            recovery_mode=False
+                                            rear_v.clear()
+                                            rear_a.clear()
+                                        elif len(rear_a)==rear_a.maxlen:
+                                            avg_a=0
+                                            for a in rear_a:
+                                                avg_a+=a/rear_a.maxlen
+                                            if 0<=avg_a<0.001:
+                                                rear_v.append(info['rear_v'])
+                                                avg_v=0
+                                                for n in range(len(rear_v)-1):
+                                                    avg_v+=rear_v[n+1]/(len(rear_v)-1)
+                                                ind=rear_v[0]/avg_v if rear_v[0]/avg_v>1.0 else 1.0
+                                                delay_i.append(ind)
+                                                
+                                                recovery_mode=False
+                                                rear_v.clear()
+                                                rear_a.clear()
+                                        
+                                        if recovery_mode==True:
+                                            if info['rear_a']<0:
+                                                brake_count+=1
+                                            rear_v.append(info['rear_v'])
+                                            recover_time+=1
+
                                 print(
                                         f"state -- vehicle_info:{state['vehicle_info']}\n"
                                         #f"waypoints:{state['left_waypoints']}, \n"
@@ -110,7 +155,10 @@ def main():
                                         f"ego_vehicle:{next_state['ego_vehicle']}\n"
                                         f"light info: {next_state['light']}\n"
                                         f"action:{action}, action_param:{action_param}, all_action_param:{all_action_param}\n"
-                                        f"reward:{reward}, truncated:{truncated}, done:{done}")
+                                        f"reward:{reward}, truncated:{truncated}, done:{done}\n"
+                                        f"rear_id:{info['rear_id']}, rear_v:{info['rear_v']}, rear_a:{info['rear_a']}, "
+                                        f"time_step:{info['time_step']}, change_lane:{info['change_lane']}, "
+                                        f"recover_time:{recover_time}, lane_change_count:{lane_change_count}, brake_count:{brake_count}, delay_index:{delay_index}")
                             print()
 
                             if agent.replay_buffer.size() >= MINIMAL_SIZE:
@@ -172,6 +220,12 @@ def main():
                             if max_score < score:
                                 max_score = score
                                 agent.save_net(F"{SAVE_PATH}/multi_lane/pdqn_optimal.pth")
+                        episode_writer.add_scalar('recover_time',recover_time, i*(TOTAL_EPISODE // 10)+i_episode)
+                        episode_writer.add_scalar('lane_change_count',lane_change_count, i*(TOTAL_EPISODE // 10)+i_episode)
+                        episode_writer.add_scalar('brake_count',brake_count, i*(TOTAL_EPISODE // 10)+i_episode)
+                        for index in delay_i:
+                            delay_index+=index/len(delay_i)
+                        episode_writer.add_scalar('delay_index',delay_index, i*(TOTAL_EPISODE // 10)+i_episode)
 
                         """ if rolling_score[rolling_score.__len__-1]>max_rolling_score:
                             max_rolling_score=rolling_score[rolling_score.__len__-1]

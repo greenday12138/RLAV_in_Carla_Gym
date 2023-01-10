@@ -590,6 +590,19 @@ class CarlaEnv:
         Upon initializing, there are some bugs in the theta_v and theta_a, which could be greater than 90,
         this might be caused by carla."""
         self.step_info.update({'velocity': v_s, 'last_acc': self.last_acc,'cur_acc': a_s})
+        #update informatino for rear vehicle
+        if self.vehs_info.center_rear_veh is None or \
+                (self.lights_info is not None and self.lights_info.state!=carla.TrafficLightState.Green):
+            self.step_info.update({'rear_id':-1, 'rear_v':0, 'rear_a':0, 'time_step':self.time_step+1, 'change_lane':self.current_lane!=self.last_lane})
+        else:
+            lane_center=get_lane_center(self.map,self.vehs_info.center_rear_veh.get_location())
+            yaw_forward=lane_center.transform.get_forward_vector()
+            v_3d=self.vehs_info.center_rear_veh.get_velocity()
+            v_s,v_t=get_projection(v_3d,yaw_forward)
+            a_3d=self.vehs_info.center_rear_veh.get_acceleration()
+            a_s,a_t=get_projection(a_3d,yaw_forward)
+            self.step_info.update({'rear_id':self.vehs_info.center_rear_veh.id, 
+                'rear_v':v_s,'rear_a':a_s,'time_step':self.time_step+1, 'change_lane':self.current_lane!=self.last_lane})
 
         return {'left_waypoints': left_wps_processed, 'center_waypoints': center_wps_processed,
                 'right_waypoints': right_wps_processed, 'vehicle_info': vehicle_inlane_processed,

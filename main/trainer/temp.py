@@ -3,6 +3,7 @@ import random,logging
 import carla
 import torch
 import datetime,os
+from collections import deque
 from multiprocessing import Process,Queue
 
 DEVICE = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
@@ -30,12 +31,16 @@ def f(q):
     q.put([42,None,'hello'])
 
 if __name__=='__main__':
-    q=Queue()
-    p1=Process(target=f,args=(q,))
-    p2=Process(target=d,args=(q,))
-    p1.start()
-    p2.start()
-    print(q.get())
-    print(q.get())
-    p1.join()
-    p2.join()
+    # q=Queue()
+    # p1=Process(target=f,args=(q,))
+    # p2=Process(target=d,args=(q,))
+    # p1.start()
+    # p2.start()
+    # print(q.get())
+    # print(q.get())
+    # p1.join()
+    # p2.join()
+    temp=deque(maxlen=5)
+    temp.extend([1,2,3])
+    for i in range(len(temp)-1):
+        print(temp[i])

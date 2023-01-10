@@ -175,11 +175,11 @@ ARGS.add_argument(
     help='Let the RL controller and PID controller alternatively take control every 500 steps')
 ARGS.add_argument(
     '--vehicle_proximity', type=float,
-    default=80.0,
+    default=50.0,
     help='Distance for searching vehicles in front of ego vehicle, unit -- meters')
 ARGS.add_argument(
     '--traffic_light_proximity', type=float,
-    default=80.0,
+    default=50.0,
     help='Distance for searching traffic light in front of ego vehicle, unit -- meters,'
     'attention: this value is tricky')
 ARGS.add_argument(
