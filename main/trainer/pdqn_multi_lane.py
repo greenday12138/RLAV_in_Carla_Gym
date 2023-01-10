@@ -31,13 +31,12 @@ REPLACE_A = 500
 REPLACE_C = 300
 TOTAL_EPISODE = 5000
 SIGMA_DECAY = 0.9999
-TTC_threshold = 4.001
 PER_FLAG=True
 modify_change_steer=False
 clip_grad = 10
 zero_index_gradients = True
 inverting_gradients = True
-base_name = f'origin_{TTC_threshold}_NOCA'
+base_name = f'origin_NOCA'
 SAVE_PATH='./out'
 
 
@@ -91,11 +90,15 @@ def main():
                         ttc, efficiency,comfort,lcen,yaw,impact,lane_change_reward = 0, 0, 0, 0, 0, 0, 0  # part objective scores
                         impact_deque = deque(maxlen=2)
 
-                        recover_time,lane_change_count,brake_count,delay_index=0,0,0,0
+                        recover_time,lane_change_count,brake_count,delay_index,avg_vel,avg_jerk,avg_lcen=0,0,0,0,0,0,0
                         delay_i=deque(maxlen=100)
                         rear_a=deque(maxlen=5)
                         rear_v=deque(maxlen=200)
                         recovery_mode=False
+                        ego_v=deque(maxlen=1500)
+                        ego_jerk=deque(maxlen=1500)
+                        ego_lcen=deque(maxlen=1500)
+                        ego_ttc=deque(maxlen=1500)
 
                         while not done and not truncated:
                             action, action_param, all_action_param = agent.take_action(state)
@@ -104,6 +107,7 @@ def main():
                                 replay_buffer_adder(agent,impact_deque,state,next_state,all_action_param,reward,truncated,done,info)
                                 
                                 if not truncated and not done:
+                                    #macro index
                                     if info['change_lane'] and info['rear_id']!=-1:
                                         recovery_mode=True
                                         lane_change_count+=1
@@ -113,7 +117,7 @@ def main():
                                             avg_v=0
                                             for n in range(len(rear_v)-1):
                                                 avg_v+=rear_v[n+1]/(len(rear_v)-1)
-                                            ind=rear_v[0]/avg_v if rear_v[0]/avg_v>1.0 else 1.0
+                                            ind=rear_v[0]/(avg_v+0.000001) if rear_v[0]/avg_v>1.0 else 1.0
                                             delay_i.append(ind)
 
                                             recovery_mode=False
@@ -140,6 +144,12 @@ def main():
                                                 brake_count+=1
                                             rear_v.append(info['rear_v'])
                                             recover_time+=1
+
+                                    #micro index
+                                    ego_v.append(info['velocity'])
+                                    ego_jerk.append((info['cur_acc']-info['last_acc'])/(1.0/args.fps))
+                                    ego_lcen.append(abs(info['offlane']))
+                                    ego_ttc.append(info['TTC'])
 
                                 print(
                                         f"state -- vehicle_info:{state['vehicle_info']}\n"
@@ -173,7 +183,7 @@ def main():
                             if env.is_effective_action() and not info['Abandon']:
                                 score += reward
                                 if not truncated:
-                                    ttc += info['TTC']
+                                    ttc += info['fTTC']
                                     efficiency += info['Efficiency']
                                     comfort += info['Comfort']
                                     lcen += info['Lane_center']
@@ -220,12 +230,28 @@ def main():
                             if max_score < score:
                                 max_score = score
                                 agent.save_net(F"{SAVE_PATH}/multi_lane/pdqn_optimal.pth")
+
                         episode_writer.add_scalar('recover_time',recover_time, i*(TOTAL_EPISODE // 10)+i_episode)
                         episode_writer.add_scalar('lane_change_count',lane_change_count, i*(TOTAL_EPISODE // 10)+i_episode)
                         episode_writer.add_scalar('brake_count',brake_count, i*(TOTAL_EPISODE // 10)+i_episode)
                         for index in delay_i:
                             delay_index+=index/len(delay_i)
+                        delay_index=delay_index if delay_index>1.0 else 1.0
                         episode_writer.add_scalar('delay_index',delay_index, i*(TOTAL_EPISODE // 10)+i_episode)
+                        for vel in ego_v:
+                            avg_vel+=vel/len(ego_v)
+                        episode_writer.add_scalar('average_vel',avg_vel, i*(TOTAL_EPISODE // 10)+i_episode)
+                        for jerk in ego_jerk:
+                            avg_jerk+=jerk/len(ego_jerk)
+                        episode_writer.add_scalar('average_jerk',avg_jerk, i*(TOTAL_EPISODE // 10)+i_episode)
+                        for lcen in ego_lcen:
+                            avg_lcen+=lcen/len(ego_lcen)
+                        episode_writer.add_scalar('average_lcen',avg_lcen, i*(TOTAL_EPISODE // 10)+i_episode)
+                        if len(ego_ttc)>0:
+                            min_ttc=min(ego_ttc)
+                        else:
+                            min_ttc=args.TTC_th
+                        episode_writer.add_scalar('min_ttc',min_ttc, i*(TOTAL_EPISODE // 10)+i_episode)
 
                         """ if rolling_score[rolling_score.__len__-1]>max_rolling_score:
                             max_rolling_score=rolling_score[rolling_score.__len__-1]

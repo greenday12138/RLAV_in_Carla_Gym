@@ -34,13 +34,12 @@ REPLACE_A = 500
 REPLACE_C = 300
 TOTAL_EPISODE = 5000
 SIGMA_DECAY = 0.9999
-TTC_threshold = 4.001
 PER_FLAG=True
 modify_change_steer=False
 clip_grad = 10
 zero_index_gradients = True
 inverting_gradients = True
-base_name = f'origin_{TTC_threshold}_NOCA'
+base_name = f'origin_NOCA'
 SAVE_PATH='./out'
 
 def main():
@@ -168,7 +167,7 @@ def main():
                             if env.is_effective_action(0) and not infos[0]['Abandon']:
                                 score += rewards[0]
                                 if not truncateds[0]:
-                                    ttc += infos[0]['TTC']
+                                    ttc += infos[0]['fTTC']
                                     efficiency += infos[0]['Efficiency']
                                     comfort += infos[0]['Comfort']
                                     lcen += infos[0]['Lane_center']
@@ -282,18 +281,20 @@ def learner_mp(traj_q: Queue, agent_q:Queue, agent_param, ego_num):
     actor,actor_t,critic,critic_t=None,None,None,None
     a,a_t,c,c_t=None,None,None,None
     while(True):
-        trajectory=traj_q.get(block=True,timeout=None)
-        ego_id, state, next_state, all_action_param, reward, truncated, done, info=trajectory[0],trajectory[1],trajectory[2],trajectory[3],\
-                trajectory[4],trajectory[5],trajectory[6],trajectory[7]
-        replay_buffer_adder(learner_agent,impact_deques[ego_id],state,next_state,all_action_param,reward,truncated,done,info)        
+        #alter the batch_size and update times according to the replay buffer size:
+        #reference: https://zhuanlan.zhihu.com/p/345353294, https://arxiv.org/abs/1711.00489
+        k=max(learner_agent.replay_buffer.size()//MINIMAL_SIZE, 1)
+        learner_agent.batch_size=k*BATCH_SIZE
+        for _ in range(k):
+            trajectory=traj_q.get(block=True,timeout=None)
+            ego_id, state, next_state, all_action_param, reward, truncated, done, info=trajectory[0],trajectory[1],trajectory[2],trajectory[3],\
+                    trajectory[4],trajectory[5],trajectory[6],trajectory[7]
+            replay_buffer_adder(learner_agent,impact_deques[ego_id],state,next_state,all_action_param,reward,truncated,done,info)        
         if learner_agent.replay_buffer.size()>=MINIMAL_SIZE:
             logging.info("LEARN BEGIN")
-            #alter the batch_size and update times according to the replay buffer size:
-            #reference: https://zhuanlan.zhihu.com/p/345353294, https://arxiv.org/abs/1711.00489
-            k=learner_agent.replay_buffer.size()//MINIMAL_SIZE
-            learner_agent.batch_size=k*BATCH_SIZE
             [learner_agent.learn() for _ in range(k)]
-            if learner_agent.learn_time!=0 and learner_agent.learn_time%128==0:
+            if learner_agent.learn_time!=0 and learner_agent.learn_time//128>0:
+                learner_agent.learn_time%=128
                 temp_agent.actor.load_state_dict(learner_agent.actor.state_dict())
                 temp_agent.critic.load_state_dict(learner_agent.critic.state_dict())
                 actor,actor_t,critic,critic_t=learner_agent.actor.state_dict(),learner_agent.actor_target.state_dict(), \

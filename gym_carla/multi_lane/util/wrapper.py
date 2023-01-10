@@ -205,7 +205,8 @@ def fill_action_param(action, steer, throttle_brake, action_param, modify_change
 
 def ttc_reward(ego_veh,target_veh,min_dis,TTC_THRESHOLD):
     """Caculate the time left before ego vehicle collide with target vehicle"""
-    TTC = float('inf')
+    #TTC = float('inf')
+    TTC=TTC_THRESHOLD
     if target_veh and ego_veh:
         distance = ego_veh.get_location().distance(target_veh.get_location())
         vehicle_len = max(abs(ego_veh.bounding_box.extent.x),
@@ -226,8 +227,9 @@ def ttc_reward(ego_veh,target_veh,min_dis,TTC_THRESHOLD):
         fTTC = np.clip(np.log(TTC / TTC_THRESHOLD), -1, 0)
     else:
         fTTC = 0
+        TTC=TTC_THRESHOLD
 
-    return fTTC
+    return TTC,fTTC
 
 def comfort(fps, last_acc, acc, last_yaw, yaw):
     acc_jerk = -((acc - last_acc) * fps) ** 2 / ((6 * fps) ** 2)

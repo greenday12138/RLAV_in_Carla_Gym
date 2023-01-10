@@ -596,7 +596,7 @@ class EgoClient:
             else:
                 return -self.penalty
 
-        fTTC=ttc_reward(self.ego_vehicle,self.vehs_info.center_front_veh,self.min_distance,self.TTC_THRESHOLD)
+        TTC,fTTC=ttc_reward(self.ego_vehicle,self.vehs_info.center_front_veh,self.min_distance,self.TTC_THRESHOLD)
 
         lane_center = get_lane_center(self.map, self.ego_vehicle.get_location())
         yaw_forward = lane_center.transform.get_forward_vector().make_unit_vector()
@@ -683,7 +683,7 @@ class EgoClient:
             # else:
             #     reward = max((right_front_dis / center_front_dis - 1) * self.lane_change_reward, -self.lane_change_reward)
                 # reward = 0
-            rear_ttc_reward = ttc_reward(self.vehs_info.center_rear_veh,self.ego_vehicle,self.min_distance,self.TTC_THRESHOLD)
+            ttc,rear_ttc_reward = ttc_reward(self.vehs_info.center_rear_veh,self.ego_vehicle,self.min_distance,self.TTC_THRESHOLD)
             # add rear_ttc_reward?
             print('lane change reward and rear ttc reward: ', reward, rear_ttc_reward)
         elif current_lane - last_lane == 1:
@@ -698,7 +698,7 @@ class EgoClient:
             # else:
             #     reward = max((left_front_dis / center_front_dis - 1) * self.lane_change_reward, -self.lane_change_reward)
                 # reward = 0
-            rear_ttc_reward = ttc_reward(self.vehs_info.center_rear_veh,self.ego_vehicle,self.min_distance,self.TTC_THRESHOLD)
+            ttc,rear_ttc_reward = ttc_reward(self.vehs_info.center_rear_veh,self.ego_vehicle,self.min_distance,self.TTC_THRESHOLD)
             print('lane change reward and rear ttc reward: ', reward, rear_ttc_reward)
 
         return reward
