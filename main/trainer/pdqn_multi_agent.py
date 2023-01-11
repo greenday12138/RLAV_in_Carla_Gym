@@ -73,8 +73,8 @@ def main():
 
         #multi-process training
         process=list()
-        traj_q=Queue(maxsize=MINIMAL_SIZE*2)
-        agent_q=Queue(maxsize=1)
+        traj_q=Queue(maxsize=BUFFER_SIZE)
+        agent_q=Queue(maxsize=5)
         traj_send,traj_recv=Pipe()
         agent_send,agent_recv=Pipe()
         mp.set_start_method(method='spawn',force=True)  # force all the multiprocessing to 'spawn' methods
@@ -87,6 +87,7 @@ def main():
         max_score = np.float32('-30')
         var = 3
         collision_train = 0
+        learn_time=0
         episode_score = []
         rolling_score = []
         cum_collision_num = []
@@ -114,7 +115,7 @@ def main():
                             if not agent_q.empty():
                                 actor,actor_t,critic,critic_t=worker_agent.actor.state_dict(),worker_agent.actor_target.state_dict(),\
                                     worker_agent.critic.state_dict(),worker_agent.critic_target.state_dict()
-                                temp_agent=agent_q.get()
+                                temp_agent,learn_time=agent_q.get()
                                 a,c=temp_agent.actor.state_dict(),temp_agent.critic.state_dict()
                                 worker_agent.actor.load_state_dict(temp_agent.actor.state_dict())
                                 worker_agent.critic.load_state_dict(temp_agent.critic.state_dict())
@@ -129,7 +130,7 @@ def main():
                             next_states, rewards, truncateds, dones, infos = env.step(actions, action_params)
                             for j in range(len(next_states)):
                                 if env.is_effective_action(j) and not infos[j]['Abandon']:
-                                    logging.info(f"CLIENT {j} INFO")
+                                    logging.info(f"CLIENT {j} INFO, LEARN TIME:{learn_time}")
                                     # traj_send.send((j,states[j],next_states[j],all_action_params[j],
                                     #      rewards[j],truncateds[j],dones[j],infos[j]))
                                     #if not traj_q.full():
@@ -280,6 +281,7 @@ def learner_mp(traj_q: Queue, agent_q:Queue, agent_param, ego_num):
     impact_deques=[deque(maxlen=2) for _ in range(ego_num)]
     actor,actor_t,critic,critic_t=None,None,None,None
     a,a_t,c,c_t=None,None,None,None
+    update_count=0
     while(True):
         #alter the batch_size and update times according to the replay buffer size:
         #reference: https://zhuanlan.zhihu.com/p/345353294, https://arxiv.org/abs/1711.00489
@@ -292,9 +294,10 @@ def learner_mp(traj_q: Queue, agent_q:Queue, agent_param, ego_num):
             replay_buffer_adder(learner_agent,impact_deques[ego_id],state,next_state,all_action_param,reward,truncated,done,info)        
         if learner_agent.replay_buffer.size()>=MINIMAL_SIZE:
             logging.info("LEARN BEGIN")
+            #print(f"LEARN TIME:{learner_agent.learn_time}")
             [learner_agent.learn() for _ in range(k)]
-            if learner_agent.learn_time!=0 and learner_agent.learn_time//10>0:
-                learner_agent.learn_time%=10
+            if update_count!=0 and update_count//10>0:
+                update_count%=10
                 if not agent_q.full():
                     temp_agent.actor.load_state_dict(learner_agent.actor.state_dict())
                     temp_agent.critic.load_state_dict(learner_agent.critic.state_dict())
@@ -302,7 +305,8 @@ def learner_mp(traj_q: Queue, agent_q:Queue, agent_param, ego_num):
                         learner_agent.critic.state_dict(),learner_agent.critic_target.state_dict()
                     a,a_t,c,c_t=temp_agent.actor.state_dict(),temp_agent.actor_target.state_dict(), \
                         temp_agent.critic.state_dict(),temp_agent.critic_target.state_dict()
-                    agent_q.put(temp_agent,block=True,timeout=None)
+                    agent_q.put((temp_agent,learner_agent.learn_time),block=True,timeout=None)
+        update_count+=1
 
 def replay_buffer_adder(agent,impact_deque, state, next_state,all_action_param,reward, truncated, done, info):
     """Input all the state info into agent's replay buffer"""
