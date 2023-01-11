@@ -40,7 +40,8 @@ clip_grad = 10
 zero_index_gradients = True
 inverting_gradients = True
 base_name = f'origin_NOCA'
-SAVE_PATH='./out'
+time=datetime.datetime.now().strftime('%Y%m%d%H%M%S')
+SAVE_PATH=f"./out/multi_agent/pdqn/{time}"
 
 def main():
     Args = ARGS.parse_args()
@@ -59,8 +60,7 @@ def main():
     a_bound = env.get_action_bound()
     a_dim = 2
 
-    time=datetime.datetime.now().strftime('%Y%m%d%H%M%S')
-    episode_writer=SummaryWriter(f"{SAVE_PATH}/multi_agent/runs/pdqn/{time}")
+    episode_writer=SummaryWriter(SAVE_PATH)
     n_run = 3
     rosiolling_window = 100  # 100 car following events, average score
     result = []
@@ -163,7 +163,7 @@ def main():
                             
                             #only record the first vehicle reward
                             if env.ego_clients[0].total_step == Args.pre_train_steps:
-                                worker_agent.save_net(f"{SAVE_PATH}/multi_agent/pdqn_pre_trained.pth")
+                                worker_agent.save_net(f"{SAVE_PATH}/pdqn_pre_trained.pth")
                             if env.is_effective_action(0) and not infos[0]['Abandon']:
                                 score += rewards[0]
                                 if not truncateds[0]:
@@ -213,7 +213,7 @@ def main():
 
                             if max_score < score:
                                 max_score = score
-                                worker_agent.save_net(F"{SAVE_PATH}/multi_agent/pdqn_optimal.pth")
+                                worker_agent.save_net(F"{SAVE_PATH}/pdqn_optimal.pth")
 
                         """ if rolling_score[rolling_score.__len__-1]>max_rolling_score:
                             max_rolling_score=rolling_score[rolling_score.__len__-1]
@@ -226,9 +226,9 @@ def main():
                                 'score': '%.2f' % score
                             })
                         pbar.update(1)
-                        worker_agent.save_net(f"{SAVE_PATH}/multi_agent/pdqn_final.pth")
+                        worker_agent.save_net(f"{SAVE_PATH}/pdqn_final.pth")
            
-            np.save(f"{SAVE_PATH}/multi_agent/result_{run}.npy", result)
+            np.save(f"{SAVE_PATH}/result_{run}.npy", result)
         except KeyboardInterrupt:
             logging.info("Premature Terminated")
         # except BaseException as e:
@@ -237,7 +237,7 @@ def main():
             env.__del__()
             #process[-1].join() # waiting for learner
             episode_writer.close()
-            worker_agent.save_net(f"{SAVE_PATH}/multi_agent/pdqn_final.pth")
+            worker_agent.save_net(f"{SAVE_PATH}/pdqn_final.pth")
             #process[-1].join()
             process_safely_terminate(process)
             logging.info('\nDone.')
@@ -293,15 +293,16 @@ def learner_mp(traj_q: Queue, agent_q:Queue, agent_param, ego_num):
         if learner_agent.replay_buffer.size()>=MINIMAL_SIZE:
             logging.info("LEARN BEGIN")
             [learner_agent.learn() for _ in range(k)]
-            if learner_agent.learn_time!=0 and learner_agent.learn_time//128>0:
-                learner_agent.learn_time%=128
-                temp_agent.actor.load_state_dict(learner_agent.actor.state_dict())
-                temp_agent.critic.load_state_dict(learner_agent.critic.state_dict())
-                actor,actor_t,critic,critic_t=learner_agent.actor.state_dict(),learner_agent.actor_target.state_dict(), \
-                    learner_agent.critic.state_dict(),learner_agent.critic_target.state_dict()
-                a,a_t,c,c_t=temp_agent.actor.state_dict(),temp_agent.actor_target.state_dict(), \
-                    temp_agent.critic.state_dict(),temp_agent.critic_target.state_dict()
-                agent_q.put(temp_agent,block=True,timeout=None)
+            if learner_agent.learn_time!=0 and learner_agent.learn_time//10>0:
+                learner_agent.learn_time%=10
+                if not agent_q.full():
+                    temp_agent.actor.load_state_dict(learner_agent.actor.state_dict())
+                    temp_agent.critic.load_state_dict(learner_agent.critic.state_dict())
+                    actor,actor_t,critic,critic_t=learner_agent.actor.state_dict(),learner_agent.actor_target.state_dict(), \
+                        learner_agent.critic.state_dict(),learner_agent.critic_target.state_dict()
+                    a,a_t,c,c_t=temp_agent.actor.state_dict(),temp_agent.actor_target.state_dict(), \
+                        temp_agent.critic.state_dict(),temp_agent.critic_target.state_dict()
+                    agent_q.put(temp_agent,block=True,timeout=None)
 
 def replay_buffer_adder(agent,impact_deque, state, next_state,all_action_param,reward, truncated, done, info):
     """Input all the state info into agent's replay buffer"""

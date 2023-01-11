@@ -35,6 +35,10 @@ class EgoClient:
         self.ego_filter = args.filter
         self.loop = args.loop
         self.agent = args.agent
+        # arguments for debug
+        self.debug = args.debug
+        self.train = args.train  # argument indicating training agent
+        self.seed = args.seed
         self.behavior = args.behavior
         
         self.sampling_resolution = args.sampling_resolution
@@ -46,7 +50,10 @@ class EgoClient:
         self.guide_change = args.guide_change
         self.stride = args.stride
         self.buffer_size = args.buffer_size
-        self.pre_train_steps = args.pre_train_steps
+        if self.train:
+            self.pre_train_steps = args.pre_train_steps
+        else:
+            self.pre_train_steps= 0
         self.speed_limit = args.speed_limit
         self.lane_change_reward = args.lane_change_reward
         # The RL agent acts only after ego vehicle speed reach speed threshold
@@ -95,11 +102,6 @@ class EgoClient:
         # generate ego vehicle spawn points on chosen route
         self.local_planner = None
         self.spawn_points = opt['Spawn_points']
-
-        # arguments for debug
-        self.debug = args.debug
-        self.train = args.train  # argument indicating training agent
-        self.seed = args.seed
 
         # arguments for caculating reward
         self.TTC_THRESHOLD = args.TTC_th
@@ -887,8 +889,8 @@ class EgoClient:
             self.traffic_manager.vehicle_percentage_speed_difference(self.ego_vehicle, speed_diff)
             if self.auto_lanechange and self.speed_state == SpeedState.RUNNING:
                 self.traffic_manager.auto_lane_change(self.ego_vehicle, True)
-                self.traffic_manager.random_left_lanechange_percentage(self.ego_vehicle, 100)
-                self.traffic_manager.random_right_lanechange_percentage(self.ego_vehicle, 100)
+                self.traffic_manager.random_left_lanechange_percentage(self.ego_vehicle, 0)
+                self.traffic_manager.random_right_lanechange_percentage(self.ego_vehicle, 0)
 
 
             # self.traffic_manager.set_desired_speed(self.ego_vehicle, 72)

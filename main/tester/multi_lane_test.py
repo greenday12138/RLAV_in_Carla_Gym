@@ -36,9 +36,9 @@ base_name = f'origin_{TTC_threshold}_NOCA'
 
 
 def main():
+    ARGS.set_defaults(train=False)
+    ARGS.set_defaults(no_rendering=False)
     args = ARGS.parse_args()
-    args.pre_train_stpes=0
-    args.no_rendering = False
 
     log_level = logging.DEBUG if args.debug else logging.INFO
     logging.basicConfig(format='%(levelname)s: %(message)s', level=log_level)
@@ -58,7 +58,7 @@ def main():
     result = []
 
     for run in [base_name]:
-        param = torch.load('./out/pdqn_final.pth')
+        param = torch.load('./out/pdqn_final_4.pth')
         agent = P_DQN(s_dim, a_dim, a_bound, GAMMA, TAU, SIGMA_STEER, SIGMA, SIGMA_ACC, THETA, EPSILON, BUFFER_SIZE, BATCH_SIZE, LR_ACTOR,
                      LR_CRITIC, clip_grad, zero_index_gradients, inverting_gradients,False, DEVICE)
         agent.load_net(param)
@@ -66,17 +66,23 @@ def main():
         env.RL_switch=True
         agent.set_sigma(0,0)
 
-        state = env.reset()
 
         try:
-            while not done and not truncated:
-                action,action_param,all_action_param = agent.take_action(state)
-                next_state, reward, truncated,done, info = env.step(action,action_param)
-                # if env.speed_state == SpeedState.REBOOT:
-                #     env.speed_state = SpeedState.RUNNING
-                state=next_state
-                print()
+            for _ in range(10):
+                state = env.reset()
+        
+                while not done and not truncated:
+                    action,action_param,all_action_param = agent.take_action(state)
+                    next_state, reward, truncated,done, info = env.step(action,action_param)
+                    # if env.speed_state == SpeedState.REBOOT:
+                    #     env.speed_state = SpeedState.RUNNING
+                    state=next_state
+                    print()
 
+                if done or truncated:
+                    # restart the training
+                    done = False
+                    truncated = False
         except KeyboardInterrupt:
             logging.info("Premature Terminated")
         finally:

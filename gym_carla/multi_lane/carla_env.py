@@ -34,6 +34,10 @@ class CarlaEnv:
         self.ego_filter = args.filter
         self.loop = args.loop
         self.agent = args.agent
+        # arguments for debug
+        self.debug = args.debug
+        self.train = args.train  # argument indicating training agent
+        self.seed = args.seed
         self.behavior = args.behavior
         self.num_of_vehicles = args.num_of_vehicles
         self.sampling_resolution = args.sampling_resolution
@@ -45,7 +49,10 @@ class CarlaEnv:
         self.guide_change = args.guide_change
         self.stride = args.stride
         self.buffer_size = args.buffer_size
-        self.pre_train_steps = args.pre_train_steps
+        if self.train:
+            self.pre_train_steps = args.pre_train_steps
+        else:
+            self.pre_train_steps= 0
         self.speed_limit = args.speed_limit
         self.lane_change_reward = args.lane_change_reward
         # The RL agent acts only after ego vehicle speed reach speed threshold
@@ -101,11 +108,6 @@ class CarlaEnv:
         self.global_planner = GlobalPlanner(self.map, self.sampling_resolution)
         self.local_planner = None
         self.spawn_points = self.global_planner.get_spawn_points()
-
-        # arguments for debug
-        self.debug = args.debug
-        self.train = args.train  # argument indicating training agent
-        self.seed = args.seed
 
         # arguments for caculating reward
         self.TTC_THRESHOLD = args.TTC_th
@@ -921,11 +923,10 @@ class CarlaEnv:
             self.traffic_manager.ignore_signs_percentage(self.ego_vehicle, 100)
             self.traffic_manager.ignore_vehicles_percentage(self.ego_vehicle, 0)
             self.traffic_manager.vehicle_percentage_speed_difference(self.ego_vehicle, speed_diff)
-            if self.auto_lanechange and self.speed_state == SpeedState.RUNNING:
-                self.traffic_manager.auto_lane_change(self.ego_vehicle, True)
-                self.traffic_manager.random_left_lanechange_percentage(self.ego_vehicle, 100)
-                self.traffic_manager.random_right_lanechange_percentage(self.ego_vehicle, 100)
-
+            #if self.auto_lanechange and self.speed_state == SpeedState.RUNNING:
+            self.traffic_manager.auto_lane_change(self.ego_vehicle, True)
+            self.traffic_manager.random_left_lanechange_percentage(self.ego_vehicle, 0)
+            self.traffic_manager.random_right_lanechange_percentage(self.ego_vehicle, 0)
 
             # self.traffic_manager.set_desired_speed(self.ego_vehicle, 72)
             # ego_wp=self.map.get_waypoint(self.ego_vehicle.get_location())

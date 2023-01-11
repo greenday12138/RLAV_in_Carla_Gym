@@ -32,8 +32,9 @@ base_name = f'origin_{TTC_threshold}_NOCA'
 
 
 def main():
+    ARGS.set_defaults(pre_train_steps=0)
+    ARGS.set_defaults(no_rendering=False)
     args = ARGS.parse_args()
-    args.no_rendering = False
 
     log_level = logging.DEBUG if args.debug else logging.INFO
     logging.basicConfig(format='%(levelname)s: %(message)s', level=log_level)
