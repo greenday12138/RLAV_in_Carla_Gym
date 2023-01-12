@@ -1,11 +1,14 @@
 import logging
 import torch
-import random, collections
+import datetime
+import random
 import numpy as np
 import scipy.io as sio
 import matplotlib.pyplot as plt
 from tqdm import tqdm
 from algs.pdqn import P_DQN
+from collections import deque
+from tensorboardX import SummaryWriter
 from gym_carla.multi_lane.settings import ARGS
 from gym_carla.multi_lane.carla_env import CarlaEnv, SpeedState
 from main.util.process import start_process, kill_process
@@ -28,12 +31,12 @@ BATCH_SIZE = 128
 REPLACE_A = 500
 REPLACE_C = 300
 TOTAL_EPISODE = 3000
-TTC_threshold = 4.001
 clip_grad = 10
 zero_index_gradients = True
 inverting_gradients = True
-base_name = f'origin_{TTC_threshold}_NOCA'
-
+base_name = f'origin_NOCA'
+time=datetime.datetime.now().strftime('%Y%m%d%H%M%S')
+SAVE_PATH=f"./out/multi_lane/pdqn/test/{time}"
 
 def main():
     ARGS.set_defaults(train=False)
@@ -42,9 +45,9 @@ def main():
 
     log_level = logging.DEBUG if args.debug else logging.INFO
     logging.basicConfig(format='%(levelname)s: %(message)s', level=log_level)
-
     # env=gym.make('CarlaEnv-v0')
     env = CarlaEnv(args)
+    globals()['modify_change_steer'] = args.modify_change_steer
 
     done = False
     truncated=False
@@ -55,10 +58,11 @@ def main():
     a_bound = env.get_action_bound()
     a_dim = 2
 
+    episode_writer=SummaryWriter(SAVE_PATH)
     result = []
 
     for run in [base_name]:
-        param = torch.load('./out/pdqn_final_4.pth')
+        param = torch.load('./out/pdqn_final_5.pth')
         agent = P_DQN(s_dim, a_dim, a_bound, GAMMA, TAU, SIGMA_STEER, SIGMA, SIGMA_ACC, THETA, EPSILON, BUFFER_SIZE, BATCH_SIZE, LR_ACTOR,
                      LR_CRITIC, clip_grad, zero_index_gradients, inverting_gradients,False, DEVICE)
         agent.load_net(param)
@@ -66,11 +70,22 @@ def main():
         env.RL_switch=True
         agent.set_sigma(0,0)
 
-
         try:
-            for _ in range(10):
+            for i in range(100):
                 state = env.reset()
         
+                score = 0
+                ttc, efficiency,comfort,lcen,yaw,impact,lane_change_reward = 0, 0, 0, 0, 0, 0, 0  # part objective scores
+                recover_time,lane_change_count,brake_count,delay_index,avg_vel,avg_jerk,avg_lcen=0,0,0,0,0,0,0
+                delay_i=deque(maxlen=100)
+                rear_a=deque(maxlen=5)
+                rear_v=deque(maxlen=200)
+                recovery_mode=False
+                ego_v=deque(maxlen=1500)
+                ego_jerk=deque(maxlen=1500)
+                ego_lcen=deque(maxlen=1500)
+                ego_ttc=deque(maxlen=1500)
+
                 while not done and not truncated:
                     action,action_param,all_action_param = agent.take_action(state)
                     next_state, reward, truncated,done, info = env.step(action,action_param)
@@ -79,14 +94,122 @@ def main():
                     state=next_state
                     print()
 
+                    if env.is_effective_action() and not info['Abandon']:
+                        score += reward
+                        if not truncated:
+                            ttc += info['fTTC']
+                            efficiency += info['Efficiency']
+                            comfort += info['Comfort']
+                            lcen += info['Lane_center']
+                            yaw += info['Yaw']
+                            impact += info['impact']
+                            lane_change_reward += info['lane_changing_reward']
+                    if not truncated and not done:
+                        with open(f"{SAVE_PATH}/ego_ttc.txt",'a') as f:
+                            f.write(str(info['TTC'])+'\n')
+                        with open(f"{SAVE_PATH}/ego_vel.txt",'a') as f:
+                            f.write(str(info['velocity'])+'\n')
+                        with open(f"{SAVE_PATH}/ego_acc.txt",'a') as f:
+                            f.write(str(info['cur_acc'])+'\n')
+                        with open(f"{SAVE_PATH}/ego_jerk.txt",'a') as f:
+                            f.write(str(abs(info['cur_acc']-info['last_acc'])/(1.0/args.fps))+'\n')
+                        with open(f"{SAVE_PATH}/ego_offlane.txt",'a') as f:
+                            f.write(str(abs(info['offlane']))+'\n')
+                        with open(f"{SAVE_PATH}/ego_yaw.txt",'a') as f:
+                            f.write(str(info['yaw_diff'])+'\n')
+
+                        #macro index
+                        if info['change_lane'] and info['rear_id']!=-1:
+                            recovery_mode=True
+                            lane_change_count+=1
+                        if info['rear_id']!=-1:
+                            with open(f"{SAVE_PATH}/rear_a.txt",'a') as f:
+                                f.write(str(recovery_mode)+'\t'+str(info['rear_a'])+'\n')
+                        if recovery_mode==True:
+                            rear_a.append(info['rear_a'])
+                            if info['rear_id']==-1:
+                                avg_v=0
+                                for n in range(len(rear_v)-1):
+                                    avg_v+=rear_v[n+1]/(len(rear_v)-1)
+                                ind=rear_v[0]/(avg_v+0.000001) if rear_v[0]/(avg_v+0.000001)>1.0 else 1.0
+                                delay_i.append(ind)
+
+                                recovery_mode=False
+                                rear_v.clear()
+                                rear_a.clear()
+                            elif len(rear_a)==rear_a.maxlen:
+                                avg_a=0
+                                for a in rear_a:
+                                    avg_a+=a/rear_a.maxlen
+                                if 0<=avg_a<0.001:
+                                    rear_v.append(info['rear_v'])
+                                    avg_v=0
+                                    for n in range(len(rear_v)-1):
+                                        avg_v+=rear_v[n+1]/(len(rear_v)-1)
+                                    ind=rear_v[0]/(avg_v+0.000001) if rear_v[0]/(avg_v+0.000001)>1.0 else 1.0
+                                    delay_i.append(ind)
+                                    
+                                    recovery_mode=False
+                                    rear_v.clear()
+                                    rear_a.clear()
+                            
+                            if recovery_mode==True:
+                                if info['rear_a']<0:
+                                    brake_count+=1
+                                rear_v.append(info['rear_v'])
+                                recover_time+=1
+
+                        #micro index
+                        ego_v.append(info['velocity'])
+                        ego_jerk.append(abs(info['cur_acc']-info['last_acc'])/(1.0/args.fps))
+                        ego_lcen.append(abs(info['offlane']))
+                        ego_ttc.append(info['TTC'])
+
                 if done or truncated:
                     # restart the training
                     done = False
                     truncated = False
+
+                episode_writer.add_scalar('Total_Reward',score,i)
+                score/=env.time_step+1
+                episode_writer.add_scalar('Avg_Reward',score,i)
+                episode_writer.add_scalar('Time_Steps',env.time_step,i)
+                episode_writer.add_scalar('TTC',ttc/(env.time_step+1), i)
+                episode_writer.add_scalar('Efficiency',efficiency/(env.time_step+1), i)
+                episode_writer.add_scalar('Comfort',comfort/(env.time_step+1), i)
+                episode_writer.add_scalar('Lcen',lcen/(env.time_step+1), i)
+                episode_writer.add_scalar('Yaw',yaw/(env.time_step+1), i)
+                episode_writer.add_scalar('Impact',impact/(env.time_step+1), i)
+                episode_writer.add_scalar('Lane_change_reward',lane_change_reward/(env.time_step+1), i)
+                episode_writer.add_scalar('recover_time',recover_time, i)
+                episode_writer.add_scalar('lane_change_count',lane_change_count, i)
+                episode_writer.add_scalar('brake_count',brake_count, i)
+                for index in delay_i:
+                    delay_index+=index/len(delay_i)
+                delay_index=delay_index if delay_index>1.0 else 1.0
+                episode_writer.add_scalar('delay_index',delay_index, i)
+                for vel in ego_v:
+                    avg_vel+=vel/len(ego_v)
+                episode_writer.add_scalar('average_vel',avg_vel, i)
+                for jerk in ego_jerk:
+                    avg_jerk+=jerk/len(ego_jerk)
+                episode_writer.add_scalar('average_jerk',avg_jerk, i)
+                for lcen in ego_lcen:
+                    avg_lcen+=lcen/len(ego_lcen)
+                episode_writer.add_scalar('average_lcen',avg_lcen, i)
+                if len(ego_ttc)>0:
+                    min_ttc=min(ego_ttc)
+                else:
+                    min_ttc=args.TTC_th
+                episode_writer.add_scalar('min_ttc',min_ttc, i)
+
         except KeyboardInterrupt:
             logging.info("Premature Terminated")
+        except BaseException as e:
+              logging.info(e.args)
         finally:
             env.__del__()
+            episode_writer.close()
             logging.info('\nDone.')
 
 

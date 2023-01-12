@@ -201,7 +201,8 @@ class EgoClient:
                             'buffer_size': self.buffer_size, 'target_speed':50,
                             'ignore_front_vehicle': random.choice([True, False]),
                             'ignore_change_gap': random.choice([True, True, False]), 
-                            'lanechanging_fps': random.choice([40, 50, 60])})
+                            'lanechanging_fps': random.choice([40, 50, 60]),
+                            'random_lane_change':random.choice([False,True,True,True])})
 
         # code for synchronous mode
         # camera_bp = self.sim_world.get_blueprint_library().find('sensor.camera.rgb')
@@ -216,9 +217,7 @@ class EgoClient:
             else:
                 self.RL_switch=True
         else:
-            # self.autopilot_controller.set_destination(random.choice(self.spawn_points).location)
-            # self.autopilot_controller.set_destination(self.my_set_destination())
-            pass
+            self.RL_switch=False
 
         # Update timesteps
         self.time_step = 0
@@ -293,16 +292,17 @@ class EgoClient:
         if not self.debug:
             self._speed_switch(a_index)
         else:
+            self._speed_switch(a_index)
             # if self.autopilot_controller.done() and self.loop:
             #     # self.autopilot_controller.set_destination(random.choice(self.spawn_points).location)
             #     self.autopilot_controller.set_destination(self.my_set_destination())
             # control = self.autopilot_controller.run_step()
-            print("debug mode: last_lane, current lane, last target lane, current target lane, last action, current action: ",
-                  self.last_lane, self.current_lane, self.last_target_lane, self.current_target_lane, self.last_action.value,self.current_action.value)
-            self.control, self.current_target_lane, self.current_action= \
-                self.autopilot_controller.run_step(self.last_lane, self.current_lane,self.current_target_lane, self.last_action,self.modify_change_steer)
-            print("debug mode: last_lane, current lane, last target lane, current target lane, last action, current action: ",
-                  self.last_lane, self.current_lane, self.last_target_lane, self.current_target_lane, self.last_action.value,self.current_action.value)
+            # print("debug mode: last_lane, current lane, last target lane, current target lane, last action, current action: ",
+            #       self.last_lane, self.current_lane, self.last_target_lane, self.current_target_lane, self.last_action.value,self.current_action.value)
+            # self.control, self.current_target_lane, self.current_action= \
+            #     self.autopilot_controller.run_step(self.last_lane, self.current_lane,self.current_target_lane, self.last_action,self.modify_change_steer)
+            # print("debug mode: last_lane, current lane, last target lane, current target lane, last action, current action: ",
+            #       self.last_lane, self.current_lane, self.last_target_lane, self.current_target_lane, self.last_action.value,self.current_action.value)
 
         if not self.debug:
             if not self.RL_switch :
@@ -336,19 +336,8 @@ class EgoClient:
             if self.is_effective_action():
                 self.ego_vehicle.apply_control(self.control)
         else:
-            #control.steer = np.clip(np.random.normal(control.steer,self.control_sigma['Steer']),-self.steer_bound,self.steer_bound)
-            if self.control.throttle > 0:
-                throttle_brake = self.control.throttle
-            else:
-                throttle_brake = -self.control.brake
-            #throttle_brake = np.clip(np.random.normal(throttle_brake,self.control_sigma['Throttle_brake']),-self.brake_bound,self.throttle_bound)
-            if throttle_brake > 0:
-                self.control.throttle = throttle_brake
-                self.control.brake = 0
-            else:
-                self.control.throttle = 0
-                self.control.brake = abs(throttle_brake)
-            self.ego_vehicle.apply_control(self.control)
+            if self.is_effective_action():
+                self.ego_vehicle.apply_control(self.control)
 
     def step_after_tick(self):
         logging.info(f"CLIENT {self.id} STEP AFTER TICK")
@@ -419,7 +408,11 @@ class EgoClient:
             self.last_light_state=None    
 
         if self.debug:
-            print(f"Speed:{get_speed(self.ego_vehicle, False)}, Acc:{get_acceleration(self.ego_vehicle, False)}")
+            self.time_step+=1
+            self.RL_switch=False
+            print(f"Speed:{get_speed(self.ego_vehicle, False)}, Acc:{get_acceleration(self.ego_vehicle, False)}, Time_step:{self.time_step}")
+            return state,reward,truncated!=Truncated.FALSE,done,self._get_info()
+        
         print(f"Current State:{self.speed_state}, RL In Control:{self.RL_switch}")
         if not self.RL_switch:
             print(f"Control Sigma -- Steer:{self.control_sigma['Steer']}, Throttle_brake:{self.control_sigma['Throttle_brake']}")

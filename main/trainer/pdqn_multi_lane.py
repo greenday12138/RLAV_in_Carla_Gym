@@ -117,7 +117,7 @@ def main():
                                             avg_v=0
                                             for n in range(len(rear_v)-1):
                                                 avg_v+=rear_v[n+1]/(len(rear_v)-1)
-                                            ind=rear_v[0]/(avg_v+0.000001) if rear_v[0]/avg_v>1.0 else 1.0
+                                            ind=rear_v[0]/(avg_v+0.000001) if rear_v[0]/(avg_v+0.000001)>1.0 else 1.0
                                             delay_i.append(ind)
 
                                             recovery_mode=False
@@ -132,7 +132,7 @@ def main():
                                                 avg_v=0
                                                 for n in range(len(rear_v)-1):
                                                     avg_v+=rear_v[n+1]/(len(rear_v)-1)
-                                                ind=rear_v[0]/avg_v if rear_v[0]/avg_v>1.0 else 1.0
+                                                ind=rear_v[0]/(avg_v+0.000001) if rear_v[0]/(avg_v+0.000001)>1.0 else 1.0
                                                 delay_i.append(ind)
                                                 
                                                 recovery_mode=False

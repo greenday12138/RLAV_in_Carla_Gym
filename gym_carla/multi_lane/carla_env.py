@@ -234,10 +234,11 @@ class CarlaEnv:
                 opt_dict={'ignore_traffic_lights': self.ignore_traffic_light,'ignore_stop_signs': True, 
                             'sampling_resolution': self.sampling_resolution,
                             'max_steering': self.steer_bound, 'max_throttle': self.throttle_bound,'max_brake': self.brake_bound, 
-                            'buffer_size': self.buffer_size, 'target_speed':50,
-                            'ignore_front_vehicle': random.choice([True, False]),
+                            'buffer_size': self.buffer_size, 'target_speed':self.speed_limit,
+                            'ignore_front_vehicle': random.choice([False]),
                             'ignore_change_gap': random.choice([True, True, False]), 
-                            'lanechanging_fps': random.choice([40, 50, 60])})
+                            'lanechanging_fps': random.choice([40, 50, 60]),
+                            'random_lane_change':random.choice([False])})
         #self.controller = ConstantVelocityAgent(self.ego_vehicle,target_speed=self.speed_limit)
         # self.controller = BasicAgent(self.ego_vehicle, {'target_speed': self.speed_threshold, 'dt': 1 / self.fps,
         #                                                 'max_throttle': self.throttle_bound,
@@ -256,15 +257,13 @@ class CarlaEnv:
             else:
                 self.RL_switch=True
         else:
-            # self.autopilot_controller.set_destination(random.choice(self.spawn_points).location)
-            # self.autopilot_controller.set_destination(self.my_set_destination())
-            self.sim_world.debug.draw_point(self.ego_spawn_point.location,size=0.3,life_time=0)
-            while (True):
-                spawn_point=random.choice(self.spawn_points).location
-                if self.map.get_waypoint(spawn_point).lane_id==self.map.get_waypoint(self.ego_spawn_point.location).lane_id:
-                    break
-            self.controller.set_destination(spawn_point)
-            pass
+            self.RL_switch=False
+            # self.sim_world.debug.draw_point(self.ego_spawn_point.location,size=0.3,life_time=0)
+            # while (True):
+            #     spawn_point=random.choice(self.spawn_points).location
+            #     if self.map.get_waypoint(spawn_point).lane_id==self.map.get_waypoint(self.ego_spawn_point.location).lane_id:
+            #         break
+            # self.controller.set_destination(spawn_point)
 
         # Update timesteps
         self.time_step = 0
@@ -321,13 +320,14 @@ class CarlaEnv:
         if not self.debug:
             self._speed_switch(a_index)
         else:
-            if self.controller.done() and self.loop:
-                while (True):
-                    spawn_point=random.choice(self.spawn_points).location
-                    if self.map.get_waypoint(spawn_point).lane_id==self.map.get_waypoint(self.ego_spawn_point.location).lane_id:
-                        break
-                self.controller.set_destination(spawn_point)
-            control = self.controller.run_step()
+            self._speed_switch(a_index)
+            # if self.controller.done() and self.loop:
+            #     while (True):
+            #         spawn_point=random.choice(self.spawn_points).location
+            #         if self.map.get_waypoint(spawn_point).lane_id==self.map.get_waypoint(self.ego_spawn_point.location).lane_id:
+            #             break
+            #     self.controller.set_destination(spawn_point)
+            # control = self.controller.run_step()
             # print("debug mode: last_lane, current lane, last target lane, current target lane, last action, current action: ",
             #       self.last_lane, self.current_lane, self.last_target_lane, self.current_target_lane, self.last_action.value,self.current_action.value)
             # self.control, self.current_target_lane, self.current_action= \
@@ -367,20 +367,8 @@ class CarlaEnv:
                 if self.is_effective_action():
                     self.ego_vehicle.apply_control(self.control)
             else:
-                #control.steer = np.clip(np.random.normal(control.steer,self.control_sigma['Steer']),-self.steer_bound,self.steer_bound)
-                # if self.control.throttle > 0:
-                #     throttle_brake = self.control.throttle
-                # else:
-                #     throttle_brake = -self.control.brake
-                # #throttle_brake = np.clip(np.random.normal(throttle_brake,self.control_sigma['Throttle_brake']),-self.brake_bound,self.throttle_bound)
-                # if throttle_brake > 0:
-                #     self.control.throttle = throttle_brake
-                #     self.control.brake = 0
-                # else:
-                #     self.control.throttle = 0
-                #     self.control.brake = abs(throttle_brake)
-                # self.ego_vehicle.apply_control(self.control)
-                pass
+                if self.is_effective_action():
+                    self.ego_vehicle.apply_control(self.control)
 
             # print(self.map.get_waypoint(self.ego_vehicle.get_location(),False),self.ego_vehicle.get_transform(),sep='\n')
             # print(self.sim_world.get_snapshot().timestamp)
@@ -472,7 +460,7 @@ class CarlaEnv:
             self.time_step+=1
             self.RL_switch=False
             print(f"Speed:{get_speed(self.ego_vehicle, False)}, Acc:{get_acceleration(self.ego_vehicle, False)}, Time_step:{self.time_step}")
-            return state,reward,False,done,self._get_info()
+            return state,reward,truncated!=Truncated.FALSE,done,self._get_info()
 
         print(f"Current State:{self.speed_state}, RL In Control:{self.RL_switch}")
         if not self.RL_switch:
@@ -1091,7 +1079,7 @@ class CarlaEnv:
                 self.traffic_manager.random_left_lanechange_percentage(vehicle, 0)
                 self.traffic_manager.random_right_lanechange_percentage(vehicle, 0)
                 self.traffic_manager.vehicle_percentage_speed_difference(vehicle,
-                        random.choice([-60,-80,-100,-100,-100,-100,-100,-100]))
+                        random.choice([-60,-80,-100,-100,-100]))
                 self.traffic_manager.set_route(vehicle,
                                                ['Straight', 'Straight', 'Straight', 'Straight', 'Straight', 'Straight', 'Straight', 'Straight', 'Straight', 'Straight'])
                 self.traffic_manager.update_vehicle_lights(vehicle, True)
