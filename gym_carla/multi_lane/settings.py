@@ -134,7 +134,7 @@ ARGS.add_argument(
     help='TTC threshold')
 ARGS.add_argument(
     '--penalty', type=float,
-    default=30,
+    default=40,
     help='reward penalty for simulation terminated early on account of collision and road invasion')
 ARGS.add_argument(
     '--lane_penalty', type=float,
@@ -171,8 +171,12 @@ ARGS.add_argument(
     help='Brake bound for ego vehicle controller')
 ARGS.add_argument(
     '--pre_train_steps', type=int,
-    default=160000,
-    help='Let the RL controller and PID controller alternatively take control every 500 steps')
+    default=320000,
+    help='During pre-train steps, agent is only under PID control.')
+ARGS.add_argument(
+    '--switch_threshold', type=int,
+    default=10,
+    help='Let the RL controller and PID controller alternatively take control every 20 episodes')
 ARGS.add_argument(
     '--vehicle_proximity', type=float,
     default=50.0,

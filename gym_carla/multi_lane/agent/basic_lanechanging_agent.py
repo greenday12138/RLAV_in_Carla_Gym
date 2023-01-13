@@ -272,21 +272,21 @@ class Basic_Lanechanging_Agent(object):
         else:
             if current_lane == -2:
                 change_choice=[]
-                if self.distance_to_left_front-self.distance_to_center_front >5 and self.distance_to_left_rear>2:
+                if self.distance_to_left_front-self.distance_to_center_front >5 and self.distance_to_left_rear>1:
                     change_choice.append(Action.LANE_CHANGE_LEFT)
-                if self.distance_to_right_front-self.distance_to_center_front >5 and self.distance_to_right_rear>2:
+                if self.distance_to_right_front-self.distance_to_center_front >5 and self.distance_to_right_rear>1:
                     change_choice.append(Action.LANE_CHANGE_RIGHT)
                 if len(change_choice)==0:
                     lane_change = Action.LANE_FOLLOW
                 else:
                     lane_change = random.choice(change_choice)
             elif current_lane == -1:
-                if self.distance_to_right_front-self.distance_to_center_front >5 and self.distance_to_right_rear>2:
+                if self.distance_to_right_front-self.distance_to_center_front >5 and self.distance_to_right_rear>1:
                     lane_change = Action.LANE_CHANGE_RIGHT
                 else:
                     lane_change = Action.LANE_FOLLOW
             elif current_lane == -3:
-                if self.distance_to_left_front-self.distance_to_center_front >5 and self.distance_to_left_rear>2:
+                if self.distance_to_left_front-self.distance_to_center_front >5 and self.distance_to_left_rear>1:
                     lane_change = Action.LANE_CHANGE_LEFT
                 else:
                     lane_change = Action.LANE_FOLLOW
@@ -349,17 +349,20 @@ class Basic_Lanechanging_Agent(object):
         elif self._min_distance > 3:
             next_wp = 4
         if new_action == Action.LANE_CHANGE_LEFT:
+            target_speed=50
             self.target_waypoint = self.left_wps[next_wp+20-1]
             # print('left target waypoint: ', self.target_waypoint)
         elif new_action == Action.LANE_FOLLOW:
-            self.target_waypoint = self.center_wps[next_wp+10-1]
+            target_speed=self._target_speed
+            self.target_waypoint = self.center_wps[next_wp+5-1]
             # print('center target waypoint: ', self.target_waypoint)
         elif new_action == Action.LANE_CHANGE_RIGHT:
+            target_speed=50
             self.target_waypoint = self.right_wps[next_wp+20-1]
             # print('right target waypoint: ', self.target_waypoint)
 
         # print("current location and target location: ", veh_location, self.target_waypoint.transform.location)
-        control = self._vehicle_controller.run_step(self._target_speed, self.target_waypoint)
+        control = self._vehicle_controller.run_step(target_speed, self.target_waypoint)
 
         return control
 

@@ -170,12 +170,12 @@ def process_veh(ego_vehicle, vehs_info, left_wall, right_wall,vehicle_proximity)
     return np.array(all_v_info)
 
 def process_steer(a_index, steer):
-    # left: steering is negative[-1, 0], right: steering is positive[0, 1]
+    # left: steering is negative[-1, -0.1], right: steering is positive[0.1, 1], the thereshold here is sifnificant and it correlates with pdqn
     processed_steer = steer
     if a_index == 0:
-        processed_steer = steer * 0.5 - 0.5
+        processed_steer = np.clip(steer * 0.5 - 0.5, -1, -0.1)
     elif a_index == 2:
-        processed_steer = steer * 0.5 + 0.5
+        processed_steer = np.clip(steer * 0.5 + 0.5, 0.1, 1)
     return processed_steer
 
 def recover_steer(a_index, steer):
@@ -227,7 +227,7 @@ def ttc_reward(ego_veh,target_veh,min_dis,TTC_THRESHOLD):
         fTTC = np.clip(np.log(TTC / TTC_THRESHOLD), -1, 0)
     else:
         fTTC = 0
-        TTC=TTC_THRESHOLD
+        #TTC=TTC_THRESHOLD
 
     return TTC,fTTC
 

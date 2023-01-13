@@ -92,6 +92,8 @@ class CarlaEnv:
         self.rl_control_step = 0
         # RL_switch: True--currently RL in control, False--currently PID in control
         self.RL_switch = False
+        self.SWITCH_THRESHOLD = args.switch_threshold
+        self.switch_count=0
         self.lights_info=None
         self.last_light_state=None
         self.wps_info=WaypointWrapper()
@@ -235,10 +237,10 @@ class CarlaEnv:
                             'sampling_resolution': self.sampling_resolution,
                             'max_steering': self.steer_bound, 'max_throttle': self.throttle_bound,'max_brake': self.brake_bound, 
                             'buffer_size': self.buffer_size, 'target_speed':self.speed_limit,
-                            'ignore_front_vehicle': random.choice([False]),
+                            'ignore_front_vehicle': random.choice([False,True]),
                             'ignore_change_gap': random.choice([True, True, False]), 
                             'lanechanging_fps': random.choice([40, 50, 60]),
-                            'random_lane_change':random.choice([False])})
+                            'random_lane_change':random.choice([False,True])})
         #self.controller = ConstantVelocityAgent(self.ego_vehicle,target_speed=self.speed_limit)
         # self.controller = BasicAgent(self.ego_vehicle, {'target_speed': self.speed_threshold, 'dt': 1 / self.fps,
         #                                                 'max_throttle': self.throttle_bound,
@@ -253,7 +255,13 @@ class CarlaEnv:
         # speed state switch
         if not self.debug:
             if self.total_step <self.pre_train_steps:
-                self.RL_switch=False
+                #During pre-train steps, let rl and pid alternatively take control
+                if self.switch_count>=self.SWITCH_THRESHOLD:
+                    self.RL_switch= not self.RL_switch
+                    self.switch_count=0
+                else:
+                    self.switch_count+=1
+                    self.RL_switch= self.RL_switch
             else:
                 self.RL_switch=True
         else:

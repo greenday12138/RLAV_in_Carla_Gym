@@ -62,7 +62,7 @@ def main():
     result = []
 
     for run in [base_name]:
-        param = torch.load('./out/pdqn_final_5.pth')
+        param = torch.load('./out/pdqn_final_6.pth')
         agent = P_DQN(s_dim, a_dim, a_bound, GAMMA, TAU, SIGMA_STEER, SIGMA, SIGMA_ACC, THETA, EPSILON, BUFFER_SIZE, BATCH_SIZE, LR_ACTOR,
                      LR_CRITIC, clip_grad, zero_index_gradients, inverting_gradients,False, DEVICE)
         agent.load_net(param)
@@ -70,21 +70,32 @@ def main():
         env.RL_switch=True
         agent.set_sigma(0,0)
 
+        VEL=[]
+        ACC=[]
+        JERK=[]
+        OFFLANE=[]
+        TTC=[]
+        REAR_VEL=[]
+        REAR_ACC=[]
+
         try:
-            for i in range(100):
+            for i in range(30):
                 state = env.reset()
         
                 score = 0
                 ttc, efficiency,comfort,lcen,yaw,impact,lane_change_reward = 0, 0, 0, 0, 0, 0, 0  # part objective scores
-                recover_time,lane_change_count,brake_count,delay_index,avg_vel,avg_jerk,avg_lcen=0,0,0,0,0,0,0
+                recover_time,lane_change_count,brake_count,global_brake_count,delay_index,avg_vel,avg_jerk,avg_offlane=0,0,0,0,0,0,0,0
                 delay_i=deque(maxlen=100)
                 rear_a=deque(maxlen=5)
                 rear_v=deque(maxlen=200)
                 recovery_mode=False
-                ego_v=deque(maxlen=1500)
-                ego_jerk=deque(maxlen=1500)
-                ego_lcen=deque(maxlen=1500)
-                ego_ttc=deque(maxlen=1500)
+                ego_v=deque(maxlen=5000)
+                ego_a=deque(maxlen=5000)
+                ego_jerk=deque(maxlen=5000)
+                ego_offlane=deque(maxlen=5000)
+                ego_ttc=deque(maxlen=5000)
+                ego_rear_a=deque(maxlen=5000)
+                ego_rear_v=deque(maxlen=5000)
 
                 while not done and not truncated:
                     action,action_param,all_action_param = agent.take_action(state)
@@ -105,26 +116,29 @@ def main():
                             impact += info['impact']
                             lane_change_reward += info['lane_changing_reward']
                     if not truncated and not done:
-                        with open(f"{SAVE_PATH}/ego_ttc.txt",'a') as f:
-                            f.write(str(info['TTC'])+'\n')
-                        with open(f"{SAVE_PATH}/ego_vel.txt",'a') as f:
-                            f.write(str(info['velocity'])+'\n')
-                        with open(f"{SAVE_PATH}/ego_acc.txt",'a') as f:
-                            f.write(str(info['cur_acc'])+'\n')
-                        with open(f"{SAVE_PATH}/ego_jerk.txt",'a') as f:
-                            f.write(str(abs(info['cur_acc']-info['last_acc'])/(1.0/args.fps))+'\n')
-                        with open(f"{SAVE_PATH}/ego_offlane.txt",'a') as f:
-                            f.write(str(abs(info['offlane']))+'\n')
-                        with open(f"{SAVE_PATH}/ego_yaw.txt",'a') as f:
-                            f.write(str(info['yaw_diff'])+'\n')
+                        # with open(f"{SAVE_PATH}/ego_ttc.txt",'a') as f:
+                        #     f.write(str(info['TTC'])+'\n')
+                        # with open(f"{SAVE_PATH}/ego_vel.txt",'a') as f:
+                        #     f.write(str(info['velocity'])+'\n')
+                        # with open(f"{SAVE_PATH}/ego_acc.txt",'a') as f:
+                        #     f.write(str(info['cur_acc'])+'\n')
+                        # with open(f"{SAVE_PATH}/ego_jerk.txt",'a') as f:
+                        #     f.write(str(abs(info['cur_acc']-info['last_acc'])/(1.0/args.fps))+'\n')
+                        # with open(f"{SAVE_PATH}/ego_offlane.txt",'a') as f:
+                        #     f.write(str(abs(info['offlane']))+'\n')
+                        # with open(f"{SAVE_PATH}/ego_yaw.txt",'a') as f:
+                        #     f.write(str(info['yaw_diff'])+'\n')
 
                         #macro index
                         if info['change_lane'] and info['rear_id']!=-1:
                             recovery_mode=True
                             lane_change_count+=1
                         if info['rear_id']!=-1:
-                            with open(f"{SAVE_PATH}/rear_a.txt",'a') as f:
-                                f.write(str(recovery_mode)+'\t'+str(info['rear_a'])+'\n')
+                            if info['rear_a']<0:
+                                global_brake_count+=1
+                            ego_rear_a.append((info['rear_a'],recovery_mode))
+                            # with open(f"{SAVE_PATH}/rear_a.txt",'a') as f:
+                            #     f.write(str(recovery_mode)+'\t'+str(info['rear_a'])+'\n')
                         if recovery_mode==True:
                             rear_a.append(info['rear_a'])
                             if info['rear_id']==-1:
@@ -161,14 +175,26 @@ def main():
 
                         #micro index
                         ego_v.append(info['velocity'])
+                        ego_a.append(info['cur_acc'])
                         ego_jerk.append(abs(info['cur_acc']-info['last_acc'])/(1.0/args.fps))
-                        ego_lcen.append(abs(info['offlane']))
+                        ego_offlane.append(info['offlane'])
                         ego_ttc.append(info['TTC'])
+                        ego_rear_v.append(info['rear_v'])
 
+                if done:
+                    episode_writer.add_scalar('Pass_Time_Steps',env.time_step,i)
                 if done or truncated:
                     # restart the training
                     done = False
                     truncated = False
+
+                VEL.append(np.array(ego_v,dtype=float))
+                ACC.append(np.array(ego_a,dtype=float))
+                JERK.append(np.array(ego_jerk,dtype=float))
+                OFFLANE.append(np.array(ego_offlane,dtype=float))
+                TTC.append(np.array(ego_ttc,dtype=float))
+                REAR_ACC.append(np.array(ego_rear_a,dtype=float))
+                REAR_VEL.append(np.array(ego_rear_v,dtype=float))
 
                 episode_writer.add_scalar('Total_Reward',score,i)
                 score/=env.time_step+1
@@ -184,6 +210,7 @@ def main():
                 episode_writer.add_scalar('recover_time',recover_time, i)
                 episode_writer.add_scalar('lane_change_count',lane_change_count, i)
                 episode_writer.add_scalar('brake_count',brake_count, i)
+                episode_writer.add_scalar('global_brake_count',brake_count, i)
                 for index in delay_i:
                     delay_index+=index/len(delay_i)
                 delay_index=delay_index if delay_index>1.0 else 1.0
@@ -194,15 +221,28 @@ def main():
                 for jerk in ego_jerk:
                     avg_jerk+=jerk/len(ego_jerk)
                 episode_writer.add_scalar('average_jerk',avg_jerk, i)
-                for lcen in ego_lcen:
-                    avg_lcen+=lcen/len(ego_lcen)
-                episode_writer.add_scalar('average_lcen',avg_lcen, i)
+                for offlane in ego_offlane:
+                    avg_offlane+=abs(offlane)/len(ego_offlane)
+                episode_writer.add_scalar('average_offlane',avg_offlane, i)
                 if len(ego_ttc)>0:
-                    min_ttc=min(ego_ttc)
+                    temp=[]
+                    for ttc in ego_ttc:
+                        if ttc<0:
+                            temp.append(args.TTC_th)
+                        else:
+                            temp.append(ttc)
+                    min_ttc=min(temp)
                 else:
                     min_ttc=args.TTC_th
                 episode_writer.add_scalar('min_ttc',min_ttc, i)
 
+            np.save(f"{SAVE_PATH}/ego_vel.npy",np.array(VEL))
+            np.save(f"{SAVE_PATH}/ego_acc.npy",np.array(ACC))
+            np.save(f"{SAVE_PATH}/ego_jerk.npy",np.array(JERK))
+            np.save(f"{SAVE_PATH}/ego_offlane.npy",np.array(OFFLANE))
+            np.save(f"{SAVE_PATH}/ego_ttc.npy",np.array(TTC))
+            np.save(f"{SAVE_PATH}/rear_acc.npy",np.array(REAR_ACC))
+            np.save(f"{SAVE_PATH}/rear_vel.npy",np.array(REAR_VEL))
         except KeyboardInterrupt:
             logging.info("Premature Terminated")
         except BaseException as e:

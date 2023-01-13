@@ -40,7 +40,24 @@ if __name__=='__main__':
     # print(q.get())
     # p1.join()
     # p2.join()
-    temp=deque(maxlen=5)
-    temp.extend([1,2,3])
-    for i in range(len(temp)-1):
-        print(temp[i])
+    b=[2,3,4,5]
+    a=[1,2,3]
+    c=[]
+    d=[]
+    arr1=np.array(b,dtype=float)
+    arr2=np.array(a,dtype=float)
+    c.append(arr1)
+    c.append(arr2)
+    c=np.array(c)
+    d.append(arr2)
+    d.append(arr1)
+    d=np.array(d)
+    #print(c)
+    np.save(f"./out/temp.npy", [c,d])
+    c_ = np.load(f"./out/temp.npy",allow_pickle=True)
+    #print(c_)
+    
+    temp=np.load(f"./out/rear_acc.npy",allow_pickle=True)
+    for i in temp:
+        print(i)
+    

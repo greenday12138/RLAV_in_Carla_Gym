@@ -28,11 +28,11 @@ GAMMA = 0.9  # q值更新系数
 TAU = 0.01  # 软更新参数
 EPSILON = 0.5  # epsilon-greedy
 BUFFER_SIZE = 160000
-MINIMAL_SIZE = 10000
-BATCH_SIZE = 256
+MINIMAL_SIZE = 160000
+BATCH_SIZE = 512
 REPLACE_A = 500
 REPLACE_C = 300
-TOTAL_EPISODE = 5000
+TOTAL_EPISODE = 50000
 SIGMA_DECAY = 0.9999
 PER_FLAG=True
 modify_change_steer=False
@@ -67,7 +67,7 @@ def main():
 
     for run in [base_name]:
         worker_agent = P_DQN(deepcopy(s_dim), a_dim, a_bound, GAMMA, TAU, SIGMA_STEER, SIGMA, SIGMA_ACC, THETA, EPSILON, BUFFER_SIZE, BATCH_SIZE, LR_ACTOR,
-                     LR_CRITIC, clip_grad, zero_index_gradients, inverting_gradients,PER_FLAG, DEVICE)
+                     LR_CRITIC, clip_grad, zero_index_gradients, inverting_gradients,PER_FLAG, 'cpu')
         # learner_agent = P_DQN(deepcopy(s_dim), a_dim, a_bound, GAMMA, TAU, SIGMA_STEER, SIGMA, SIGMA_ACC, THETA, EPSILON, BUFFER_SIZE, BATCH_SIZE, LR_ACTOR,
         #              LR_CRITIC, clip_grad, zero_index_gradients, inverting_gradients,PER_FLAG, DEVICE)
 
@@ -115,12 +115,13 @@ def main():
                             if not agent_q.empty():
                                 actor,actor_t,critic,critic_t=worker_agent.actor.state_dict(),worker_agent.actor_target.state_dict(),\
                                     worker_agent.critic.state_dict(),worker_agent.critic_target.state_dict()
-                                temp_agent,learn_time=agent_q.get()
-                                a,c=temp_agent.actor.state_dict(),temp_agent.critic.state_dict()
-                                worker_agent.actor.load_state_dict(temp_agent.actor.state_dict())
-                                worker_agent.critic.load_state_dict(temp_agent.critic.state_dict())
-                                # worker_agent.critic.load_state_dict(c)
-                                # worker_agent.critic_target.load_state_dict(c_t)
+                                # temp_agent,learn_time=agent_q.get()
+                                # a,c=temp_agent.actor.state_dict(),temp_agent.critic.state_dict()
+                                # worker_agent.actor.load_state_dict(temp_agent.actor.state_dict())
+                                # worker_agent.critic.load_state_dict(temp_agent.critic.state_dict())
+                                actor,critic,learn_time=agent_q.get()
+                                worker_agent.actor=actor
+                                worker_agent.critic=critic
 
                             for state in states:
                                 action, action_param, all_action_param = worker_agent.take_action(state)
@@ -299,13 +300,16 @@ def learner_mp(traj_q: Queue, agent_q:Queue, agent_param, ego_num):
             if update_count!=0 and update_count//10>0:
                 update_count%=10
                 if not agent_q.full():
+                    actor=deepcopy(learner_agent.actor).to('cpu')
+                    critic=deepcopy(learner_agent.critic).to('cpu')
                     temp_agent.actor.load_state_dict(learner_agent.actor.state_dict())
                     temp_agent.critic.load_state_dict(learner_agent.critic.state_dict())
                     actor,actor_t,critic,critic_t=learner_agent.actor.state_dict(),learner_agent.actor_target.state_dict(), \
                         learner_agent.critic.state_dict(),learner_agent.critic_target.state_dict()
                     a,a_t,c,c_t=temp_agent.actor.state_dict(),temp_agent.actor_target.state_dict(), \
                         temp_agent.critic.state_dict(),temp_agent.critic_target.state_dict()
-                    agent_q.put((temp_agent,learner_agent.learn_time),block=True,timeout=None)
+                    agent_q.put((actor,critic,learner_agent.learn_time),block=True,timeout=None)
+                    #agent_q.put((temp_agent,learner_agent.learn_time),block=True,timeout=None)
         update_count+=1
 
 def replay_buffer_adder(agent,impact_deque, state, next_state,all_action_param,reward, truncated, done, info):
