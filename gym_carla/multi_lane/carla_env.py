@@ -231,17 +231,22 @@ class CarlaEnv:
 
         # Only use RL controller after ego vehicle speed reach speed_threshold
         self.speed_state = SpeedState.START
-        self.control_sigma = {'Steer': random.choice([0, 0.05,0.1, 0.1, 0.15]),
-                            'Throttle_brake': random.choice([0, 0.05, 0.1, 0.1, 0.15])}
+        self.control_sigma = {'Steer': random.choice([0]),
+                            'Throttle_brake': random.choice([0])}
+        # self.control_sigma = {'Steer': random.choice([0, 0.05,0.1, 0.1, 0.15]),
+        #                     'Throttle_brake': random.choice([0, 0.05, 0.1, 0.1, 0.15])}
         self.autopilot_controller = Basic_Lanechanging_Agent(self.ego_vehicle, dt=1.0/self.fps,
                 opt_dict={'ignore_traffic_lights': self.ignore_traffic_light,'ignore_stop_signs': True, 
                             'sampling_resolution': self.sampling_resolution,
                             'max_steering': self.steer_bound, 'max_throttle': self.throttle_bound,'max_brake': self.brake_bound, 
                             'buffer_size': self.buffer_size, 'target_speed':self.speed_limit,
-                            'ignore_front_vehicle': random.choice([False,True]),
-                            'ignore_change_gap': random.choice([True, True, False]), 
+                            'ignore_front_vehicle':False,
+                            'ignore_change_gap':False,
+        #                    'ignore_front_vehicle': random.choice([False,True]),
+        #                    'ignore_change_gap': random.choice([True, True, False]), 
                             'lanechanging_fps': random.choice([40, 50, 60]),
-                            'random_lane_change':random.choice([False,True,True,True])})
+                            'random_lane_change':False})
+        #                    'random_lane_change':random.choice([False,True,True,True])})
         #self.controller = ConstantVelocityAgent(self.ego_vehicle,target_speed=self.speed_limit)
         # self.controller = BasicAgent(self.ego_vehicle, {'target_speed': self.speed_threshold, 'dt': 1 / self.fps,
         #                                                 'max_throttle': self.throttle_bound,
@@ -255,14 +260,17 @@ class CarlaEnv:
 
         # speed state switch
         if not self.debug:
-            if self.total_step <self.pre_train_steps:
+            if self.total_step-self.rl_control_step <self.pre_train_steps:
                 #During pre-train steps, let rl and pid alternatively take control
-                if self.switch_count>=self.SWITCH_THRESHOLD:
-                    self.RL_switch= not self.RL_switch
-                    self.switch_count=0
+                if self.RL_switch:
+                    if self.switch_count>=self.SWITCH_THRESHOLD:
+                        self.RL_switch=False
+                        self.switch_count=0
+                    else:
+                        self.switch_count+=1
                 else:
+                    self.RL_switch=True
                     self.switch_count+=1
-                    self.RL_switch= self.RL_switch
             else:
                 self.RL_switch=True
         else:
@@ -703,7 +711,7 @@ class CarlaEnv:
                           'lane_changing_reward': lane_changing_reward,'impact': impact, 
                           'change_in_lane_follow': change_in_lane_follow})
         
-        return fTTC + fEff + fYaw + fCom + fLcen + lane_changing_reward
+        return fTTC + fEff + fCom + fLcen + lane_changing_reward
 
     def _lane_change_reward(self, last_action, last_lane, current_lane, current_action, distance_to_front_vehicles, distance_to_rear_vehicles):
         print('distance_to_front_vehicles, distance_to_rear_vehicles: ', distance_to_front_vehicles, distance_to_rear_vehicles)

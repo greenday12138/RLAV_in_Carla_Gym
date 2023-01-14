@@ -183,9 +183,9 @@ def process_steer(a_index, steer):
     # left: steering is negative[-1, -0.1], right: steering is positive[0.1, 1], the thereshold here is sifnificant and it correlates with pdqn
     processed_steer = steer
     if a_index == 0:
-        processed_steer = np.clip(steer * 0.5 - 0.5, -1, -0.1)
+        processed_steer = steer * 0.5 - 0.5
     elif a_index == 2:
-        processed_steer = np.clip(steer * 0.5 + 0.5, 0.1, 1)
+        processed_steer = steer * 0.5 + 0.5
     return processed_steer
 
 def recover_steer(a_index, steer):
@@ -204,11 +204,9 @@ def fill_action_param(action, steer, throttle_brake, action_param, modify_change
         action_param[0][action*2+1] = throttle_brake
     else:
         if action == 0:
-            steer = np.clip(steer, -1, 0)
-            steer = (steer + 0.5) * 2
+            steer=recover_steer(action,steer)
         elif action == 2:
-            steer = np.clip(steer, 0, 1)
-            steer = (steer - 0.5) * 2
+            steer=recover_steer(action,steer)
         action_param[0][action*2] = steer
         action_param[0][action*2+1] = throttle_brake
     return action_param

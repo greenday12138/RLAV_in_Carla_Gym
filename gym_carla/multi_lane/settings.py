@@ -142,7 +142,7 @@ ARGS.add_argument(
     help='reward penalty for simulation terminated early on account of lane invasion')
 ARGS.add_argument(
     '--lane_change_reward', type=float,
-    default=20,
+    default=15,
     help='reward for lane change according to the distance to the preceding vehicle')
 ARGS.add_argument(
     '--speed_limit', type=float,
@@ -171,7 +171,7 @@ ARGS.add_argument(
     help='Brake bound for ego vehicle controller')
 ARGS.add_argument(
     '--pre_train_steps', type=int,
-    default=320000,
+    default=160000,
     help='During pre-train steps, agent is only under PID control.')
 ARGS.add_argument(
     '--switch_threshold', type=int,
