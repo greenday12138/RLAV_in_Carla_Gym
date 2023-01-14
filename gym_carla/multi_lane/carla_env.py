@@ -663,9 +663,9 @@ class CarlaEnv:
         max_speed=min(speed_1,speed_2)
         if v_s * 3.6 > max_speed:
             # fEff = 1
-            fEff = math.exp(max_speed - v_s * 3.6)
+            fEff = math.exp(max_speed - v_s * 3.6)-1
         else:
-            fEff = v_s * 3.6 / max_speed
+            fEff = v_s * 3.6 / max_speed-1
         # if max_speed<self.speed_min:
         #     fEff=1
 

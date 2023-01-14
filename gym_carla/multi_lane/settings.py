@@ -175,7 +175,7 @@ ARGS.add_argument(
     help='During pre-train steps, agent is only under PID control.')
 ARGS.add_argument(
     '--switch_threshold', type=int,
-    default=10,
+    default=30,
     help='Let the RL controller and PID controller alternatively take control every 20 episodes')
 ARGS.add_argument(
     '--vehicle_proximity', type=float,

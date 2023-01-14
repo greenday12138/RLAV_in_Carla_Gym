@@ -126,10 +126,21 @@ def main():
                             action, action_param, all_action_param = worker_agent.take_action(state)
                             next_state, reward, truncated, done, info = env.step(action, action_param)
                             if env.is_effective_action() and not info['Abandon']:
+                                throttle_brake = -info['Brake'] if info['Brake'] > 0 else info['Throttle']
+                                if info['Change']==Action.LANE_FOLLOW:
+                                    action=1
+                                elif info['Change']==Action.LANE_CHANGE_LEFT:
+                                    action=0
+                                elif info['Change']==Action.LANE_CHANGE_RIGHT:
+                                    action=2
+                                # action_param = np.array([[info['Steer'], throttle_brake]])
+                                saved_action_param = fill_action_param(action, info['Steer'], throttle_brake,
+                                                                        all_action_param,modify_change_steer)
+                                print(f"Control In Replay Buffer: {action}, {saved_action_param}")
                                 # traj_send.send((j,states[j],next_states[j],all_action_params[j],
                                 #      rewards[j],truncateds[j],dones[j],infos[j]))
                                 #if not traj_q.full():
-                                traj_q.put((deepcopy(state),deepcopy(next_state),deepcopy(all_action_param),deepcopy(reward),
+                                traj_q.put((deepcopy(state),deepcopy(next_state),deepcopy(action),deepcopy(saved_action_param),deepcopy(reward),
                                     deepcopy(truncated),deepcopy(done),deepcopy(info)),block=True,timeout=None)
 
                                 print(
@@ -145,7 +156,8 @@ def main():
                                     #f"waypoints:{next_state['right_waypoints']}, \n"
                                     f"ego_vehicle:{next_state['ego_vehicle']}\n"
                                     f"light info: {next_state['light']}\n"
-                                    f"action:{action}, action_param:{action_param}, all_action_param:{all_action_param}\n"
+                                    f"action:{action}, action_param:{action_param} \n"
+                                    f"all_action_param:{all_action_param}, saved_action_param:{saved_action_param}\n"
                                     f"reward:{reward}, truncated:{truncated}, done:{done}, learn_time:{learn_time}")
                                 print()
 
@@ -166,7 +178,7 @@ def main():
                                     lane_change_reward += info['lane_changing_reward']
  
                             if env.rl_control_step > 10000 and env.is_effective_action() and \
-                                    env.RL_switch and SIGMA_ACC > 0.01:
+                                    env.RL_switch and SIGMA_ACC > 0.1:
                                 globals()['SIGMA'] *= SIGMA_DECAY
                                 globals()['SIGMA_STEER'] *= SIGMA_DECAY
                                 globals()['SIGMA_ACC'] *= SIGMA_DECAY
@@ -276,9 +288,9 @@ def learner_mp(traj_q: Queue, agent_q:Queue, agent_param):
         learner_agent.batch_size=k*BATCH_SIZE
         for _ in range(k):
             trajectory=traj_q.get(block=True,timeout=None)
-            state, next_state, all_action_param, reward, truncated, done, info=trajectory[0],trajectory[1],trajectory[2],trajectory[3],\
+            state, next_state, action, saved_action_param, reward, truncated, done, info=trajectory[0],trajectory[1],trajectory[2],trajectory[3],\
                     trajectory[4],trajectory[5],trajectory[6]
-            replay_buffer_adder(learner_agent,impact_deque,state,next_state,all_action_param,reward,truncated,done,info)        
+            replay_buffer_adder(learner_agent,impact_deque,state,next_state, action,saved_action_param,reward,truncated,done,info)        
         if learner_agent.replay_buffer.size()>=MINIMAL_SIZE:
             logging.info("LEARN BEGIN")
             #print(f"LEARN TIME:{learner_agent.learn_time}")
@@ -298,22 +310,10 @@ def learner_mp(traj_q: Queue, agent_q:Queue, agent_param):
                     #agent_q.put((temp_agent,learner_agent.learn_time),block=True,timeout=None)
         update_count+=1
 
-def replay_buffer_adder(agent,impact_deque, state, next_state,all_action_param,reward, truncated, done, info):
+def replay_buffer_adder(agent,impact_deque, state, next_state, action, saved_action_param,reward, truncated, done, info):
     """Input all the state info into agent's replay buffer"""
     if 'Throttle' in info:
-        control_state = info['control_state']
-        throttle_brake = -info['Brake'] if info['Brake'] > 0 else info['Throttle']
-        if info['Change']==Action.LANE_FOLLOW:
-            action=1
-        elif info['Change']==Action.LANE_CHANGE_LEFT:
-            action=0
-        elif info['Change']==Action.LANE_CHANGE_RIGHT:
-            action=2
-        # action_param = np.array([[info['Steer'], throttle_brake]])
-        saved_action_param = fill_action_param(action, info['Steer'], throttle_brake,
-                                                all_action_param,modify_change_steer)
-        print(f"Control In Replay Buffer: {action}, {saved_action_param}")
-        if control_state:
+        if info['control_state']:
             # under rl control
             if truncated:
                 agent.store_transition(state, action, saved_action_param, reward, next_state,
