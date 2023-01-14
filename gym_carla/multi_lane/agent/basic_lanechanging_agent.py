@@ -15,7 +15,7 @@ import numpy as np
 from enum import Enum
 from collections import deque
 from shapely.geometry import Polygon
-from gym_carla.multi_lane.util.wrapper import Action
+from gym_carla.multi_lane.util.wrapper import Action,ControlInfo
 from gym_carla.multi_lane.agent.pid_controller import VehiclePIDController
 from gym_carla.multi_lane.util.misc import get_speed, draw_waypoints, is_within_distance, get_trafficlight_trigger_location, \
     compute_distance, get_lane_center
@@ -364,7 +364,7 @@ class Basic_Lanechanging_Agent(object):
         # print("current location and target location: ", veh_location, self.target_waypoint.transform.location)
         control = self._vehicle_controller.run_step(target_speed, self.target_waypoint)
 
-        return control
+        return ControlInfo(throttle=control.throttle,brake=control.brake,steer=control.steer,gear=control.gear)
 
     def _vehicle_obstacle_detected(self, max_dis):
         have_dangerous_vehicle = False

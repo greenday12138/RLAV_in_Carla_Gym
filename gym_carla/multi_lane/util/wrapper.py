@@ -92,6 +92,16 @@ class Action(Enum):
     LANE_CHANGE_RIGHT=1
     STOP=2
 
+class ControlInfo:
+    """Wrapper for vehicle(model3) control info"""
+    def __init__(self,throttle=0.0,brake=0.0,steer=0.0,gear=1) -> None:
+        self.throttle=throttle
+        self.steer=steer
+        self.brake=brake
+        self.gear=gear
+        self.reverse=False
+        self.manual_gear_shift=False
+
 def process_lane_wp(wps_list, ego_vehicle_z, ego_forward_vector, my_sample_ratio, lane_offset):
     wps = []
     idx = 0

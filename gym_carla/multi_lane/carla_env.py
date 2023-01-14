@@ -15,8 +15,8 @@ from gym_carla.multi_lane.agent.global_planner import GlobalPlanner,RoadOption
 from gym_carla.multi_lane.agent.basic_lanechanging_agent import Basic_Lanechanging_Agent
 from gym_carla.single_lane.navigation.constant_velocity_agent import ConstantVelocityAgent
 from gym_carla.multi_lane.util.sensor import CollisionSensor, LaneInvasionSensor, SemanticTags
-from gym_carla.multi_lane.util.wrapper import WaypointWrapper,VehicleWrapper,Action,SpeedState,Truncated,process_lane_wp,process_veh, \
-    process_steer,recover_steer,fill_action_param,ttc_reward,comfort,lane_center_reward,calculate_guide_lane_center
+from gym_carla.multi_lane.util.wrapper import WaypointWrapper,VehicleWrapper,Action,SpeedState,Truncated,ControlInfo,process_veh, \
+    process_steer,recover_steer,fill_action_param,ttc_reward,comfort,lane_center_reward,calculate_guide_lane_center,process_lane_wp
 from gym_carla.multi_lane.util.misc import draw_waypoints, get_speed, get_acceleration, test_waypoint, \
     compute_distance, get_actor_polygons, get_lane_center, remove_unnecessary_objects, get_yaw_diff, \
     get_trafficlight_trigger_location, is_within_distance, get_sign,is_within_distance_ahead,get_projection,\
@@ -98,7 +98,8 @@ class CarlaEnv:
         self.last_light_state=None
         self.wps_info=WaypointWrapper()
         self.vehs_info=VehicleWrapper()
-        self.control = carla.VehicleControl(throttle=0.0, steer=0.0, brake=0.0,reverse=False, manual_gear_shift=False, gear=1)
+        self.control = ControlInfo()
+        #self.control = carla.VehicleControl(throttle=0.0, steer=0.0, brake=0.0,reverse=False, manual_gear_shift=False, gear=1)
 
         self.last_lane,self.current_lane = None,None
         self.last_action,self.current_action=Action.LANE_FOLLOW,Action.LANE_FOLLOW
@@ -230,8 +231,8 @@ class CarlaEnv:
 
         # Only use RL controller after ego vehicle speed reach speed_threshold
         self.speed_state = SpeedState.START
-        self.control_sigma = {'Steer': random.choice([0, 0.05, 0.1, 0.15, 0.2, 0.25, 0.3]),
-                            'Throttle_brake': random.choice([0, 0.05, 0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.4])}
+        self.control_sigma = {'Steer': random.choice([0, 0.05,0.1, 0.1, 0.15]),
+                            'Throttle_brake': random.choice([0, 0.05, 0.1, 0.1, 0.15])}
         self.autopilot_controller = Basic_Lanechanging_Agent(self.ego_vehicle, dt=1.0/self.fps,
                 opt_dict={'ignore_traffic_lights': self.ignore_traffic_light,'ignore_stop_signs': True, 
                             'sampling_resolution': self.sampling_resolution,
@@ -240,7 +241,7 @@ class CarlaEnv:
                             'ignore_front_vehicle': random.choice([False,True]),
                             'ignore_change_gap': random.choice([True, True, False]), 
                             'lanechanging_fps': random.choice([40, 50, 60]),
-                            'random_lane_change':random.choice([False,True])})
+                            'random_lane_change':random.choice([False,True,True,True])})
         #self.controller = ConstantVelocityAgent(self.ego_vehicle,target_speed=self.speed_limit)
         # self.controller = BasicAgent(self.ego_vehicle, {'target_speed': self.speed_threshold, 'dt': 1 / self.fps,
         #                                                 'max_throttle': self.throttle_bound,
@@ -373,10 +374,14 @@ class CarlaEnv:
                         self.control.throttle = 0
                         self.control.brake = abs(throttle_brake)
                 if self.is_effective_action():
-                    self.ego_vehicle.apply_control(self.control)
+                    con=carla.VehicleControl(throttle=self.control.throttle,steer=self.control.steer,brake=self.control.brake,hand_brake=False,reverse=self.control.reverse,
+                        manual_gear_shift=self.control.manual_gear_shift,gear=self.control.gear)
+                    self.ego_vehicle.apply_control(con)
             else:
                 if self.is_effective_action():
-                    self.ego_vehicle.apply_control(self.control)
+                    con=carla.VehicleControl(throttle=self.control.throttle,steer=self.control.steer,brake=self.control.brake,hand_brake=False,reverse=self.control.reverse,
+                        manual_gear_shift=self.control.manual_gear_shift,gear=self.control.gear)
+                    self.ego_vehicle.apply_control(con)
 
             # print(self.map.get_waypoint(self.ego_vehicle.get_location(),False),self.ego_vehicle.get_transform(),sep='\n')
             # print(self.sim_world.get_snapshot().timestamp)
@@ -394,7 +399,9 @@ class CarlaEnv:
             # print(self.map.get_waypoint(self.ego_vehicle.get_location(),False),self.ego_vehicle.get_transform(),sep='\n')
             # print(self.sim_world.get_snapshot().timestamp)
             # print()
-            self.control = self.ego_vehicle.get_control()
+            cont=self.ego_vehicle.get_control()
+            self.control.throttle, self.control.brake, self.control.steer=cont.throttle, cont.brake, cont.steer
+            self.control.gear, self.control.manual_gear_shift=cont.gear, cont.manual_gear_shift
             lane_center=get_lane_center(self.map,self.ego_vehicle.get_location())
             self.current_lane = lane_center.lane_id
             # print(self.ego_vehicle.get_speed_limit(),get_speed(self.ego_vehicle,False),get_acceleration(self.ego_vehicle,False),sep='\t')
@@ -409,7 +416,7 @@ class CarlaEnv:
             #         print(f"Mark Road ID:{mark.road_id}, distance:{mark.distance}, name:{mark.distance}")
             print("After Tick: last_lane, current_lane, last_target_lane, current_target_lane, last action, current action: ",
                 self.last_lane, self.current_lane, self.last_target_lane, self.current_target_lane, self.last_action.value,self.current_action.value)
-            print("Actual Control, change: ", self.control, self.current_action.value)
+            print("Actual Control, change: ", cont, self.current_action.value)
 
             if self.debug:
                 # draw_waypoints(self.sim_world, [self.next_wps[0]], 60, z=1)
