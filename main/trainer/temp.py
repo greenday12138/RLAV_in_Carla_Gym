@@ -1,4 +1,7 @@
 import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+import seaborn as sns
 import random,logging
 import carla
 import torch
@@ -30,34 +33,42 @@ def d(q):
 def f(q):
     q.put([42,None,'hello'])
 
+# 平滑处理，类似tensorboard的smoothing函数。
+def smooth(read_path, save_path, file_name, x='Step', y='Value', weight=0.99):
+    data = pd.read_csv(read_path + file_name)
+    scalar = data[y].values
+    last = scalar[0]
+    smoothed = []
+    for point in scalar:
+        smoothed_val = last * weight + (1 - weight) * point
+        smoothed.append(smoothed_val)
+        last = smoothed_val
+
+    save = pd.DataFrame({x: data[x].values, y: smoothed})
+    save.to_csv(save_path + 'smooth_'+ file_name)
+
 if __name__=='__main__':
-    # q=Queue()
-    # p1=Process(target=f,args=(q,))
-    # p2=Process(target=d,args=(q,))
-    # p1.start()
-    # p2.start()
-    # print(q.get())
-    # print(q.get())
-    # p1.join()
-    # p2.join()
-    b=[2,3,4,5]
-    a=[1,2,3]
-    c=[]
-    d=[]
-    arr1=np.array(b,dtype=float)
-    arr2=np.array(a,dtype=float)
-    c.append(arr1)
-    c.append(arr2)
-    c=np.array(c)
-    d.append(arr2)
-    d.append(arr1)
-    d=np.array(d)
-    #print(c)
-    np.save(f"./out/temp.npy", [c,d])
-    c_ = np.load(f"./out/temp.npy",allow_pickle=True)
-    #print(c_)
-    
-    temp=np.load(f"./out/rear_acc.npy",allow_pickle=True)
-    for i in temp:
-        print(i)
-    
+    plt.style.use('ggplot')
+    plt.rcParams['font.sans-serif'] = ['SimHei']
+    plt.rcParams['axes.unicode_minus'] = False
+
+    # 平滑预处理原始reward数据
+    smooth(read_path='./out/', save_path='./out/', file_name='reward.csv')
+    smooth(read_path='./out/', save_path='./out/', file_name='reward_1.csv')
+    smooth(read_path='./out/', save_path='./out/', file_name='reward_2.csv')
+    # 读取平滑后的数据
+    df1 = pd.read_csv('./out/smooth_reward.csv')  
+    df2 = pd.read_csv('./out/smooth_reward_1.csv')
+    df3 = pd.read_csv('./out/smooth_reward_2.csv') 
+    print(df1)
+    print(df2)
+    # 拼接到一起
+    df = df1.append(df2.append(df3))
+    # 重新排列索引
+    df.index = range(len(df))
+    print(df1)
+    # 设置图片大小
+    plt.figure(figsize=(15, 10))
+    # 画图
+    sns.lineplot(data=df, x="Step", y="Value")
+    plt.show()

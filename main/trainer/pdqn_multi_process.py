@@ -28,8 +28,8 @@ GAMMA = 0.9  # q值更新系数
 TAU = 0.01  # 软更新参数
 EPSILON = 0.5  # epsilon-greedy
 BUFFER_SIZE = 160000
-MINIMAL_SIZE = 20000
-BATCH_SIZE = 256
+MINIMAL_SIZE = 10000
+BATCH_SIZE = 128
 REPLACE_A = 500
 REPLACE_C = 300
 TOTAL_EPISODE = 5000
@@ -73,7 +73,7 @@ def main():
 
         #multi-process training
         process=list()
-        traj_q=Queue(maxsize=MINIMAL_SIZE)
+        traj_q=Queue(maxsize=MINIMAL_SIZE*2)
         agent_q=Queue(maxsize=1)
         traj_send,traj_recv=Pipe()
         agent_send,agent_recv=Pipe()
@@ -286,10 +286,10 @@ def learner_mp(traj_q: Queue, agent_q:Queue, agent_param):
         #reference: https://zhuanlan.zhihu.com/p/345353294, https://arxiv.org/abs/1711.00489
         k=max(learner_agent.replay_buffer.size()//MINIMAL_SIZE, 1)
         learner_agent.batch_size=k*BATCH_SIZE
-        for _ in range(k):
+        for _ in range(100):
             trajectory=traj_q.get(block=True,timeout=None)
             state, next_state, action, saved_action_param, reward, truncated, done, info=trajectory[0],trajectory[1],trajectory[2],trajectory[3],\
-                    trajectory[4],trajectory[5],trajectory[6]
+                    trajectory[4],trajectory[5],trajectory[6],trajectory[7]
             replay_buffer_adder(learner_agent,impact_deque,state,next_state, action,saved_action_param,reward,truncated,done,info)        
         if learner_agent.replay_buffer.size()>=MINIMAL_SIZE:
             logging.info("LEARN BEGIN")

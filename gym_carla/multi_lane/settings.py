@@ -171,7 +171,7 @@ ARGS.add_argument(
     help='Brake bound for ego vehicle controller')
 ARGS.add_argument(
     '--pre_train_steps', type=int,
-    default=160000,
+    default=320000,
     help='During pre-train steps, agent is only under PID control.')
 ARGS.add_argument(
     '--switch_threshold', type=int,
