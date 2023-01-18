@@ -1,6 +1,6 @@
 import logging
 import torch
-import datetime,time
+import datetime,time,os
 import random, collections
 import numpy as np
 import matplotlib.pyplot as plt
@@ -73,13 +73,15 @@ def main():
 
         #multi-process training
         process=list()
-        traj_q=Queue(maxsize=MINIMAL_SIZE*2)
-        agent_q=Queue(maxsize=1)
+        traj_q=Queue(maxsize=BUFFER_SIZE)
+        agent_q=Queue(maxsize=3)
+        learner_q=Queue(maxsize=1)
         traj_send,traj_recv=Pipe()
         agent_send,agent_recv=Pipe()
         mp.set_start_method(method='spawn',force=True)  # force all the multiprocessing to 'spawn' methods
         #process.append(mp.Process(target=learner_mp,args=(traj_recv,agent_send,(deepcopy(s_dim), a_dim, a_bound),Args.ego_num)))
         process.append(mp.Process(target=learner_mp,args=(traj_q,agent_q,(deepcopy(s_dim), a_dim, a_bound))))
+        #process.append(mp.Process(target=learner_mp,args=(traj_q,agent_q,learner_q,(deepcopy(s_dim), a_dim, a_bound))))
         [p.start() for p in process]
 
         # training part
@@ -278,15 +280,15 @@ def learner_mp(traj_q: Queue, agent_q:Queue, agent_param):
     temp_agent=P_DQN(deepcopy(agent_param[0]), agent_param[1], agent_param[2], GAMMA, TAU, SIGMA_STEER, SIGMA, SIGMA_ACC, THETA, EPSILON, BUFFER_SIZE, BATCH_SIZE, LR_ACTOR,
                      LR_CRITIC, clip_grad, zero_index_gradients, inverting_gradients,PER_FLAG, torch.device('cpu'))
     impact_deque=deque(maxlen=2)
+    pid=os.getpid()
     actor,actor_t,critic,critic_t=None,None,None,None
     a,a_t,c,c_t=None,None,None,None
-    update_count=0
     while(True):
         #alter the batch_size and update times according to the replay buffer size:
         #reference: https://zhuanlan.zhihu.com/p/345353294, https://arxiv.org/abs/1711.00489
         k=max(learner_agent.replay_buffer.size()//MINIMAL_SIZE, 1)
         learner_agent.batch_size=k*BATCH_SIZE
-        for _ in range(100):
+        for _ in range(BATCH_SIZE):
             trajectory=traj_q.get(block=True,timeout=None)
             state, next_state, action, saved_action_param, reward, truncated, done, info=trajectory[0],trajectory[1],trajectory[2],trajectory[3],\
                     trajectory[4],trajectory[5],trajectory[6],trajectory[7]
@@ -295,20 +297,19 @@ def learner_mp(traj_q: Queue, agent_q:Queue, agent_param):
             logging.info("LEARN BEGIN")
             #print(f"LEARN TIME:{learner_agent.learn_time}")
             [learner_agent.learn() for _ in range(k)]
-            if update_count!=0 and update_count//10>0:
-                update_count%=10
-                if not agent_q.full():
-                    actor=deepcopy(learner_agent.actor).to('cpu')
-                    critic=deepcopy(learner_agent.critic).to('cpu')
-                    temp_agent.actor.load_state_dict(learner_agent.actor.state_dict())
-                    temp_agent.critic.load_state_dict(learner_agent.critic.state_dict())
-                    # actor,actor_t,critic,critic_t=learner_agent.actor.state_dict(),learner_agent.actor_target.state_dict(), \
-                    #     learner_agent.critic.state_dict(),learner_agent.critic_target.state_dict()
-                    # a,a_t,c,c_t=temp_agent.actor.state_dict(),temp_agent.actor_target.state_dict(), \
-                    #     temp_agent.critic.state_dict(),temp_agent.critic_target.state_dict()
-                    agent_q.put((actor,critic,learner_agent.learn_time),block=True,timeout=None)
-                    #agent_q.put((temp_agent,learner_agent.learn_time),block=True,timeout=None)
-        update_count+=1
+            if not agent_q.full():
+                actor=deepcopy(learner_agent.actor).to('cpu')
+                actor_t=deepcopy(learner_agent.actor_target).to('cpu')
+                critic=deepcopy(learner_agent.critic).to('cpu')
+                critic_t=deepcopy(learner_agent.critic_target).to('cpu')
+                temp_agent.actor.load_state_dict(learner_agent.actor.state_dict())
+                temp_agent.critic.load_state_dict(learner_agent.critic.state_dict())
+                # actor,actor_t,critic,critic_t=learner_agent.actor.state_dict(),learner_agent.actor_target.state_dict(), \
+                #     learner_agent.critic.state_dict(),learner_agent.critic_target.state_dict()
+                # a,a_t,c,c_t=temp_agent.actor.state_dict(),temp_agent.actor_target.state_dict(), \
+                #     temp_agent.critic.state_dict(),temp_agent.critic_target.state_dict()
+                agent_q.put((actor,critic,learner_agent.learn_time),block=True,timeout=None)
+                #agent_q.put((temp_agent,learner_agent.learn_time),block=True,timeout=None)
 
 def replay_buffer_adder(agent,impact_deque, state, next_state, action, saved_action_param,reward, truncated, done, info):
     """Input all the state info into agent's replay buffer"""

@@ -84,7 +84,7 @@ def main():
         
                 score = 0
                 ttc, efficiency,comfort,lcen,yaw,impact,lane_change_reward = 0, 0, 0, 0, 0, 0, 0  # part objective scores
-                recover_time,lane_change_count,brake_count,global_brake_count,delay_index,avg_vel,avg_jerk,avg_offlane=0,0,0,0,0,0,0,0
+                recover_time,lane_change_count,brake_count,global_brake_count,delay_index,avg_vel,rec_avg_vel,avg_jerk,avg_offlane=0,0,0,0,0,0,0,0,0
                 delay_i=deque(maxlen=100)
                 rear_a=deque(maxlen=5)
                 rear_v=deque(maxlen=200)
@@ -96,6 +96,7 @@ def main():
                 ego_ttc=deque(maxlen=5000)
                 ego_rear_a=deque(maxlen=5000)
                 ego_rear_v=deque(maxlen=5000)
+                recover_v=deque(maxlen=500)
 
                 while not done and not truncated:
                     action,action_param,all_action_param = agent.take_action(state)
@@ -146,6 +147,7 @@ def main():
                                 for n in range(len(rear_v)-1):
                                     avg_v+=rear_v[n+1]/(len(rear_v)-1)
                                 ind=rear_v[0]/(avg_v+0.000001) if rear_v[0]/(avg_v+0.000001)>1.0 else 1.0
+                                recover_v.append(avg_v)
                                 delay_i.append(ind)
 
                                 recovery_mode=False
@@ -235,6 +237,9 @@ def main():
                 else:
                     min_ttc=args.TTC_th
                 episode_writer.add_scalar('min_ttc',min_ttc, i)
+                for vel in recover_v:
+                    rec_avg_vel+=vel/len(recover_v)
+                episode_writer.add_scalar('rec_avg_vel',rec_avg_vel,i)
 
             np.save(f"{SAVE_PATH}/ego_vel.npy",np.array(VEL))
             np.save(f"{SAVE_PATH}/ego_acc.npy",np.array(ACC))

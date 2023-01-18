@@ -222,6 +222,9 @@ def ttc_reward(ego_veh,target_veh,min_dis,TTC_THRESHOLD):
                         max(abs(target_veh.bounding_box.extent.x),
                             abs(target_veh.bounding_box.extent.y))
         distance -= vehicle_len
+        # rel_speed = get_speed(ego_veh,False) - get_speed(target_veh, False)
+        # if abs(rel_speed) > float(0.0000001):
+        #     TTC = distance / rel_speed
         if distance < min_dis:
             TTC = 0.01
         else:
@@ -229,7 +232,6 @@ def ttc_reward(ego_veh,target_veh,min_dis,TTC_THRESHOLD):
             rel_speed = get_speed(ego_veh,False) - get_speed(target_veh, False)
             if abs(rel_speed) > float(0.0000001):
                 TTC = distance / rel_speed
-        # print(distance, TTC)
     # fTTC=-math.exp(-TTC)
     if TTC >= 0 and TTC <= TTC_THRESHOLD:
         fTTC = np.clip(np.log(TTC / TTC_THRESHOLD), -1, 0)

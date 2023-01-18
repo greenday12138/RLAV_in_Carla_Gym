@@ -64,7 +64,7 @@ class Basic_Lanechanging_Agent(object):
 
         self._sampling_resolution = 2.0
         self._base_tlight_threshold = 5.0  # meters
-        self._base_vehicle_threshold = 5.0  # meters
+        self._base_vehicle_threshold = 10.0  # meters
         self.lane_change_mode=False
         self.last_lane=None
         self.autopilot_step = 0
