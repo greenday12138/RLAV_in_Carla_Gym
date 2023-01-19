@@ -151,20 +151,16 @@ ARGS.add_argument(
 ARGS.add_argument(
     '--switch_threshold', type=int,
     default=20,
-    help='Let the RL controller and PID controller alternatively take control every 500 steps'
-)
+    help='Let the RL controller and PID controller alternatively take control every 500 steps')
 ARGS.add_argument(
     '--pre_train_steps', type=int,
     default=10000,
-    help='Let the RL controller and PID controller alternatively take control every 500 steps'
-)
+    help='')
 ARGS.add_argument(
     '--vehicle_proximity',type=float,
     default=30.0,
-    help='Distance for searching vehicles in front of ego vehicle, unit -- meters'
-)
+    help='Distance for searching vehicles in front of ego vehicle, unit -- meters')
 ARGS.add_argument(
     '--min_distance',type=float,
     default=2.0,
-    help='Min distance between two vehicles, unit -- meters'
-)
+    help='Min distance between two vehicles, unit -- meters')

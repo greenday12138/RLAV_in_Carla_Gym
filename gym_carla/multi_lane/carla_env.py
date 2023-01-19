@@ -303,20 +303,6 @@ class CarlaEnv:
         """throttle (float):A scalar value to control the vehicle throttle [0.0, 1.0]. Default is 0.0.
                 steer (float):A scalar value to control the vehicle steering [-1.0, 1.0]. Default is 0.0.
                 brake (float):A scalar value to control the vehicle brake [0.0, 1.0]. Default is 0.0."""
-
-        # if action[0][1] >= 0:
-        #     jump = action[0][1] * self.throttle_bound
-        # else:
-        #     jump = action[0][1] * self.brake_bound
-        # if self.is_effective_action():
-        #     self.throttle_brake += jump
-        #     self.throttle_brake = np.clip(self.throttle_brake, -0.2, 0.8)
-        # if self.throttle_brake < 0:
-        #     brake = abs(self.throttle_brake)
-        #     throttle = 0
-        # else:
-        #     brake = 0
-        #     throttle = self.throttle_brake
         if not self.modify_change_steer:
             self.control.steer = np.clip(action[0][0], -self.steer_bound, self.steer_bound)
         else:

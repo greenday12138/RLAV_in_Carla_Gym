@@ -40,6 +40,10 @@ class CarlaEnv:
         self.ego_filter = args.filter
         self.loop = args.loop
         self.agent = args.agent
+        # arguments for debug
+        self.debug = args.debug
+        self.train = args.train  # argument indicating training agent
+        self.seed = args.seed
         self.behavior = args.behavior
         self.res = args.res
         self.num_of_vehicles = args.num_of_vehicles
@@ -49,13 +53,15 @@ class CarlaEnv:
         self.hybrid = args.hybrid
         self.stride = args.stride
         self.buffer_size = args.buffer_size
-        self.pre_train_steps = args.pre_train_steps
+        if self.train:
+            self.pre_train_steps = args.pre_train_steps
+        else:
+            self.pre_train_steps= 0
         self.speed_limit = args.speed_limit
         # The RL agent acts only after ego vehicle speed reach speed threshold
         self.speed_threshold = args.speed_threshold
         self.speed_min = args.speed_min
         # controller action space
-        self.throttle_brake = 0
         self.steer_bound = args.steer_bound
         self.throttle_bound = args.throttle_bound
         self.brake_bound = args.brake_bound
@@ -68,6 +74,9 @@ class CarlaEnv:
         self.map = self.world.get_map()
         self.origin_settings = self.world.get_settings()
         self.traffic_manager = None
+        self.speed_state = SpeedState.START
+        # Set fixed simulation step for synchronous mode
+        self._set_synchronous_mode()
         self._set_traffic_manager()
         logging.info('Carla server connected')
 
@@ -92,11 +101,6 @@ class CarlaEnv:
         self.spawn_points = self.global_planner.get_spawn_points()
         self.ego_spawn_point = None
         # former_wp record the ego vehicle waypoint of former step
-
-        # arguments for debug
-        self.debug = args.debug
-        self.train = args.train  # argument indicating training agent
-        self.seed = args.seed
         self.former_wp = None
 
         # arguments for caculating reward
@@ -109,13 +113,11 @@ class CarlaEnv:
             # draw_waypoints(self.world,self.global_panner.get_route())
             random.seed(self.seed)
 
-        # Set fixed simulation step for synchronous mode
-        self._set_synchronous_mode()
-
         # Set weather
         # self.world.set_weather(carla.WeatherParamertes.ClearNoon)
 
         self.companion_vehicles = []
+        self.vehicle_polygons = []
         self.ego_vehicle = None
         # the vehicle in front of ego vehicle
         self.vehicle_front = None
@@ -140,7 +142,8 @@ class CarlaEnv:
             self._clear_actors(
                 ['*vehicle.*', 'sensor.other.collison', 'sensor.camera.rgb', 'sensor.other.lane_invasion'])
             self.ego_vehicle = None
-            self.companion_vehicles = []
+            self.vehicle_polygons.clear()
+            self.companion_vehicles.clear()
             self.collision_sensor = None
             self.lane_invasion_sensor = None
             self.camera = None
@@ -151,7 +154,6 @@ class CarlaEnv:
         self._spawn_companion_vehicles()
 
         # Get actors polygon list
-        self.vehicle_polygons = []
         vehicle_poly_dict = get_actor_polygons(self.world, 'vehicle.*')
         self.vehicle_polygons.append(vehicle_poly_dict)
 
@@ -238,20 +240,6 @@ class CarlaEnv:
                 else:
                     self.TM_switch=False
                     self.tm_control_episode+=1
-                # if self.RL_switch:
-                #     if self.rl_control_episode == self.SWITCH_THRESHOLD:
-                #         self.RL_switch = False
-                #         self.rl_control_episode = 0
-                #         self.world.debug.draw_point(self.ego_spawn_point.location, size=0.2, life_time=0)
-                #     else:
-                #         self.rl_control_episode += 1
-                #         # self.local_planner.set_global_plan(self.global_planner.get_route(
-                #         #     self.map.get_waypoint(self.ego_vehicle.get_location())))
-                # else:
-                #     self.RL_switch = True
-                #     self.rl_control_episode += 1
-                #     # self.local_planner.set_global_plan(self.global_planner.get_route(
-                #     #     self.map.get_waypoint(self.ego_vehicle.get_location())))
             else:
                 self.RL_switch = True
                 self.TM_switch = False
@@ -275,19 +263,6 @@ class CarlaEnv:
                 steer (float):A scalar value to control the vehicle steering [-1.0, 1.0]. Default is 0.0.
                 brake (float):A scalar value to control the vehicle brake [0.0, 1.0]. Default is 0.0."""
         steer = np.clip(action[0][0], -self.steer_bound, self.steer_bound)
-        # if action[0][1] >= 0:
-        #     jump = action[0][1] * self.throttle_bound
-        # else:
-        #     jump = action[0][1] * self.brake_bound
-        # if self.is_effective_action():
-        #     self.throttle_brake += jump
-        #     self.throttle_brake = np.clip(self.throttle_brake, -0.2, 0.8)
-        # if self.throttle_brake < 0:
-        #     brake = abs(self.throttle_brake)
-        #     throttle = 0
-        # else:
-        #     brake = 0
-        #     throttle = self.throttle_brake
         if action[0][1] >= 0:
             brake = 0
             throttle = np.clip(action[0][1], 0 ,self.throttle_bound)
@@ -484,7 +459,7 @@ class CarlaEnv:
         right_lane_dis = lane_center.get_right_lane().transform.location.distance(self.ego_vehicle.get_location())
         t = lane_center.lane_width / 2 + lane_center.get_right_lane().lane_width / 2 - right_lane_dis
 
-        yaw_diff_ego=math.degrees(get_yaw_diff(lane_center.transform.get_forward_vector(),
+        yaw_diff_ego = math.degrees(get_yaw_diff(lane_center.transform.get_forward_vector(),
                                                self.ego_vehicle.get_transform().get_forward_vector()))
 
         yaw_forward = lane_center.transform.get_forward_vector()
@@ -509,7 +484,7 @@ class CarlaEnv:
         """Calculate the step reward:
         TTC: Time to collide with front vehicle
         Eff: Ego vehicle efficiency, speed ralated
-        Com: Ego vehicle comfort, ego vehicle acceration change rate 
+        Com: Ego vehicle comfort, ego vehicle acceration change rate
         Lcen: Distance between ego vehicle location and lane center
         """
         ego_speed = get_speed(self.ego_vehicle, True)
@@ -708,7 +683,7 @@ class CarlaEnv:
                 The possible route instructions are 'Left', 'Right', 'Straight'.
                 The traffic manager only need this instruction when faces with a junction."""
             self.traffic_manager.set_route(self.ego_vehicle,
-                                           ['Straight', 'Straight', 'Straight', 'Straight', 'Straight'])
+                                           ['Straight', 'Straight', 'Straight', 'Straight', 'Straight', 'Straight', 'Straight', 'Straight', 'Straight', 'Straight'])
 
     def _sensor_callback(self, sensor_data, sensor_queue):
         array = np.frombuffer(sensor_data.raw_data, dtype=np.dtype('uint8'))
@@ -774,16 +749,23 @@ class CarlaEnv:
         # Set physical mode only for cars around ego vehicle to save computation
         if self.hybrid:
             self.traffic_manager.set_hybrid_physics_mode(True)
-            self.traffic_manager.set_hybrid_physics_radius(70.0)
+            self.traffic_manager.set_hybrid_physics_radius(200.0)
 
         """The default global speed limit is 30 m/s
         Vehicles' target speed is 70% of their current speed limit unless any other value is set."""
+        speed_diff = (30 * 3.6 - (self.speed_limit+1)) / (30 * 3.6) * 100
         # Let the companion vehicles drive a bit faster than ego speed limit
-        #self.traffic_manager.global_percentage_speed_difference(0)
+        self.traffic_manager.global_percentage_speed_difference(-100)
         self.traffic_manager.set_synchronous_mode(self.sync)
+        #set traffic light elpse time
+        lights_list=self.world.get_actors().filter("*traffic_light*")
+        for light in lights_list:
+            light.set_green_time(15)
+            light.set_red_time(0)
+            light.set_yellow_time(0)
 
     def _try_spawn_ego_vehicle_at(self, transform):
-        """Try to spawn a  vehicle at specific transform 
+        """Try to spawn a  vehicle at specific transform
         Args:
             transform: the carla transform object.
 
@@ -855,7 +837,7 @@ class CarlaEnv:
         # execute the command batch
         for (i, response) in enumerate(self.client.apply_batch_sync(command_batch, self.sync)):
             if response.has_error():
-                logging.error(response.error)
+                logging.warn(response.error)
             else:
                 # print("Future Actor",response.actor_id)
                 self.companion_vehicles.append(self.world.get_actor(response.actor_id))
