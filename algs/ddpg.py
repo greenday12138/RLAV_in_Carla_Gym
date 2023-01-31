@@ -21,7 +21,7 @@ class PolicyNet(torch.nn.Module):
         self.fc1_3 = nn.Linear(state_dim['companion_vehicle'], 32)
         # concat the first layer output and input to second layer
         self.fc2 = nn.Linear(128,128)
-        self.fc_out = nn.Linear(128, 2)
+        self.fc_out = nn.Linear(128, 3)
 
         # torch.nn.init.normal_(self.fc1_1.weight.data,0,0.01)
         # torch.nn.init.normal_(self.fc1_2.weight.data,0,0.01)
@@ -91,7 +91,7 @@ class QValueNet(torch.nn.Module):
         # state : waypoints info+ companion_vehicle info, shape: batch_size*22, first 20 elements are waypoints info,
         # the rest are vehicle info
         state_wp = state[:, :self.state_dim['waypoints']]
-        state_ev = state[:,-self.state_dim['companion_vehicle']-self.state_dim['ego_vehicle']:-self.state_dim['vehicle_front']]
+        state_ev = state[:,-self.state_dim['companion_vehicle']-self.state_dim['ego_vehicle']:-self.state_dim['companion_vehicle']]
         state_vf = state[:, -self.state_dim['companion_vehicle']:]
         state_wp=F.relu(self.fc1_1(state_wp))
         state_ev=F.relu(self.fc1_2(state_ev))
@@ -197,24 +197,21 @@ class DDPG:
         state_ = torch.cat((state_wps,state_ev, state_vf), dim=1)
         # print(state_.shape)
         action = self.actor(state_)
-        print(f'Network Output - Steer: {action[0][0]}, Throttle_brake: {action[0][1]}')
+        print(f'Network Output - Steer: {action[0][0]}, Throttle_brake: {action[0][1]}, Exec_steps:{action[0][2]}')
         if (action[0, 0].is_cuda):
-            action = np.array([action[:, 0].detach().cpu().numpy(), action[:, 1].detach().cpu().numpy()]).reshape((-1, 2))
+            action = np.array([action[:, 0].detach().cpu().numpy(), action[:, 1].detach().cpu().numpy(), action[:, 2].detach().cpu().numpy()]).reshape((-1, 3))
         else:
-            action = np.array([action[:, 0].detach().numpy(), action[:, 1].detach().numpy()]).reshape((-1, 2))
+            action = np.array([action[:, 0].detach().numpy(), action[:, 1].detach().numpy(), action[:, 2].detach().numpy()]).reshape((-1, 3))
         # if np.random.random()<self.epsilon:
         if self.train:
             action[:, 0] = np.clip(np.random.normal(action[:, 0], self.sigma), -1, 1)
             action[:, 1] = np.clip(np.random.normal(action[:, 1], self.sigma), -1, 1)
+            action[:, 2] = np.clip(np.random.normal(action[:, 2], self.sigma), -1, 1)
         # if self.train:
         #     action[:,0]=np.clip(action[:,0]+self.steer_noise(),-1,1)
         #     action[:,1]=np.clip(action[:,1]+self.tb_noise(),-1,1)
-        print(f'After noise - Steer: {action[0][0]}, Throttle_brake: {action[0][1]}')
-        # for i in range(action.shape[0]):
-        #     if action[i,1]>0:
-        #         action[i,1]+=np.clip(np.random.normal(action[i,1],self.sigma),0,self.a_bound['throttle'])
-        #     elif action[i,2]<0:
-        #         action[i,2]+=np.clip(np.random.normal(action[i,2],self.sigma),-self.a_bound['brake'],0)
+        #     action[:,2]=np.clip(action[:,2]+self.tb_noise(),-1,1)
+        print(f'After noise - Steer: {action[0][0]}, Throttle_brake: {action[0][1]}, Exec_steps:{action[0][2]}')
 
         return action
 

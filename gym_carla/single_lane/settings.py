@@ -154,7 +154,7 @@ ARGS.add_argument(
     help='Let the RL controller and PID controller alternatively take control every 500 steps')
 ARGS.add_argument(
     '--pre_train_steps', type=int,
-    default=10000,
+    default=0,
     help='')
 ARGS.add_argument(
     '--vehicle_proximity',type=float,

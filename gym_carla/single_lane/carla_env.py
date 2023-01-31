@@ -27,6 +27,16 @@ class SpeedState(Enum):
     RUNNING_PID = 3
     REBOOT = 4
 
+class ControlInfo:
+    """Wrapper for vehicle(model3) control info"""
+    def __init__(self,throttle=0.0,brake=0.0,steer=0.0,exec_steps=1,gear=1,) -> None:
+        self.throttle=throttle
+        self.steer=steer
+        self.brake=brake
+        self.gear=gear
+        self.reverse=False
+        self.manual_gear_shift=False
+        self.exec_steps=exec_steps
 
 class CarlaEnv:
     def __init__(self, args) -> None:
@@ -108,6 +118,7 @@ class CarlaEnv:
         self.penalty = args.penalty
         self.last_acc = carla.Vector3D()  # ego vehicle acceration in last step
         self.step_info = None
+        self.control= ControlInfo()
 
         if self.debug:
             # draw_waypoints(self.world,self.global_panner.get_route())
@@ -165,7 +176,6 @@ class CarlaEnv:
         # self.ego_vehicle.set_simulate_physics(False)
         self.collision_sensor = CollisionSensor(self.ego_vehicle)
         self.lane_invasion_sensor = LaneInvasionSensor(self.ego_vehicle)
-        self.throttle_brake = 0.0
 
         # friction_bp=self.world.get_blueprint_library().find('static.trigger.friction')
         # bb_extent=self.ego_vehicle.bounding_box.extent
@@ -269,65 +279,81 @@ class CarlaEnv:
         else:
             throttle = 0
             brake = np.clip(abs(action[0][1]), 0 , self.brake_bound)
+        if -1<=action[0][2]<-0.5:
+            exec_steps=1
+        elif -0.5<=action[0][2]<0:
+            exec_steps=2
+        elif 0<=action[0][2]<0.5:
+            exec_steps=3
+        elif 0.5<=action[0][2]<=1:
+            exec_steps=4
+        else:
+            logging.warn("EXECUTION STEPS ERROR")
+            exec_steps=1
+        # exec_steps=1
 
-        # control = carla.VehicleControl(steer=float(steer), throttle=float(throttle), brake=float(brake),hand_brake=False,
-        #                                reverse=False,manual_gear_shift=True,gear=1)
-        control = carla.VehicleControl(steer=float(steer), throttle=float(throttle), brake=float(brake))
+        self.control.throttle, self.control.brake, self.control.steer, self.control.exec_steps=throttle, brake, steer, exec_steps
 
         # Only use RL controller after ego vehicle speed reach 10 m/s
         # Use DFA to caaulate different speed state transition
         if not self.debug:
-            control = self._speed_switch(control)
+            self._speed_switch()
         else:
             if self.autopilot_controller.done() and self.loop:
                 self.autopilot_controller.set_destination(random.choice(self.spawn_points).location)
-            control=self.autopilot_controller.run_step()
+            self.control=self.autopilot_controller.run_step()
 
         if self.sync:
             if not self.debug:
                 if not self.RL_switch and not self.TM_switch:
                     #Add noise to autopilot controller's control command
-                    print(f"Basic Agent Control Before Noise:{control}")
-                    control.steer=np.clip(np.random.normal(control.steer,self.control_sigma['Steer']),-self.steer_bound,self.steer_bound)
-                    if control.throttle>0:
-                        throttle_brake=control.throttle
+                    print(f"Basic Agent Control Before Noise:{self.control}")
+                    self.control.steer=np.clip(np.random.normal(self.control.steer,self.control_sigma['Steer']),-self.steer_bound,self.steer_bound)
+                    if self.control.throttle>0:
+                        throttle_brake=self.control.throttle
                     else:
-                        throttle_brake=-control.brake
+                        throttle_brake=-self.control.brake
                     throttle_brake=np.clip(np.random.normal(throttle_brake,self.control_sigma['Throttle_brake']),-self.brake_bound,self.throttle_bound)
                     if throttle_brake>0:
-                        control.throttle=throttle_brake
-                        control.brake=0
+                        self.control.throttle=throttle_brake
+                        self.control.brake=0
                     else:
-                        control.throttle=0
-                        control.brake=abs(throttle_brake)
-                if self.is_effective_action() and not self.TM_switch:
-                    self.ego_vehicle.apply_control(control)
+                        self.control.throttle=0
+                        self.control.brake=abs(throttle_brake)
+                # if self.is_effective_action() and not self.TM_switch:
+                #     self.ego_vehicle.apply_control(self.control)
             else:
-                control.steer=np.clip(np.random.normal(control.steer,self.control_sigma['Steer']),-self.steer_bound,self.steer_bound)
-                if control.throttle>0:
-                    throttle_brake=control.throttle
+                self.control.steer=np.clip(np.random.normal(self.control.steer,self.control_sigma['Steer']),-self.steer_bound,self.steer_bound)
+                if self.control.throttle>0:
+                    throttle_brake=self.control.throttle
                 else:
-                    throttle_brake=-control.brake
+                    throttle_brake=-self.control.brake
                 throttle_brake=np.clip(np.random.normal(throttle_brake,self.control_sigma['Throttle_brake']),-self.brake_bound,self.throttle_bound)
                 if throttle_brake>0:
-                    control.throttle=throttle_brake
-                    control.brake=0
+                    self.control.throttle=throttle_brake
+                    self.control.brake=0
                 else:
-                    control.throttle=0
-                    control.brake=abs(throttle_brake)
-                self.ego_vehicle.apply_control(control)
+                    self.control.throttle=0
+                    self.control.brake=abs(throttle_brake)
+                self.ego_vehicle.apply_control(self.control)
 
             # print(self.map.get_waypoint(self.ego_vehicle.get_location(),False),self.ego_vehicle.get_transform(),sep='\n')
             # print(self.world.get_snapshot().timestamp)
-            self.world.tick()
+            
+            for _ in range(self.control.exec_steps):
+                con=carla.VehicleControl(throttle=self.control.throttle,steer=self.control.steer,brake=self.control.brake,hand_brake=False,reverse=self.control.reverse,
+                        manual_gear_shift=self.control.manual_gear_shift,gear=self.control.gear)
+                print(con)
+                self.ego_vehicle.apply_control(con)
+                self.world.tick()
             """Attention: the server's tick function only returns after it ran a fixed_delta_seconds, so the client need not to wait for
             the server, the world snapshot of tick returned already include the next state after the uploaded action."""
             # print(self.map.get_waypoint(self.ego_vehicle.get_location(),False),self.ego_vehicle.get_transform(),sep='\n')
             # print(self.world.get_snapshot().timestamp)
             # print()
             # if self.is_effective_action():
-            control = self.ego_vehicle.get_control()
-            print(control)
+            cont = self.ego_vehicle.get_control()
+            print(f"Actual Control:{cont}")
             # print(self.ego_vehicle.get_speed_limit(),get_speed(self.ego_vehicle,False),get_acceleration(self.ego_vehicle,False),sep='\t')
             # route planner
             self.next_wps, _, self.vehicle_front = self.local_planner.run_step()
@@ -339,7 +365,6 @@ class CarlaEnv:
 
                 draw_waypoints(self.world, [self.next_wps[0]], 60, z=1)
                 self.world.debug.draw_point(self.ego_vehicle.get_location(), size=0.1, life_time=5.0)
-                control = None
                 # control=self.controller.run_step({'waypoints':self.next_wps,'vehicle_front':self.vehicle_front})
                 # print(control.steer,control.throttle,control.brake,sep='\t')
             else:
@@ -376,14 +401,13 @@ class CarlaEnv:
             self.total_step += 1
             if self.speed_state == SpeedState.RUNNING and self.RL_switch == True:
                 self.rl_control_step += 1
-            control_info = {'Steer': control.steer, 'Throttle': control.throttle, 'Brake': control.brake}
+            control_info = {'Steer': self.control.steer, 'Throttle': self.control.throttle, 'Brake': self.control.brake, 'Exec_steps':self.control.exec_steps}
             print(f"Ego Vehicle Speed Limit:{self.ego_vehicle.get_speed_limit() * 3.6}\n"
                   f"Episode:{self.reset_step}, Total_step:{self.total_step}, Time_step:{self.time_step}, RL_control_step:{self.rl_control_step}, \n"
                   f"Vel: {get_speed(self.ego_vehicle, False)}, Acc:{get_acceleration(self.ego_vehicle, False)}, distance:{state['vehicle_front'][0] * self.sampling_resolution * self.buffer_size}, \n"
                   f"Reward:{self.step_info['Reward']}, TTC:{self.step_info['TTC']}, Comfort:{self.step_info['Comfort']}, "
                   f"Efficiency:{self.step_info['Efficiency']}, Lane_center:{self.step_info['Lane_center']}, Yaw:{self.step_info['Yaw']} \n"
-                  f"Steer:{control_info['Steer']}, Throttle:{control_info['Throttle']}, Brake:{control_info['Brake']}")
-            # print(f"Steer:{control_info['Steer']}, Throttle:{control_info['Throttle']}, Brake:{control_info['Brake']}\n")
+                  f"Steer:{control_info['Steer']}, Throttle:{control_info['Throttle']}, Brake:{control_info['Brake']}, Exec_steps:{control_info['Exec_steps']}")
 
             return state, reward, self._truncated(), self._done(), self._get_info(control_info)
         else:
@@ -562,10 +586,10 @@ class CarlaEnv:
         else:
             return (fTTC+fEff)*2 + fCom  + fLcen +fYaw
 
-    def _speed_switch(self, cont):
+    def _speed_switch(self):
         """cont: the control command of RL agent"""
         ego_speed = get_speed(self.ego_vehicle)
-        control = cont
+        control = self.control
         if self.speed_state == SpeedState.START:
             # control=self.controller.run_step({'waypoints':self.next_wps,'vehicle_front':self.vehicle_front})
             if ego_speed >= self.speed_threshold:
@@ -611,7 +635,7 @@ class CarlaEnv:
         else:
             logging.error('CODE LOGIC ERROR')
 
-        return control
+        self.control=control
 
     def _truncated(self):
         """Calculate whether to terminate the current episode"""

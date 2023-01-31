@@ -389,11 +389,6 @@ class P_DQN:
         #     action[:,0]=np.clip(action[:,0]+self.steer_noise(),-1,1)
         #     action[:,1]=np.clip(action[:,1]+self.tb_noise(),-1,1)
         print(f'After noise - Steer: {action_param[0][0]}, Throttle_brake: {action_param[0][1]}')
-        # for i in range(action.shape[0]):
-        #     if action[i,1]>0:
-        #         action[i,1]+=np.clip(np.random.normal(action[i,1],self.sigma),0,self.a_bound['throttle'])
-        #     elif action[i,2]<0:
-        #         action[i,2]+=np.clip(np.random.normal(action[i,2],self.sigma),-self.a_bound['brake'],0)
 
         return action, action_param, all_action_param
 

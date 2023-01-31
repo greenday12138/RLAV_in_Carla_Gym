@@ -1,5 +1,6 @@
 import logging
 import torch
+import datetime, os
 import random, collections
 import numpy as np
 import matplotlib.pyplot as plt
@@ -23,11 +24,14 @@ MINIMAL_SIZE = 10000
 BATCH_SIZE = 128
 REPLACE_A = 500
 REPLACE_C = 300
-TOTAL_EPISODE = 3000
+TOTAL_EPISODE = 5000
 SIGMA_DECAY = 0.9999
 TTC_threshold = 4.001
 base_name = f'origin_{TTC_threshold}_NOCA'
-
+time=datetime.datetime.now().strftime('%Y%m%d%H%M%S')
+SAVE_PATH=f"./out/single_lane/ddpg/{time}"
+if not os.path.exists(SAVE_PATH):
+    os.makedirs(SAVE_PATH)
 
 def main():
     args = ARGS.parse_args()
@@ -45,7 +49,7 @@ def main():
     torch.manual_seed(16)
     s_dim = env.get_observation_space()
     a_bound = env.get_action_bound()
-    a_dim = 2
+    a_dim = 3  
 
     n_run = 3
     rosiolling_window = 100  # 100 car following events, average score
@@ -85,10 +89,10 @@ def main():
                                 if 'Throttle' in info:
                                     # Input the guided action to replay buffer
                                     throttle_brake = -info['Brake'] if info['Brake'] > 0 else info['Throttle']
-                                    action = np.array([[info['Steer'], throttle_brake]])
+                                    action = np.array([[info['Steer'], throttle_brake, info['Exec_steps']]])
                                     agent.store_transition(state,action,reward,next_state,truncated,done,info)
                                 else:
-                                    # Input the agent action to replay buffer
+                                    # Input the agent action to repla y buffer
                                     agent.store_transition(state,action,reward,next_state,truncated,done,info)
                                     
                                 print(f"state -- vehicle_front:{state['vehicle_front']}\n"
@@ -113,7 +117,7 @@ def main():
                             score_c += info['Comfort']
 
                             if env.total_step==args.pre_train_steps:
-                                agent.save_net('./out/ddpg_pre_trained.pth')
+                                agent.save_net(f"{SAVE_PATH}/ddpg_pre_trained.pth")
 
                             if env.rl_control_step > 10000 and env.is_effective_action() and \
                                     env.RL_switch and SIGMA > 0.01:
@@ -158,14 +162,15 @@ def main():
                     #     globals()['SIGMA']*=SIGMA_DECAY
                     #     agent.set_sigma(SIGMA)
 
-            agent.save_net('./out/ddpg_pre_trained.pth')
-            np.save(f'./out/result_{run}.npy', result)
+            agent.save_net(f"{SAVE_PATH}/ddpg_final.pth")
+            np.save(f"{SAVE_PATH}/result_{run}.npy", result)
         except KeyboardInterrupt:
             logging.info("Premature Terminated")
         # except BaseException as e:
         #      logging.info(e.args)
         finally:
             env.__del__()
+            agent.save_net(f"{SAVE_PATH}/ddpg_final.pth")
             logging.info('\nDone.')
 
 

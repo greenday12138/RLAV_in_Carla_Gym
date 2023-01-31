@@ -142,7 +142,7 @@ ARGS.add_argument(
     help='reward penalty for simulation terminated early on account of lane invasion')
 ARGS.add_argument(
     '--lane_change_reward', type=float,
-    default=20,
+    default=25,
     help='reward for lane change according to the distance to the preceding vehicle')
 ARGS.add_argument(
     '--speed_limit', type=float,

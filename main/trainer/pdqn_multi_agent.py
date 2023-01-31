@@ -1,6 +1,6 @@
 import logging
 import torch
-import datetime,time
+import datetime,time, os
 import random, collections
 import numpy as np
 import matplotlib.pyplot as plt
@@ -42,6 +42,8 @@ inverting_gradients = True
 base_name = f'origin_NOCA'
 time=datetime.datetime.now().strftime('%Y%m%d%H%M%S')
 SAVE_PATH=f"./out/multi_agent/pdqn/{time}"
+if not os.path.exists(SAVE_PATH):
+    os.makedirs(SAVE_PATH)
 
 def main():
     Args = ARGS.parse_args()
