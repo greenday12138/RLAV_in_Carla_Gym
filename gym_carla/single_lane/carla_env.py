@@ -188,12 +188,11 @@ class CarlaEnv:
 
         # let the client interact with server
         if self.sync:
-            self.world.tick()
-
             spectator = self.world.get_spectator()
             transform = self.ego_vehicle.get_transform()
             spectator.set_transform(carla.Transform(transform.location + carla.Location(z=50),
                                                     carla.Rotation(pitch=-90)))
+            self.world.tick()
         else:
             self.world.wait_for_tick()
 
@@ -233,8 +232,8 @@ class CarlaEnv:
         # code for synchronous mode
         camera_bp = self.world.get_blueprint_library().find('sensor.camera.rgb')
         camera_transform = carla.Transform(carla.Location(x=1.5, z=2.4))
-        self.camera = self.world.spawn_actor(camera_bp, camera_transform, attach_to=self.ego_vehicle)
-        self.camera.listen(lambda image: self._sensor_callback(image, self.sensor_queue))
+        #self.camera = self.world.spawn_actor(camera_bp, camera_transform, attach_to=self.ego_vehicle)
+        #self.camera.listen(lambda image: self._sensor_callback(image, self.sensor_queue))
         # 
 
         # speed state switch
@@ -345,6 +344,10 @@ class CarlaEnv:
                         manual_gear_shift=self.control.manual_gear_shift,gear=self.control.gear)
                 print(con)
                 self.ego_vehicle.apply_control(con)
+                spectator = self.world.get_spectator()
+                transform = self.ego_vehicle.get_transform()
+                spectator.set_transform(carla.Transform(transform.location + carla.Location(z=50),
+                                                        carla.Rotation(pitch=-90)))
                 self.world.tick()
             """Attention: the server's tick function only returns after it ran a fixed_delta_seconds, so the client need not to wait for
             the server, the world snapshot of tick returned already include the next state after the uploaded action."""
@@ -371,11 +374,8 @@ class CarlaEnv:
                 #draw_waypoints(self.world, self.next_wps, 1.0/self.fps+0.001, z=1)
                 pass
 
-            spectator = self.world.get_spectator()
-            transform = self.ego_vehicle.get_transform()
-            spectator.set_transform(carla.Transform(transform.location + carla.Location(z=50),
-                                                    carla.Rotation(pitch=-90)))
-            camera_data = self.sensor_queue.get(block=True)
+            
+            #camera_data = self.sensor_queue.get(block=True)
 
             if self.ego_vehicle.get_location().distance(self.former_wp.transform.location) >= self.sampling_resolution:
                 self.former_wp = self.next_wps[0]
