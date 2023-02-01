@@ -37,6 +37,7 @@ class ControlInfo:
         self.reverse=False
         self.manual_gear_shift=False
         self.exec_steps=exec_steps
+        self.exec_steps_info=-2
 
 class CarlaEnv:
     def __init__(self, args) -> None:
@@ -292,6 +293,7 @@ class CarlaEnv:
         # exec_steps=1
 
         self.control.throttle, self.control.brake, self.control.steer, self.control.exec_steps=throttle, brake, steer, exec_steps
+        self.control.exec_steps_info = action[0][2]
 
         # Only use RL controller after ego vehicle speed reach 10 m/s
         # Use DFA to caaulate different speed state transition
@@ -401,15 +403,15 @@ class CarlaEnv:
             self.total_step += 1
             if self.speed_state == SpeedState.RUNNING and self.RL_switch == True:
                 self.rl_control_step += 1
-            control_info = {'Steer': self.control.steer, 'Throttle': self.control.throttle, 'Brake': self.control.brake, 'Exec_steps':self.control.exec_steps}
             print(f"Ego Vehicle Speed Limit:{self.ego_vehicle.get_speed_limit() * 3.6}\n"
                   f"Episode:{self.reset_step}, Total_step:{self.total_step}, Time_step:{self.time_step}, RL_control_step:{self.rl_control_step}, \n"
                   f"Vel: {get_speed(self.ego_vehicle, False)}, Acc:{get_acceleration(self.ego_vehicle, False)}, distance:{state['vehicle_front'][0] * self.sampling_resolution * self.buffer_size}, \n"
                   f"Reward:{self.step_info['Reward']}, TTC:{self.step_info['TTC']}, Comfort:{self.step_info['Comfort']}, "
                   f"Efficiency:{self.step_info['Efficiency']}, Lane_center:{self.step_info['Lane_center']}, Yaw:{self.step_info['Yaw']} \n"
-                  f"Steer:{control_info['Steer']}, Throttle:{control_info['Throttle']}, Brake:{control_info['Brake']}, Exec_steps:{control_info['Exec_steps']}")
+                  f"Steer:{self.control.steer}, Throttle:{self.control.throttle}, Brake:{self.control.brake}, Exec_steps:{self.control.exec_steps}")
 
-            return state, reward, self._truncated(), self._done(), self._get_info(control_info)
+            return state, reward, self._truncated(), self._done(), self._get_info({'Steer': self.control.steer, 'Throttle': self.control.throttle, 
+                'Brake': self.control.brake, 'Exec_steps':self.control.exec_steps_info})
         else:
             return state, reward, self._truncated(), self._done(), self._get_info()
 
