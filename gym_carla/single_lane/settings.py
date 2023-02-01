@@ -133,7 +133,7 @@ ARGS.add_argument(
     help='Speed limit for ego vehicle, km/h')
 ARGS.add_argument(
     '--speed_min', type=float,
-    default=0.01,
+    default=1,
     help='When ego vehicle speed reaches down to this threshold, we should let basic agent take control \
         and the action of basic need to add into the replay buffer, km/h')
 ARGS.add_argument(
@@ -154,7 +154,7 @@ ARGS.add_argument(
     help='Let the RL controller and PID controller alternatively take control every 500 steps')
 ARGS.add_argument(
     '--pre_train_steps', type=int,
-    default=0,
+    default=10000,
     help='')
 ARGS.add_argument(
     '--vehicle_proximity',type=float,
@@ -164,3 +164,7 @@ ARGS.add_argument(
     '--min_distance',type=float,
     default=2.0,
     help='Min distance between two vehicles, unit -- meters')
+ARGS.add_argument(
+    '--pygame', type=bool,
+    default=False,
+    help='Render another pygame window for ego vehicle and the window style looks like automatic_control.py')

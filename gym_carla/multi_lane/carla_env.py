@@ -198,12 +198,11 @@ class CarlaEnv:
                 self._init_renderer()
                 self.world.restart(self.ego_vehicle)
             else:
-                self.sim_world.tick()
-
                 spectator = self.sim_world.get_spectator()
                 transform = self.ego_vehicle.get_transform()
                 spectator.set_transform(carla.Transform(transform.location + carla.Location(z=100),
                                                         carla.Rotation(pitch=-90)))
+                self.sim_world.tick()
         else:
             self.sim_world.wait_for_tick()
 
@@ -382,11 +381,12 @@ class CarlaEnv:
             if self.pygame:
                 self._tick()
             else:
-                self.sim_world.tick()
                 spectator = self.sim_world.get_spectator()
                 transform = self.ego_vehicle.get_transform()
                 spectator.set_transform(carla.Transform(transform.location + carla.Location(z=80),
                                                         carla.Rotation(pitch=-90)))
+                self.sim_world.tick()
+            #camera_data = self.sensor_queue.get(block=True)
 
             """Attention: the server's tick function only returns after it ran a fixed_delta_seconds, so the client need not to wait for
             the server, the world snapshot of tick returned already include the next state after the uploaded action."""
@@ -422,8 +422,6 @@ class CarlaEnv:
                 #     self.wps_info.left_front_wps+self.wps_info.left_rear_wps+self.wps_info.right_front_wps+self.wps_info.right_rear_wps, 
                 #     1.0 / self.fps + 0.001, z=1)
                 pass
-
-            #camera_data = self.sensor_queue.get(block=True)
 
             temp = []
             if self.vehs_info.left_rear_veh is not None:
