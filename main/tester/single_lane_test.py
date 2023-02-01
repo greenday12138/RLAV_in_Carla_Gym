@@ -1,5 +1,6 @@
 import logging
 import torch
+import datetime, os
 import random, collections
 import numpy as np
 import scipy.io as sio
@@ -7,6 +8,7 @@ import matplotlib.pyplot as plt
 from tqdm import tqdm
 from algs.ddpg import DDPG
 from algs.td3 import TD3
+from tensorboardX import SummaryWriter
 from gym_carla.single_lane.settings import ARGS
 from gym_carla.single_lane.carla_env import CarlaEnv, SpeedState
 from main.util.process import start_process, kill_process
@@ -27,12 +29,14 @@ BATCH_SIZE = 128
 REPLACE_A = 500
 REPLACE_C = 300
 TOTAL_EPISODE = 3000
-TTC_threshold = 4.001
-base_name = f'origin_{TTC_threshold}_NOCA'
-
+base_name = f'origin_NOCA'
+time=datetime.datetime.now().strftime('%Y%m%d%H%M%S')
+SAVE_PATH=f"./out/single_lane/ddpg/test/{time}"
+if not os.path.exists(SAVE_PATH):
+    os.makedirs(SAVE_PATH)
 
 def main():
-    ARGS.set_defaults(pre_train_steps=0)
+    ARGS.set_defaults(train=False)
     ARGS.set_defaults(no_rendering=False)
     args = ARGS.parse_args()
 
@@ -49,36 +53,44 @@ def main():
     torch.manual_seed(8)
     s_dim = env.get_observation_space()
     a_bound = env.get_action_bound()
-    a_dim = 2
+    a_dim = 3
 
     result = []
+    episode_writer=SummaryWriter(SAVE_PATH)
 
     for run in [base_name]:
-        param = torch.load('./out/td3_pre_trained.pth')
-        agent = TD3(s_dim, a_dim, a_bound, GAMMA, TAU, SIGMA, THETA, EPSILON, BUFFER_SIZE, BATCH_SIZE, LR_ACTOR,
-            LR_CRITIC, POLICY_UPDATE_FREQ, DEVICE)
-        # param = torch.load('./out/ddpg_pre_trained.pth')
-        # agent = DDPG(s_dim, a_dim, a_bound, GAMMA, TAU, SIGMA, THETA, EPSILON, BUFFER_SIZE, BATCH_SIZE, LR_ACTOR,
-        #              LR_CRITIC, DEVICE)
+        # param = torch.load('./out/td3_pre_trained.pth')
+        # agent = TD3(s_dim, a_dim, a_bound, GAMMA, TAU, SIGMA, THETA, EPSILON, BUFFER_SIZE, BATCH_SIZE, LR_ACTOR,
+        #     LR_CRITIC, POLICY_UPDATE_FREQ, DEVICE)
+        param = torch.load('./out/ddpg_pre_trained.pth')
+        agent = DDPG(s_dim, a_dim, a_bound, GAMMA, TAU, SIGMA, THETA, EPSILON, BUFFER_SIZE, BATCH_SIZE, LR_ACTOR,
+                     LR_CRITIC, DEVICE)
         agent.load_net(param)
-        agent.train = False
-        env.RL_switch=True
         agent.set_sigma(0)
 
-        state = env.reset()
-
         try:
-            while not done and not truncated:
-                action = agent.take_action(state)
-                next_state, reward, truncated,done, info = env.step(action)
-                # if env.speed_state == SpeedState.REBOOT:
-                #     env.speed_state = SpeedState.RUNNING
-                state=next_state
+            for i in range(30):
+                state = env.reset()
+
+                while not done and not truncated:
+                    action = agent.take_action(state)
+                    next_state, reward, truncated,done, info = env.step(action)
+                    # if env.speed_state == SpeedState.REBOOT:
+                    #     env.speed_state = SpeedState.RUNNING
+                    state=next_state
+                    print()
+
+                if done or truncated:
+                    done = False
+                    truncated = False
 
         except KeyboardInterrupt:
             logging.info("Premature Terminated")
+        except BaseException as e:
+            logging.info(e.args)
         finally:
             env.__del__()
+            episode_writer.close()
             logging.info('\nDone.')
 
 

@@ -265,7 +265,7 @@ class CarlaEnv:
                 # self.local_planner.set_global_plan(self.global_planner.get_route(
                 #     self.map.get_waypoint(self.ego_vehicle.get_location())))
         else:
-            self.autopilot_controller.set_destination(random.choice(self.spawn_points).location)
+            self.RL_switch=False
 
         # Update timesteps
         self.time_step = 0
@@ -309,9 +309,7 @@ class CarlaEnv:
         if not self.debug:
             self._speed_switch()
         else:
-            if self.autopilot_controller.done() and self.loop:
-                self.autopilot_controller.set_destination(random.choice(self.spawn_points).location)
-            self.control=self.autopilot_controller.run_step()
+            self._speed_switch()
 
         if self.sync:
             if not self.debug:
@@ -330,22 +328,20 @@ class CarlaEnv:
                     else:
                         self.control.throttle=0
                         self.control.brake=abs(throttle_brake)
-                # if self.is_effective_action() and not self.TM_switch:
-                #     self.ego_vehicle.apply_control(self.control)
             else:
-                self.control.steer=np.clip(np.random.normal(self.control.steer,self.control_sigma['Steer']),-self.steer_bound,self.steer_bound)
-                if self.control.throttle>0:
-                    throttle_brake=self.control.throttle
-                else:
-                    throttle_brake=-self.control.brake
-                throttle_brake=np.clip(np.random.normal(throttle_brake,self.control_sigma['Throttle_brake']),-self.brake_bound,self.throttle_bound)
-                if throttle_brake>0:
-                    self.control.throttle=throttle_brake
-                    self.control.brake=0
-                else:
-                    self.control.throttle=0
-                    self.control.brake=abs(throttle_brake)
-                self.ego_vehicle.apply_control(self.control)
+                # self.control.steer=np.clip(np.random.normal(self.control.steer,self.control_sigma['Steer']),-self.steer_bound,self.steer_bound)
+                # if self.control.throttle>0:
+                #     throttle_brake=self.control.throttle
+                # else:
+                #     throttle_brake=-self.control.brake
+                # throttle_brake=np.clip(np.random.normal(throttle_brake,self.control_sigma['Throttle_brake']),-self.brake_bound,self.throttle_bound)
+                # if throttle_brake>0:
+                #     self.control.throttle=throttle_brake
+                #     self.control.brake=0
+                # else:
+                #     self.control.throttle=0
+                #     self.control.brake=abs(throttle_brake)
+                pass
 
             # print(self.map.get_waypoint(self.ego_vehicle.get_location(),False),self.ego_vehicle.get_transform(),sep='\n')
             # print(self.sim_world.get_snapshot().timestamp)
@@ -354,9 +350,10 @@ class CarlaEnv:
             # spectator.set_transform(carla.Transform(transform.location + carla.Location(z=50),
             #                                         carla.Rotation(pitch=-90)))
             for _ in range(self.control.exec_steps):
-                con=carla.VehicleControl(throttle=self.control.throttle,steer=self.control.steer,brake=self.control.brake,hand_brake=False,reverse=self.control.reverse,
-                        manual_gear_shift=self.control.manual_gear_shift,gear=self.control.gear)
-                self.ego_vehicle.apply_control(con)
+                if self.is_effective_action():
+                    con=carla.VehicleControl(throttle=self.control.throttle,steer=self.control.steer,brake=self.control.brake,hand_brake=False,reverse=self.control.reverse,
+                            manual_gear_shift=self.control.manual_gear_shift,gear=self.control.gear)
+                    self.ego_vehicle.apply_control(con)
                 if self.pygame:
                     self._tick()
                 else:
@@ -604,7 +601,6 @@ class CarlaEnv:
     def _speed_switch(self):
         """cont: the control command of RL agent"""
         ego_speed = get_speed(self.ego_vehicle)
-        control=None
         if self.speed_state == SpeedState.START:
             # control=self.controller.run_step({'waypoints':self.next_wps,'vehicle_front':self.vehicle_front})
             if ego_speed >= self.speed_threshold:
@@ -638,10 +634,14 @@ class CarlaEnv:
         else:
             logging.error('CODE LOGIC ERROR')
 
-        if not self.RL_switch and self.speed_state==SpeedState.RUNNING:
-            self.control.brake=control.brake
-            self.control.throttle=control.throttle
-            self.control.steer=control.steer
+        if self.speed_state==SpeedState.RUNNING:
+            if not self.RL_switch:
+                self.control.brake=control.brake
+                self.control.throttle=control.throttle
+                self.control.steer=control.steer
+                self.control.exec_steps=1
+                self.control.exec_steps_info=-1.0
+        else:
             self.control.exec_steps=1
             self.control.exec_steps_info=-1.0
 
@@ -654,7 +654,8 @@ class CarlaEnv:
         if self.map.get_waypoint(self.ego_vehicle.get_location()) is None:
             logging.warn('vehicle drive out of road')
             return True
-        if get_speed(self.ego_vehicle, True) < self.speed_min and self.speed_state == SpeedState.RUNNING:
+        if get_speed(self.ego_vehicle, True) < self.speed_min and self.speed_state == SpeedState.RUNNING and \
+                self.vehicle_front is None:
             logging.warn('vehicle speed too low')
             return True
         # if self.lane_invasion_sensor.get_invasion_count()!=0:

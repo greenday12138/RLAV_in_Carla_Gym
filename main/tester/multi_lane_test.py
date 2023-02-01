@@ -1,7 +1,7 @@
 import logging
 import torch
 import datetime
-import random
+import random, os 
 import numpy as np
 import scipy.io as sio
 import matplotlib.pyplot as plt
@@ -37,6 +37,8 @@ inverting_gradients = True
 base_name = f'origin_NOCA'
 time=datetime.datetime.now().strftime('%Y%m%d%H%M%S')
 SAVE_PATH=f"./out/multi_lane/pdqn/test/{time}"
+if not os.path.exists(SAVE_PATH):
+    os.makedirs(SAVE_PATH)
 
 def main():
     ARGS.set_defaults(train=False)
@@ -251,7 +253,7 @@ def main():
         except KeyboardInterrupt:
             logging.info("Premature Terminated")
         except BaseException as e:
-              logging.info(e.args)
+            logging.info(e.args)
         finally:
             env.__del__()
             episode_writer.close()

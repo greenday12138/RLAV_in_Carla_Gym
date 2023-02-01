@@ -24,7 +24,7 @@ MINIMAL_SIZE = 10000
 BATCH_SIZE = 128
 REPLACE_A = 500
 REPLACE_C = 300
-TOTAL_EPISODE = 5000
+TOTAL_EPISODE = 50000
 SIGMA_DECAY = 0.9999
 TTC_threshold = 4.001
 base_name = f'origin_{TTC_threshold}_NOCA'
@@ -120,7 +120,7 @@ def main():
                                 agent.save_net(f"{SAVE_PATH}/ddpg_pre_trained.pth")
 
                             if env.rl_control_step > 10000 and env.is_effective_action() and \
-                                    env.RL_switch and SIGMA > 0.01:
+                                    env.RL_switch and SIGMA > 0.1:
                                 globals()['SIGMA'] *= SIGMA_DECAY
                                 agent.set_sigma(SIGMA)
 
