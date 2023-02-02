@@ -55,6 +55,7 @@ class CarlaEnv:
         # arguments for debug
         self.debug = args.debug
         self.train = args.train  # argument indicating training agent
+        self.adapt = args.adapt
         self.seed = args.seed
         self.behavior = args.behavior
         self.res = args.res
@@ -288,21 +289,23 @@ class CarlaEnv:
         else:
             throttle = 0
             brake = np.clip(abs(action[0][1]), 0 , self.brake_bound)
-        if -1<=action[0][2]<-0.5:
-            exec_steps=1
-        elif -0.5<=action[0][2]<0:
-            exec_steps=2
-        elif 0<=action[0][2]<0.5:
-            exec_steps=3
-        elif 0.5<=action[0][2]<=1:
-            exec_steps=4
+        if self.adapt:
+            if -1<=action[0][2]<-0.5:
+                exec_steps=1
+            elif -0.5<=action[0][2]<0:
+                exec_steps=2
+            elif 0<=action[0][2]<0.5:
+                exec_steps=3
+            elif 0.5<=action[0][2]<=1:
+                exec_steps=4
+            else:
+                logging.warn("EXECUTION STEPS ERROR")
+                exec_steps=1
+            self.control.exec_steps_info = action[0][2]
         else:
-            logging.warn("EXECUTION STEPS ERROR")
             exec_steps=1
-        # exec_steps=1
 
         self.control.throttle, self.control.brake, self.control.steer, self.control.exec_steps=throttle, brake, steer, exec_steps
-        self.control.exec_steps_info = action[0][2]
 
         # Only use RL controller after ego vehicle speed reach 10 m/s
         # Use DFA to caaulate different speed state transition

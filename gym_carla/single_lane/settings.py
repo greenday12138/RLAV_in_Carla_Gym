@@ -168,3 +168,7 @@ ARGS.add_argument(
     '--pygame', type=bool,
     default=False,
     help='Render another pygame window for ego vehicle and the window style looks like automatic_control.py')
+ARGS.add_argument(
+    '--adapt', type=bool,
+    default=True,
+    help='Indicator for adaptive action duration, True -- action dim is 3, False -- action dim is 2')

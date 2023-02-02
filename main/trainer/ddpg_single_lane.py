@@ -20,7 +20,7 @@ GAMMA = 0.9  # q值更新系数
 TAU = 0.01  # 软更新参数
 EPSILON = 0.5  # epsilon-greedy
 BUFFER_SIZE = 40000
-MINIMAL_SIZE = 10000
+MINIMAL_SIZE = 128
 BATCH_SIZE = 128
 REPLACE_A = 500
 REPLACE_C = 300
@@ -49,7 +49,10 @@ def main():
     torch.manual_seed(16)
     s_dim = env.get_observation_space()
     a_bound = env.get_action_bound()
-    a_dim = 3  
+    if args.adapt:
+        a_dim = 3
+    else:
+        a_dim = 2 
 
     n_run = 3
     rosiolling_window = 100  # 100 car following events, average score
@@ -89,7 +92,10 @@ def main():
                                 if 'Throttle' in info:
                                     # Input the guided action to replay buffer
                                     throttle_brake = -info['Brake'] if info['Brake'] > 0 else info['Throttle']
-                                    action = np.array([[info['Steer'], throttle_brake, info['Exec_steps']]])
+                                    if args.adapt:
+                                        action = np.array([[info['Steer'], throttle_brake, info['Exec_steps']]])
+                                    else:
+                                        action = np.array([[info['Steer'], throttle_brake]])
                                     agent.store_transition(state,action,reward,next_state,truncated,done,info)
                                 else:
                                     # Input the agent action to repla y buffer
