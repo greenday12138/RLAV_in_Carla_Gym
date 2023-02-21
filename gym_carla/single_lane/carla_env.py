@@ -528,7 +528,7 @@ class CarlaEnv:
         """
         ego_speed = get_speed(self.ego_vehicle, True)
         lane_center = get_lane_center(self.map, self.ego_vehicle.get_location())
-        TTC = float('inf')
+        TTC = self.TTC_THRESHOLD
         if self.vehicle_front:
             distance = self.ego_vehicle.get_location().distance(self.vehicle_front.get_location())
             vehicle_len=max(abs(self.ego_vehicle.bounding_box.extent.x),abs(self.ego_vehicle.bounding_box.extent.y))+ \
@@ -561,9 +561,9 @@ class CarlaEnv:
         v_s = v_3d.length() * math.cos(theta_v)
         if v_s*3.6 > self.speed_limit:
             # fEff = 1
-            fEff = math.exp(self.speed_limit - v_s * 3.6) - 1
+            fEff = math.exp(self.speed_limit - v_s * 3.6)
         else:
-            fEff = v_s * 3.6 / self.speed_limit - 1
+            fEff = v_s * 3.6 / self.speed_limit
 
         cur_acc = self.ego_vehicle.get_acceleration()
         jerk = (cur_acc.x - self.last_acc.x) ** 2 / (1.0 / self.fps) + (cur_acc.y - self.last_acc.y) ** 2 / (
@@ -584,7 +584,7 @@ class CarlaEnv:
                                 self.ego_vehicle.get_transform().get_forward_vector()))
         fYaw= -abs(yaw_diff)/90
 
-        self.step_info = {'velocity':v_s,'offlane':Lcen, 'yaw_diff':yaw_diff,'TTC': fTTC, 'Comfort': fCom, 'Efficiency': fEff, 'Lane_center': fLcen, 'Yaw': fYaw, 'Abandon':False}
+        self.step_info = {'velocity':v_s,'offlane':Lcen, 'yaw_diff':yaw_diff,'TTC': TTC, 'fTTC':fTTC, 'Comfort': fCom, 'Efficiency': fEff, 'Lane_center': fLcen, 'Yaw': fYaw, 'Abandon':False}
 
         if self._truncated():
             history, tags = self.collision_sensor.get_collision_history()

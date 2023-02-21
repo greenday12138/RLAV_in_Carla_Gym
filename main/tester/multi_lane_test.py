@@ -87,7 +87,7 @@ def main():
                 score = 0
                 ttc, efficiency,comfort,lcen,yaw,impact,lane_change_reward = 0, 0, 0, 0, 0, 0, 0  # part objective scores
                 recover_time,lane_change_count,brake_count,global_brake_count,delay_index,avg_vel,rec_avg_vel,avg_jerk,avg_offlane=0,0,0,0,0,0,0,0,0
-                delay_i=deque(maxlen=100)
+                delay_i=deque(maxlen=100)                           
                 rear_a=deque(maxlen=5)
                 rear_v=deque(maxlen=200)
                 recovery_mode=False

@@ -53,7 +53,10 @@ def main():
     torch.manual_seed(8)
     s_dim = env.get_observation_space()
     a_bound = env.get_action_bound()
-    a_dim = 3
+    if args.adapt:
+        a_dim = 3
+    else:
+        a_dim = 2 
 
     result = []
     episode_writer=SummaryWriter(SAVE_PATH)
@@ -67,6 +70,12 @@ def main():
                      LR_CRITIC, DEVICE)
         agent.load_net(param)
         agent.set_sigma(0)
+
+        VEL=[]
+        JERK=[]
+        OFFLANE=[]
+        TTC=[]
+        
 
         try:
             for i in range(30):

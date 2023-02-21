@@ -48,27 +48,32 @@ def smooth(read_path, save_path, file_name, x='Step', y='Value', weight=0.99):
     save.to_csv(save_path + 'smooth_'+ file_name)
 
 if __name__=='__main__':
-    plt.style.use('ggplot')
-    plt.rcParams['font.sans-serif'] = ['SimHei']
-    plt.rcParams['axes.unicode_minus'] = False
+    # plt.style.use('ggplot')
+    # plt.rcParams['font.sans-serif'] = ['SimHei']
+    # plt.rcParams['axes.unicode_minus'] = False
 
-    # 平滑预处理原始reward数据
-    smooth(read_path='./out/', save_path='./out/', file_name='reward.csv')
-    smooth(read_path='./out/', save_path='./out/', file_name='reward_1.csv')
-    smooth(read_path='./out/', save_path='./out/', file_name='reward_2.csv')
-    # 读取平滑后的数据
-    df1 = pd.read_csv('./out/smooth_reward.csv')  
-    df2 = pd.read_csv('./out/smooth_reward_1.csv')
-    df3 = pd.read_csv('./out/smooth_reward_2.csv') 
-    print(df1)
-    print(df2)
-    # 拼接到一起
-    df = df1.append(df2.append(df3))
-    # 重新排列索引
-    df.index = range(len(df))
-    print(df1)
-    # 设置图片大小
-    plt.figure(figsize=(15, 10))
-    # 画图
-    sns.lineplot(data=df, x="Step", y="Value")
-    plt.show()
+    # # 平滑预处理原始reward数据
+    # smooth(read_path='./out/', save_path='./out/', file_name='reward.csv')
+    # smooth(read_path='./out/', save_path='./out/', file_name='reward_1.csv')
+    # smooth(read_path='./out/', save_path='./out/', file_name='reward_2.csv')
+    # # 读取平滑后的数据
+    # df1 = pd.read_csv('./out/smooth_reward.csv')  
+    # df2 = pd.read_csv('./out/smooth_reward_1.csv')
+    # df3 = pd.read_csv('./out/smooth_reward_2.csv') 
+    # print(df1)
+    # print(df2)
+    # # 拼接到一起
+    # df = df1.append(df2.append(df3))
+    # # 重新排列索引
+    # df.index = range(len(df))
+    # print(df1)
+    # # 设置图片大小
+    # plt.figure(figsize=(15, 10))
+    # # 画图
+    # sns.lineplot(data=df, x="Step", y="Value")
+    # plt.show()
+
+    bins=np.arange(-1,1,4,dtype=np.float32)
+    
+    df=pd.DataFrame(np.random.random_sample(10)*2-1)
+    print(df)

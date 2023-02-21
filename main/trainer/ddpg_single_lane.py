@@ -118,7 +118,7 @@ def main():
 
                             state = next_state
                             score += reward
-                            score_s += info['TTC']
+                            score_s += info['fTTC']
                             score_e += info['Efficiency']
                             score_c += info['Comfort']
 
