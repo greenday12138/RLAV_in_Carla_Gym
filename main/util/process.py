@@ -9,7 +9,7 @@ def get_binary():
 
 def get_exec_command():
     binary=get_binary()
-    exec_command=binary if operating_system=='windows' else ('./'+binary)
+    exec_command=binary if operating_system=='windows' else ('./'+binary+' -prefernvidia')
 
     return binary,exec_command
 
