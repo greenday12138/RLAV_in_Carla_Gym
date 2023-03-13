@@ -1,9 +1,12 @@
 import logging
 import torch
-import datetime, os
+import datetime, os, sys
 import random, collections
 import numpy as np
 import matplotlib.pyplot as plt
+curPath=os.path.abspath(os.path.dirname(__file__))
+rootPath=os.path.split(os.path.split(curPath)[0])[0]
+sys.path.append(rootPath)
 from tqdm import tqdm
 from algs.ddpg import DDPG
 from gym_carla.single_lane.settings import ARGS
