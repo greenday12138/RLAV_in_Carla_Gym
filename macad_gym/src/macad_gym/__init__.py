@@ -20,16 +20,14 @@ sys.path.append(
 # Declare available environments with a brief description
 _AVAILABLE_ENVS = {
     'HomoNcomIndePOIntrxMASS3CTWN3-v0': {
-        "entry_point":
-        "macad_gym.envs:HomoNcomIndePOIntrxMASS3CTWN3",
+        "entry_point": "macad_gym.envs:HomoNcomIndePOIntrxMASS3CTWN3",
         "description":
         "Homogeneous, Non-communicating, Independent, Partially-"
         "Observable Intersection Multi-Agent scenario with "
         "Stop-Sign, 3 Cars in Town3, version 0"
     },
     'HeteNcomIndePOIntrxMATLS1B2C1PTWN3-v0': {
-        "entry_point":
-        "macad_gym.envs:HeteNcomIndePOIntrxMATLS1B2C1PTWN3",
+        "entry_point": "macad_gym.envs:HeteNcomIndePOIntrxMATLS1B2C1PTWN3",
         "description":
         "Heterogeneous, Non-communicating, Independent,"
         "Partially-Observable Intersection Multi-Agent"
