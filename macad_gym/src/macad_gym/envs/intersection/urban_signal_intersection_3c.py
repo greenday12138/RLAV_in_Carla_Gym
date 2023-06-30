@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 import time
 
-from macad_gym.carla.multi_env import MultiCarlaEnv
+from macad_gym.core.multi_env import MultiCarlaEnv
 
 # from env.carla.multi_env import get_next_actions
 

@@ -1,4 +1,4 @@
-from macad_gym.carla.multi_env import MultiCarlaEnv
+from macad_gym.core.multi_env import MultiCarlaEnv
 from macad_gym.envs.homo.ncom.inde.po.intrx.ma.stop_sign_3c_town03 \
     import StopSign3CarTown03 as HomoNcomIndePOIntrxMASS3CTWN3
 from macad_gym.envs.hete.ncom.inde.po.intrx.ma. \
