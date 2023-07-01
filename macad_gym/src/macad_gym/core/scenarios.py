@@ -29,8 +29,9 @@ def build_scenario(map, start, end, vehicles, pedestrians, max_steps, weathers):
 def build_ma_scenario(map, actors, vehicles=0, pedestrians=0, max_steps=500, weathers=None):
     if weathers is None:
         weathers = [0]
-    scenario = {"map": map, "actors": actors, "num_vehicles": vehicles, "num_pedestrians": pedestrians,
-                "weather_distribution": weathers, "max_steps": max_steps, }
+    scenario = {"map": map, "actors": actors, "num_vehicles": vehicles, 
+                "num_pedestrians": pedestrians, "weather_distribution": weathers, 
+                "max_steps": max_steps, }
     return scenario
 
 
@@ -40,6 +41,32 @@ class Scenarios(object):
 
     """Stop Sign Urban Intersection scenario with 3 Cars passing through.
     """
+    FR2C_TOWN5 = {
+        "map": "Town05",
+        "actors": {
+            "car1": {
+                "start": -1,
+                "end": -1
+            },
+            "car2": {
+                "start": -1,
+                "end": -1
+            }
+        },
+        "num_vehicles": 20,
+        "num_pedestrians": 0,
+        "weather_distribution": [0],
+        "max_steps": 2000,
+        "route": {
+            "straight" : [12, 35, 36],
+            "curve" : [37, 38, 34],
+            "junction" : [2344, 2035],
+            "double_direction" : [2358, 2363, 2039, 2052],
+            "forward_double_direction" : [2358, 2039],
+            "backward_double_direction" : [2363, 2052]
+        }
+    }
+
     SSUI3C_TOWN3 = {
         "map": "Town03",
         "actors": {

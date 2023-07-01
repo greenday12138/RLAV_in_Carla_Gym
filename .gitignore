@@ -1,6 +1,7 @@
 *out/
 *__pycache__/
 *.idea/
+*.vscode/
 *.egg-info
 *.eggs
 *.pytest_cache

@@ -32,13 +32,19 @@ parser.add_argument(
     "-v",
     "--viz-map",
     action="store_true",
-    default=False,
+    default=True,
     help="Show map topology")
 parser.add_argument(
     "-e",
     "--export-node-coord-map",
+    default=True,
     help="Export the map between spawn_points and node_ids"
     " to the JSON file")
+parser.add_argument(
+    "-m",
+    "--map",
+    default="Town05",
+    help="Define the map to explore")
 
 args = parser.parse_args()
 
@@ -64,6 +70,26 @@ def show_map_topology(world):
     plt.show()
     input()
 
+def map_topology_to_node(world) -> dict:
+    node_coord_map = dict()
+    mapped_nodes = set()
+    for segment in world.get_map().get_topology():
+        if segment[0].road_id not in mapped_nodes:
+            node_coord_map[segment[0].road_id] = [
+                segment[0].transform.location.x, 
+                segment[0].transform.location.y,
+                segment[0].transform.location.z
+            ]
+            mapped_nodes.add(segment[0].road_id)
+        if segment[1].road_id not in mapped_nodes:
+            node_coord_map[segment[1].road_id] = [
+                segment[1].transform.location.x, 
+                segment[1].transform.location.y,
+                segment[1].transform.location.z
+            ]
+            mapped_nodes.add(segment[1].road_id)
+
+    return node_coord_map
 
 def map_spawn_point_to_node(world) -> dict:
     node_coord_map = dict()
@@ -148,19 +174,21 @@ def get_traffic_lights(loc=carla.Location(0, 0, 0)):
 
 client = carla.Client('localhost', 2000)
 client.set_timeout(2.0)
+client.load_world(args.map)
 world = client.get_world()
 if args.export_node_coord_map:
-    node_coord_map = map_spawn_point_to_node(world)
+    #node_coord_map = map_spawn_point_to_node(world)
+    node_coord_map = map_topology_to_node(world)
     json.dump(
-        node_coord_map, open("TOWN04.json", 'w'), indent=2, sort_keys=True)
+        node_coord_map, open(f"{args.map}.json", 'w'), indent=2, sort_keys=True)
 
 if args.viz_map:
-    show_map_topology(world.get_map())
+    show_map_topology(world)
 
 spectator = world.get_spectator()
 spectator_loc = carla.Location(70, -123, 9)
 spectator.set_transform(get_transform(spectator_loc, angle=160.0))
-start_scenario()
+#start_scenario()
 """
     try:
 

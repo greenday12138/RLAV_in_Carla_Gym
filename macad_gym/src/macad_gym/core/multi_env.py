@@ -35,7 +35,7 @@ from macad_gym.multi_actor_env import MultiActorEnv
 from macad_gym import LOG_DIR
 from macad_gym.core.sensors.utils import preprocess_image
 from macad_gym.core.maps.nodeid_coord_map import MAP_TO_COORDS_MAPPING
-from macad_gym.core.utils.wrapper import ( DEFAULT_MULTIENV_CONFIG, COMMANDS_ENUM, COMMAND_ORDINAL,
+from macad_gym.core.utils.wrapper import (DEFAULT_MULTIENV_CONFIG, COMMANDS_ENUM, COMMAND_ORDINAL,
     ROAD_OPTION_TO_COMMANDS_MAPPING, DISTANCE_TO_GOAL_THRESHOLD, ORIENTATION_TO_GOAL_THRESHOLD,
     RETRIES_ON_ERROR, GROUND_Z, DISCRETE_ACTIONS, WEATHERS)
 

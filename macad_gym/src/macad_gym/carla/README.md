@@ -3,4 +3,4 @@
 
 **NOTE:** 
 >This directory is part of [carla-simulator/carla/PythonAPI (0.9.x)](https://github.com/carla-simulator/carla/tree/master/PythonAPI) 
-and should be kept in sync as frequently as possible without breaking any functionality in this repo (The implementations of some agents have been changed to satisfy repo's functionality.)
+and should be kept in sync as frequently as possible without breaking any functionality in this repo

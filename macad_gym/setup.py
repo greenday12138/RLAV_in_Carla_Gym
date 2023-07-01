@@ -31,7 +31,7 @@ setup(
     package_dir={'': 'src'},
     python_requires='>=3.0',
     install_requires=[
-        'gym', 'carla>=0.9.3', 'GPUtil', 'pygame', 'opencv-python', 'networkx'
+        'gym', 'carla>=0.9.10', 'GPUtil', 'pygame', 'opencv-python', 'networkx'
     ],
     extras_require={'test': ['tox', 'pytest', 'pytest-xdist', 'tox']},
     keywords='multi-agent learning environments connected autonomous driving '
