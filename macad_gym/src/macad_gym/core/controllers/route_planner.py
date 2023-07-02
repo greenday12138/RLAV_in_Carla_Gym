@@ -5,6 +5,7 @@ import networkx as nx
 import matplotlib.pyplot as plt
 from enum import Enum
 from macad_gym.core.utils.misc import vector
+from macad_gym.core.scenarios import STRAIGHT, CURVE, JUNCTION
 
 class RoadOption(Enum):
     """
@@ -19,7 +20,7 @@ class RoadOption(Enum):
     CHANGELANELEFT = 5
     CHANGELANERIGHT = 6
 
-class GlobalPlanner:
+class RoutePlanner:
     """
     class for generating chosen circuit's road topology,topology is saved with waypoints list
     vehicle always runs on the outer ring of chosen route
@@ -27,15 +28,11 @@ class GlobalPlanner:
     temporarily used to get more spawnpoints
     """
 
-    def __init__(self, map,  sampling_resolution=1000.0, 
-                 route={'straight':set(),
-                        'curve':set(),
-                        'junction':set()}) -> None:
+    def __init__(self, map,  sampling_resolution=1000.0) -> None:
         self._sampling_resolution = sampling_resolution
         self._wmap = map
 
         # code for simulation road generation
-        self.route = route
         self._route = []
         self._topology = []
 
@@ -58,7 +55,7 @@ class GlobalPlanner:
         spawn_points = []
         for wp in self._route:
             # print('wp.lane_id: ', wp.lane_id)
-            if wp.road_id in self.route['straight'] or wp.road_id in self.route['curve']:
+            if wp.road_id in STRAIGHT or wp.road_id in CURVE:
                 # print(wp.lane_id)
                 temp = carla.Transform(wp.transform.location, wp.transform.rotation)
                 # Increase the z value a little bit to avoid collison upon initializing
@@ -231,5 +228,4 @@ class GlobalPlanner:
     def _test_waypoint(self, wp):
         """Attention: the test_waypoint here should be different from test_waypoint function in misc.py
             or it could cause endless loop in GlobalPlanner._build_route()"""
-        return wp.road_id in self.route['straight'] or wp.road_id in self.route['curve'] or \
-                wp.road_id in self.route['junction']
+        return wp.road_id in STRAIGHT or wp.road_id in CURVE or wp.road_id in JUNCTION

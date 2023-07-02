@@ -35,7 +35,8 @@ from macad_gym.multi_actor_env import MultiActorEnv
 from macad_gym import LOG_DIR
 from macad_gym.core.sensors.utils import preprocess_image
 from macad_gym.core.maps.nodeid_coord_map import MAP_TO_COORDS_MAPPING
-from macad_gym.core.utils.wrapper import (DEFAULT_MULTIENV_CONFIG, COMMANDS_ENUM, COMMAND_ORDINAL,
+from macad_gym.core.utils.misc import remove_unnecessary_objects
+from macad_gym.core.utils.wrapper import (COMMANDS_ENUM, COMMAND_ORDINAL,
     ROAD_OPTION_TO_COMMANDS_MAPPING, DISTANCE_TO_GOAL_THRESHOLD, ORIENTATION_TO_GOAL_THRESHOLD,
     RETRIES_ON_ERROR, GROUND_Z, DISCRETE_ACTIONS, WEATHERS)
 
@@ -53,6 +54,7 @@ from macad_gym.core.controllers.keyboard_control import KeyboardControl
 from macad_gym.carla.PythonAPI.agents.navigation.global_route_planner_dao import (  # noqa: E501
     GlobalRoutePlannerDAO,
 )
+from macad_gym.core.controllers.route_planner import RoutePlanner
 
 # The following imports depend on these paths being in sys path
 # TODO: Fix this. This probably won't work after packaging/distribution
@@ -116,6 +118,55 @@ try:
 except ImportError:
     logger.warning("\n Disabling RLlib support.", exc_info=True)
 
+# TODO: Clean env & actor configs to have appropriate keys based on the nature
+# of env
+DEFAULT_MULTIENV_CONFIG = {
+    "scenarios": "DEFAULT_SCENARIO_TOWN1",
+    "env": {
+        # Since Carla 0.9.6, you have to use `client.load_world(server_map)`
+        # instead of passing the map name as an argument
+        "server_map": "/Game/Carla/Maps/Town01",
+        "render": True,
+        "render_x_res": 800,
+        "render_y_res": 600,
+        "x_res": 84,
+        "y_res": 84,
+        "framestack": 1,
+        "discrete_actions": True,
+        "squash_action_logits": False,
+        "verbose": False,
+        "use_depth_camera": False,
+        "send_measurements": False,
+        "enable_planner": True,
+        "sync_server": True,
+        "fixed_delta_seconds": 0.05,
+    },
+    "actors": {
+        "vehicle1": {
+            "enable_planner": True,
+            "render": True,  # Whether to render to screen or send to VFB
+            "framestack": 1,  # note: only [1, 2] currently supported
+            "convert_images_to_video": False,
+            "early_terminate_on_collision": True,
+            "verbose": False,
+            "reward_function": "corl2017",
+            "x_res": 84,
+            "y_res": 84,
+            "use_depth_camera": False,
+            "squash_action_logits": False,
+            "manual_control": False,
+            "auto_control": False,
+            "camera_type": "rgb",
+            "camera_position": 0,
+            "collision_sensor": "on",  # off
+            "lane_sensor": "on",  # off
+            "server_process": False,
+            "send_measurements": False,
+            "log_images": False,
+            "log_measurements": False,
+        }
+    },
+}
 
 class MultiCarlaEnv(*MultiAgentEnvBases):
     def __init__(self, configs=None):
@@ -303,6 +354,7 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
         self._previous_rewards = {}
         self._last_reward = {}
         self._npc_vehicles = []  # List of NPC vehicles
+        self._npc_vehicles_spawn_points = []
         self._npc_pedestrians = []  # List of NPC pedestrians
         self._agents = {}  # Dictionary of macad_agents with agent_id as key
         self._actors = {}  # Dictionary of actors with actor_id as key
@@ -418,6 +470,8 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
                     [
                         SERVER_BINARY,
                         "-windowed",
+                        "-prefernvidia",
+                        "-quality-level=Low",
                         "-ResX=",
                         str(self._env_config["render_x_res"]),
                         "-ResY=",
@@ -467,6 +521,7 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
         # load map using client api since 0.9.6+
         self._client.load_world(self._server_map)
         self.world = self._client.get_world()
+        remove_unnecessary_objects(self.world)
         world_settings = self.world.get_settings()
         world_settings.synchronous_mode = self._sync_server
         if self._sync_server:
@@ -499,6 +554,10 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
             planner_dao = GlobalRoutePlannerDAO(self.world.get_map())
             self.planner = GlobalRoutePlanner(planner_dao)
             self.planner.setup()
+
+        if self._env_config.get("fixed_route"):
+            self._npc_vehicles_spawn_points = \
+                RoutePlanner(self.world.get_map(), sampling_resolution=4.0).get_spawn_points()
 
     def _clean_world(self):
         """Destroy all actors cleanly before exiting
@@ -688,11 +747,17 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
                 b for b in blueprints if int(b.get_attribute("number_of_wheels")) == 2
             ]
 
-        blueprint = random.choice(blueprints)
+        if self._actor_configs[actor_id]["blueprint"]:
+            for blue in blueprints:
+                if blue.id == self._actor_configs[actor_id]["blueprint"]:
+                    blueprint = blue
+                    break
+        else:
+            blueprint = random.choice(blueprints)
         loc = carla.Location(
             x=self._start_pos[actor_id][0],
             y=self._start_pos[actor_id][1],
-            z=self._start_pos[actor_id][2],
+            z=self._start_pos[actor_id][2]+1,
         )
         rot = (
             self.world.get_map()
@@ -892,6 +957,8 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
             self._traffic_manager,
             self._scenario_map.get("num_vehicles", 0),
             self._scenario_map.get("num_pedestrians", 0),
+            safe=False,
+            route_points=self._npc_vehicles_spawn_points
         )
 
     def _load_scenario(self, scenario_parameter):
@@ -910,12 +977,12 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
 
         self._scenario_map = scenario
         for actor_id, actor in scenario["actors"].items():
-            if isinstance(actor["start"], int):
+            if isinstance(actor["start"], (int, float)):
                 self._start_pos[actor_id] = self.pos_coor_map[str(actor["start"])]
             else:
                 self._start_pos[actor_id] = actor["start"]
 
-            if isinstance(actor["end"], int):
+            if isinstance(actor["end"], (int, float)):
                 self._end_pos[actor_id] = self.pos_coor_map[str(actor["end"])]
             else:
                 self._end_pos[actor_id] = actor["end"]

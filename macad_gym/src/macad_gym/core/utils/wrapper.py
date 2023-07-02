@@ -2,59 +2,8 @@ import math
 import carla
 import numpy as np
 from enum import Enum
-from macad_gym.core.controllers.global_planner import RoadOption
+from macad_gym.core.controllers.route_planner import RoadOption
 from macad_gym.core.utils.misc import get_speed,get_yaw_diff,test_waypoint,get_sign
-
-
-# TODO: Clean env & actor configs to have appropriate keys based on the nature
-# of env
-DEFAULT_MULTIENV_CONFIG = {
-    "scenarios": "DEFAULT_SCENARIO_TOWN1",
-    "env": {
-        # Since Carla 0.9.6, you have to use `client.load_world(server_map)`
-        # instead of passing the map name as an argument
-        "server_map": "/Game/Carla/Maps/Town01",
-        "render": True,
-        "render_x_res": 800,
-        "render_y_res": 600,
-        "x_res": 84,
-        "y_res": 84,
-        "framestack": 1,
-        "discrete_actions": True,
-        "squash_action_logits": False,
-        "verbose": False,
-        "use_depth_camera": False,
-        "send_measurements": False,
-        "enable_planner": True,
-        "sync_server": True,
-        "fixed_delta_seconds": 0.05,
-    },
-    "actors": {
-        "vehicle1": {
-            "enable_planner": True,
-            "render": True,  # Whether to render to screen or send to VFB
-            "framestack": 1,  # note: only [1, 2] currently supported
-            "convert_images_to_video": False,
-            "early_terminate_on_collision": True,
-            "verbose": False,
-            "reward_function": "corl2017",
-            "x_res": 84,
-            "y_res": 84,
-            "use_depth_camera": False,
-            "squash_action_logits": False,
-            "manual_control": False,
-            "auto_control": False,
-            "camera_type": "rgb",
-            "camera_position": 0,
-            "collision_sensor": "on",  # off
-            "lane_sensor": "on",  # off
-            "server_process": False,
-            "send_measurements": False,
-            "log_images": False,
-            "log_measurements": False,
-        }
-    },
-}
 
 # Carla planner commands
 COMMANDS_ENUM = {

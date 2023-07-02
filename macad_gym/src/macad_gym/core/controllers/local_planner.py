@@ -3,7 +3,8 @@ import copy
 import logging
 from collections import deque
 from shapely.geometry import Polygon
-from macad_gym.core.controllers.global_planner import RoadOption
+from macad_gym.core.scenarios import ROADS
+from macad_gym.core.controllers.route_planner import RoadOption
 from macad_gym.core.utils.wrapper import WaypointWrapper,VehicleWrapper
 from macad_gym.core.utils.misc import get_lane_center, get_speed, vector, compute_magnitude_angle, \
     is_within_distance_ahead, is_within_distance_rear, draw_waypoints, compute_distance, is_within_distance, test_waypoint,\
@@ -13,15 +14,10 @@ class LocalPlanner:
     def __init__(self, vehicle, 
             opt_dict = {'sampling_resolution': 4.0,
                         'buffer_size': 10,
-                        'vehicle_proximity': 50},
-            route = {'straight':set(),
-                     'curve':set(),
-                     'junction':set()}):
+                        'vehicle_proximity': 50}):
         """
             temporarily used to get front waypoints and vehicle
         """
-        self.roads = set()
-        [self.roads.update(item) for item in route]
         self._vehicle = vehicle
         self._world = self._vehicle.get_world()
         self._map = self._world.get_map()
@@ -143,7 +139,7 @@ class LocalPlanner:
                         pre_wp=pre_wps[0]
                     elif len(pre_wps)!=0:
                         for i, wp in enumerate(pre_wps):
-                            if wp.road_id in self.roads:
+                            if wp.road_id in ROADS:
                                 pre_wp = wp
                     vehicle_len = max(abs(self._vehicle.bounding_box.extent.x),
                                     abs(self._vehicle.bounding_box.extent.y)) + \
@@ -312,7 +308,7 @@ class LocalPlanner:
 
                     idx = None
                     for i, wp in enumerate(next_waypoints):
-                        if wp.road_id in self.roads:
+                        if wp.road_id in ROADS:
                             next_waypoint = wp
                             idx = i
                     # road_option = road_options_list[idx]
@@ -523,7 +519,7 @@ class LocalPlanner:
 
                 idx = None
                 for i, wp in enumerate(next_waypoints):
-                    if wp.road_id in self.roads:
+                    if wp.road_id in ROADS:
                         next_waypoint = wp
                         idx = i
                 road_option = road_options_list[idx]

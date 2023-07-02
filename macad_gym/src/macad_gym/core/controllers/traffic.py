@@ -7,7 +7,7 @@ random.seed(10)
 logger = logging.getLogger(__name__)
 
 
-def apply_traffic(world, traffic_manager, num_vehicles, num_pedestrians, safe=False):
+def apply_traffic(world, traffic_manager, num_vehicles, num_pedestrians, safe=False, route_points=None):
     # --------------
     # Spawn vehicles
     # --------------
@@ -24,7 +24,10 @@ def apply_traffic(world, traffic_manager, num_vehicles, num_pedestrians, safe=Fa
 
     blueprints = sorted(blueprints, key=lambda bp: bp.id)
 
-    spawn_points = world.get_map().get_spawn_points()
+    if route_points is None:
+        spawn_points = world.get_map().get_spawn_points()
+    else:
+        spawn_points = route_points
     number_of_spawn_points = len(spawn_points)
 
     random.shuffle(spawn_points)
@@ -40,8 +43,8 @@ def apply_traffic(world, traffic_manager, num_vehicles, num_pedestrians, safe=Fa
     for n, transform in enumerate(spawn_points):
         blueprint = random.choice(blueprints)
         if blueprint.has_attribute('color'):
-            color = random.choice(blueprint.get_attribute('color').recommended_values)
-            blueprint.set_attribute('color', color)
+            #color = random.choice(blueprint.get_attribute('color').recommended_values)
+            blueprint.set_attribute('color', '0,0,0')
         if blueprint.has_attribute('driver_id'):
             driver_id = random.choice(blueprint.get_attribute('driver_id').recommended_values)
             blueprint.set_attribute('driver_id', driver_id)
@@ -52,6 +55,17 @@ def apply_traffic(world, traffic_manager, num_vehicles, num_pedestrians, safe=Fa
         if vehicle is not None:
             vehicle.set_autopilot(True, traffic_manager.get_port())
             vehicles_list.append(vehicle)
+            if route_points is not None:
+                traffic_manager.set_route(vehicle,
+                                ['Straight', 'Straight', 'Straight', 'Straight', 'Straight', 'Straight', 'Straight', 'Straight', 'Straight', 'Straight'])
+                traffic_manager.update_vehicle_lights(vehicle, True)
+                traffic_manager.ignore_signs_percentage(vehicle, 100)
+                traffic_manager.auto_lane_change(vehicle, False)
+                # modify change probability
+                traffic_manager.random_left_lanechange_percentage(vehicle, 0)
+                traffic_manager.random_right_lanechange_percentage(vehicle, 0)
+                traffic_manager.vehicle_percentage_speed_difference(vehicle,
+                        random.choice([-100,-100,-100,-140,-160,-180]))
         else:
             failed_v += 1
 

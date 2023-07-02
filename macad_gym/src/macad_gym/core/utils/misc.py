@@ -4,8 +4,8 @@ import math,re
 import carla
 import random
 import numpy as np
-from gym_carla.multi_lane.settings import *
 from enum import Enum
+from macad_gym.core.scenarios import ROADS, DISTURB_ROADS
 
 def remove_unnecessary_objects(world):
     """Remove unuseful objects in the world"""

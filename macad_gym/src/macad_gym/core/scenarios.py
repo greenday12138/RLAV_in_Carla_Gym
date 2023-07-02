@@ -14,6 +14,25 @@ TRAIN_WEATHERS = [1, 3, 4, 6, 8]
 PAPER_TEST_WEATHERS = [1, 8, 5, 3]  # clear day, clear sunset, daytime rain, daytime after rain
 PAPER_TRAIN_WEATHERS = [2, 14]  # cloudy daytime, soft rain at sunset
 
+# the following road id sets define the chosen route on town05
+ROADS = set()
+DISTURB_ROADS = set()
+FORWARD_ROADS = set()
+BACKWARD_ROADS = set()
+STRAIGHT = {12, 35, 36}
+CURVE = {37, 38, 34}
+JUNCTION = {2344, 2035}
+DOUBLE_DIRECTION = {2358, 2363, 2039, 2052}
+FORWARD_DOUBLE_DIRECTION = {2358, 2039}
+BACKWARD_DOUBLE_DIRECTION = {2363, 2052}
+# JUNCTION_LANE={33,85,141}
+# JUNCTION_LANE_MINUS={102,109,150,163,46,67,128}
+ROADS.update(STRAIGHT)
+ROADS.update(CURVE)
+ROADS.update(JUNCTION)
+DISTURB_ROADS.update(DOUBLE_DIRECTION)
+FORWARD_ROADS.update(FORWARD_DOUBLE_DIRECTION)
+BACKWARD_ROADS.update(BACKWARD_DOUBLE_DIRECTION)
 
 # builder functions for single and multi-agent scenarios
 def build_scenario(map, start, end, vehicles, pedestrians, max_steps, weathers):
@@ -45,26 +64,18 @@ class Scenarios(object):
         "map": "Town05",
         "actors": {
             "car1": {
-                "start": -1,
+                "start": -1.0,
                 "end": -1
             },
             "car2": {
-                "start": -1,
+                "start": -2.0,
                 "end": -1
             }
         },
         "num_vehicles": 20,
         "num_pedestrians": 0,
         "weather_distribution": [0],
-        "max_steps": 2000,
-        "route": {
-            "straight" : [12, 35, 36],
-            "curve" : [37, 38, 34],
-            "junction" : [2344, 2035],
-            "double_direction" : [2358, 2363, 2039, 2052],
-            "forward_double_direction" : [2358, 2039],
-            "backward_double_direction" : [2363, 2052]
-        }
+        "max_steps": 2000
     }
 
     SSUI3C_TOWN3 = {
