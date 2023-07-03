@@ -41,7 +41,7 @@ from macad_gym.core.utils.wrapper import (COMMANDS_ENUM, COMMAND_ORDINAL,
     RETRIES_ON_ERROR, GROUND_Z, DISCRETE_ACTIONS, WEATHERS)
 
 # from macad_gym.core.sensors.utils import get_transform_from_nearest_way_point
-from macad_gym.core.reward import Reward
+from macad_gym.core.reward import Reward, PDQNReward
 from macad_gym.core.sensors.hud import HUD
 from macad_gym.viz.render import Render
 from macad_gym.core.scenarios import Scenarios
@@ -470,7 +470,7 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
                     [
                         SERVER_BINARY,
                         "-windowed",
-                        "-prefernvidia",
+                        #"-prefernvidia",
                         "-quality-level=Low",
                         "-ResX=",
                         str(self._env_config["render_x_res"]),
@@ -489,6 +489,7 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
                     if IS_WINDOWS_PLATFORM
                     else 0,
                     stdout=open(log_file, "w"),
+                    bufsize=131072
                 )
                 print("Running simulation in single-GPU mode")
             except Exception as e:
@@ -533,8 +534,6 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
         self.world.apply_settings(world_settings)
         # Set up traffic manager
         self._traffic_manager = self._client.get_trafficmanager()
-        self._traffic_manager.set_global_distance_to_leading_vehicle(2.5)
-        self._traffic_manager.set_respawn_dormant_vehicles(True)
         self._traffic_manager.set_synchronous_mode(self._sync_server)
         # Set the spectator/server view if rendering is enabled
         if self._render and self._env_config.get("spectator_loc"):
@@ -891,7 +890,7 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
                 # in CameraManger's._sensors
                 camera_type = self._actor_configs[actor_id]["camera_type"]
                 camera_pos = getattr(
-                    self._actor_configs[actor_id], "camera_position", 0
+                    self._actor_configs[actor_id], "camera_position", 2
                 )
                 camera_types = [ct.name for ct in CAMERA_TYPES]
                 assert (
@@ -1236,6 +1235,11 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
         # NOTE: A distinction is made between "(A)Synchronous Environment" and
         # "(A)Synchronous (carla) server"
         if self._sync_server:
+            if self._render:
+                spectator = self.world.get_spectator()
+                transform = self._actors[actor_id].get_transform()
+                spectator.set_transform(carla.Transform(transform.location + carla.Location(z=80),
+                                                        carla.Rotation(pitch=-90)))
             self.world.tick()
             # `wait_for_tick` is no longer needed, see https://github.com/carla-simulator/carla/pull/1803
             # self.world.wait_for_tick()

@@ -8,6 +8,11 @@ logger = logging.getLogger(__name__)
 
 
 def apply_traffic(world, traffic_manager, num_vehicles, num_pedestrians, safe=False, route_points=None):
+    # set traffic manager
+    traffic_manager.global_percentage_speed_difference(30.0)
+    traffic_manager.set_global_distance_to_leading_vehicle(2.5)
+    traffic_manager.set_respawn_dormant_vehicles(True)
+
     # --------------
     # Spawn vehicles
     # --------------
@@ -60,7 +65,7 @@ def apply_traffic(world, traffic_manager, num_vehicles, num_pedestrians, safe=Fa
                                 ['Straight', 'Straight', 'Straight', 'Straight', 'Straight', 'Straight', 'Straight', 'Straight', 'Straight', 'Straight'])
                 traffic_manager.update_vehicle_lights(vehicle, True)
                 traffic_manager.ignore_signs_percentage(vehicle, 100)
-                traffic_manager.auto_lane_change(vehicle, False)
+                traffic_manager.auto_lane_change(vehicle, True)
                 # modify change probability
                 traffic_manager.random_left_lanechange_percentage(vehicle, 0)
                 traffic_manager.random_right_lanechange_percentage(vehicle, 0)
@@ -133,7 +138,5 @@ def apply_traffic(world, traffic_manager, num_vehicles, num_pedestrians, safe=Fa
         controller.start()  # start walker
         controller.go_to_location(world.get_random_location_from_navigation())  # set walk to random point
         controller.set_max_speed(float(pedestrians_speed[int(i / 2)]))  # max speed
-
-    traffic_manager.global_percentage_speed_difference(30.0)
 
     return vehicles_list, (pedestrians_list, controllers_list)

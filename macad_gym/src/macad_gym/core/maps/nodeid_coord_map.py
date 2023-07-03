@@ -1959,5 +1959,5 @@ MAP_TO_COORDS_MAPPING = {
     "Town02": TOWN02,
     "Town03": TOWN03,
     "Town04": TOWN04,
-    "Town05": TOWN05
+    "Town05_Opt": TOWN05
 }

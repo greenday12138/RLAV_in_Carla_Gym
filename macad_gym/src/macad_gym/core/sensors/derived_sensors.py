@@ -59,7 +59,7 @@ class LaneInvasionSensor(object):
             """
 
         self._history.append((event.frame_number, text))
-        if len(self._history) > 4000:
+        if len(self._history) > 400:
             self._history.pop(0)
 
     def _reset(self):
@@ -110,7 +110,7 @@ class CollisionSensor(object):
         impulse = event.normal_impulse
         intensity = math.sqrt(impulse.x**2 + impulse.y**2 + impulse.z**2)
         self._history.append((event.frame_number, intensity))
-        if len(self._history) > 4000:
+        if len(self._history) > 400:
             self._history.pop(0)
         """
         info_str = ('vehicle %s ' % self._parent.id +

@@ -75,6 +75,8 @@ class CameraManager(object):
             if item[0].startswith('sensor.camera'):
                 bp.set_attribute('image_size_x', str(hud.dim[0]))
                 bp.set_attribute('image_size_y', str(hud.dim[1]))
+            if item[0].startswith('sensor.camera.rgb'):
+                bp.set_attribute('sensor_tick', str(0.0))
             item.append(bp)
         self._index = None
         self.callback_count = 0

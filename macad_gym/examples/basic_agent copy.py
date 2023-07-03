@@ -1,6 +1,8 @@
 #!/bin/env python
 import gym
+import faulthandler
 import macad_gym  # noqa F401
+faulthandler.enable()
 
 env = gym.make("HomoNcomIndePoHiwaySAFR2CTWN5-v0")
 configs = env.configs

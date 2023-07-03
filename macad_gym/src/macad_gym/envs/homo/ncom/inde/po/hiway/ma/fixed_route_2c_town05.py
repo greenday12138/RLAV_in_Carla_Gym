@@ -10,12 +10,12 @@ class FixedRoute2CarTown05(MultiCarlaEnv):
         self.configs = {
             "scenarios": "FR2C_TOWN5",
             "env": {
-                "server_map": "/Game/Carla/Maps/Town05",
+                "server_map": "/Game/Carla/Maps/Town05_Opt",
                 "render": True,
                 "render_x_res": 2000,
                 "render_y_res": 1500,
-                "x_res": 1000,
-                "y_res": 1000,
+                "x_res": 500,
+                "y_res": 500,
                 "framestack": 1,
                 "discrete_actions": True,
                 "squash_action_logits": False,
@@ -26,7 +26,8 @@ class FixedRoute2CarTown05(MultiCarlaEnv):
                 "spectator_loc": [140, 68, 9],
                 "sync_server": True,
                 "fixed_delta_seconds": 0.05,
-                "fixed_route": True
+                "fixed_route": True,
+                "reward_policy": "PDQNReward"
             },
             "actors": {
                 "car1": {
@@ -45,8 +46,8 @@ class FixedRoute2CarTown05(MultiCarlaEnv):
                     "log_images": False,
                     "log_measurements": False,
                     "render": True,
-                    "x_res": 1000,
-                    "y_res": 1000,
+                    "x_res": 500,
+                    "y_res": 500,
                     "use_depth_camera": False,
                     "send_measurements": False,
                 },
@@ -66,8 +67,8 @@ class FixedRoute2CarTown05(MultiCarlaEnv):
                     "log_images": False,
                     "log_measurements": False,
                     "render": True,
-                    "x_res": 1000,
-                    "y_res": 1000,
+                    "x_res": 500,
+                    "y_res": 500,
                     "use_depth_camera": False,
                     "send_measurements": False,
                 }
