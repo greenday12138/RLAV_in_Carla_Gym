@@ -239,8 +239,7 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
         self.metadata = {"render.modes": "human"}
 
         # Belongs to env_config.
-        self._server_map = self._env_config["server_map"]
-        self._map = self._server_map.split("/")[-1]
+        self._server_map = self._env_config["server_map"].split("/")[-1]
         self._render = self._env_config["render"]
         self._framestack = self._env_config["framestack"]
         self._discrete_actions = self._env_config["discrete_actions"]
@@ -327,8 +326,7 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
             )
 
         # Set appropriate node-id to coordinate mappings for Town01 or Town02.
-        self.pos_coor_map = MAP_TO_COORDS_MAPPING[self._map]
-
+        self.pos_coor_map = MAP_TO_COORDS_MAPPING[self._server_map]
         self._spec = lambda: None
         self._spec.id = "Carla-v0"
         self._server_port = None
@@ -360,11 +358,17 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
         self._npc_pedestrians = []  # List of NPC pedestrians
         self._agents = {}  # Dictionary of macad_agents with agent_id as key
         self._actors = {}  # Dictionary of actors with actor_id as key
+        self._speed_state = {}  # Dictionary of actors' running state with actor_id as key
         self._cameras = {}  # Dictionary of sensors with actor_id as key
         self._path_trackers = {}  # Dictionary of sensors with actor_id as key
         self._collisions = {}  # Dictionary of sensors with actor_id as key
         self._lane_invasions = {}  # Dictionary of sensors with actor_id as key
         self._scenario_map = {}  # Dictionary with current scenario map config
+        # RL_switch: True--currently RL in control, False--currently PID in control
+        self.RL_switch = False
+        self.switch_count=0
+        self.SWITCH_THRESHOLD = configs["rl_parameters"]["switch_threshold"]
+        self.pre_train_steps = configs["rl_parameters"]["pre_train_steps"]
 
     @staticmethod
     def _get_tcp_port(port=0):
@@ -410,11 +414,12 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
                 if shutil.which("vglrun") is not None:
                     self._server_process = subprocess.Popen(
                         (
-                            "DISPLAY=:8 vglrun -d :7.{} {} -benchmark -fps=20"
+                            "DISPLAY=:8 vglrun -d :7.{} {} -benchmark -fps={}"
                             " -carla-server -world-port={}"
                             " -carla-streaming-port=0".format(
                                 min_index,
                                 SERVER_BINARY,
+                                1/self._fixed_delta_seconds,
                                 self._server_port,
                             )
                         ),
@@ -434,9 +439,10 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
                     # https://carla.readthedocs.io/en/latest/adv_rendering_options/
                     self._server_process = subprocess.Popen(
                         (  # 'SDL_VIDEODRIVER=offscreen SDL_HINT_CUDA_DEVICE={} DISPLAY='
-                            '"{}" -RenderOffScreen -benchmark -fps=20 -carla-server'
+                            '"{}" -RenderOffScreen -benchmark -fps={} -carla-server'
                             " -world-port={} -carla-streaming-port=0".format(
                                 SERVER_BINARY,
+                                1/self._fixed_delta_seconds,
                                 self._server_port,
                             )
                         ),
@@ -472,14 +478,14 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
                     [
                         SERVER_BINARY,
                         "-windowed",
-                        "-prefernvidia",
+                        #"-prefernvidia",
                         "-quality-level=Low",
                         "-ResX=",
                         str(self._env_config["render_x_res"]),
                         "-ResY=",
                         str(self._env_config["render_y_res"]),
                         "-benchmark",
-                        "-fps=20",
+                        "-fps={}".format(1/self._fixed_delta_seconds),
                         "-carla-server",
                         "-carla-rpc-port={}".format(self._server_port),
                         "-carla-streaming-port=0",
@@ -491,7 +497,7 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
                     if IS_WINDOWS_PLATFORM
                     else 0,
                     stdout=open(log_file, "w"),
-                    bufsize=131072
+                    #bufsize=131072
                 )
                 print("Running simulation in single-GPU mode")
             except Exception as e:
@@ -525,8 +531,12 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
         self._client.load_world(self._server_map)
         self.world = self._client.get_world()
         remove_unnecessary_objects(self.world)
+        self.map = self.world.get_map()
         world_settings = self.world.get_settings()
+        # Actors will become dormant 2km away from here vehicle
+        world_settings.actor_active_distance = 2000
         world_settings.synchronous_mode = self._sync_server
+        world_settings.no_rendering_mode = not self._render
         if self._sync_server:
             # Synchronous mode
             # try:
@@ -550,13 +560,13 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
                 carla.Transform(location, carla.Rotation(yaw=180 + angle, pitch=-15)))
 
         if self._env_config.get("enable_planner"):
-            planner_dao = GlobalRoutePlannerDAO(self.world.get_map())
+            planner_dao = GlobalRoutePlannerDAO(self.map)
             self.planner = GlobalRoutePlanner(planner_dao)
             self.planner.setup()
 
         if self._env_config.get("fixed_route"):
             self._npc_vehicles_spawn_points = \
-                RoutePlanner(self.world.get_map(), sampling_resolution=4.0).get_spawn_points()
+                RoutePlanner(self.map, sampling_resolution=4.0).get_spawn_points()
 
     def _clean_world(self):
         """Destroy all actors cleanly before exiting
@@ -701,10 +711,7 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
                 self._start_pos[actor_id][2],
             )
             rot = (
-                self.world.get_map()
-                .get_waypoint(loc, project_to_road=True)
-                .transform.rotation
-            )
+                self.map.get_waypoint(loc, project_to_road=True).transform.rotation)
             #: If yaw is provided in addition to (X, Y, Z), set yaw
             if len(self._start_pos[actor_id]) > 3:
                 rot.yaw = self._start_pos[actor_id][3]
@@ -754,16 +761,14 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
                     break
         else:
             blueprint = random.choice(blueprints)
+        blueprint.set_attribute('role_name', 'hero')
         loc = carla.Location(
             x=self._start_pos[actor_id][0],
             y=self._start_pos[actor_id][1],
             z=self._start_pos[actor_id][2]+1,
         )
         rot = (
-            self.world.get_map()
-            .get_waypoint(loc, project_to_road=True)
-            .transform.rotation
-        )
+            self.map.get_waypoint(loc, project_to_road=True).transform.rotation)
         #: If yaw is provided in addition to (X, Y, Z), set yaw
         if len(self._start_pos[actor_id]) > 3:
             rot.yaw = self._start_pos[actor_id][3]
@@ -957,6 +962,7 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
         self._npc_vehicles, self._npc_pedestrians = apply_traffic(
             self.world,
             self._traffic_manager,
+            self._env_config,
             self._scenario_map.get("num_vehicles", 0),
             self._scenario_map.get("num_pedestrians", 0),
             safe=False,
@@ -1108,12 +1114,12 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
             # NOTE: A distinction is made between "(A)Synchronous Environment" and
             # "(A)Synchronous (carla) server"
             if self._sync_server:
+                self.world.tick()
                 if self._render:
                     spectator = self.world.get_spectator()
                     transform = self._actors[actor_id].get_transform()
                     spectator.set_transform(carla.Transform(transform.location + carla.Location(z=80),
                                                             carla.Rotation(pitch=-90)))
-                self.world.tick()
                 # `wait_for_tick` is no longer needed, see https://github.com/carla-simulator/carla/pull/1803
                 # self.world.wait_for_tick()
 
@@ -1123,14 +1129,14 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
                 reward_dict[actor_id] = reward
                 if not self._done_dict.get(actor_id, False):
                     self._done_dict[actor_id] = done
-                if not self._truncated_dict.get(actor_id, False):
+                if not self._truncated_dict.get(actor_id, Truncated.FALSE):
                     self._truncated_dict[actor_id] = truncated
                 info_dict[actor_id] = info
 
             self._done_dict["__all__"] = sum(self._done_dict.values()
                                              ) >= len(self._actors)
-            self._truncated_dict["__all__"] = sum(self._truncated_dict.values()
-                                                  ) > 0
+            self._truncated_dict["__all__"] = sum(
+                filter(lambda x:  x!=Truncated.FALSE, self._truncated_dict.values())) > 0
             # Find if any actor's config has render=True & render only for
             # that actor. NOTE: with async server stepping, enabling rendering
             # affects the step time & therefore MAX_STEPS needs adjustments
@@ -1216,7 +1222,7 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
             # cur_location = self.actor_list[i].get_location()
             # dst_location = carla.Location(x = self.end_pos[i][0],
             # y = self.end_pos[i][1], z = self.end_pos[i][2])
-            # cur_map = self.world.get_map()
+            # cur_map = self.map
             # next_point_transform = get_transform_from_nearest_way_point(
             # cur_map, cur_location, dst_location)
             # the point with z = 0, and the default z of cars are 40
@@ -1298,7 +1304,7 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
         }
 
         # Compute truncated
-        truncated = self._truncated(actor_id)
+        truncated = self._truncated(actor_id, py_measurements)
         # Compute done
         done = self._done(actor_id, truncated)
         # done = (
@@ -1356,6 +1362,7 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
             self._encode_obs(actor_id, original_image, py_measurements),
             reward,
             done,
+            truncated,
             py_measurements,
         )
   
@@ -1439,7 +1446,7 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
             "intersection_offroad": intersection_offroad,
             "intersection_otherlane": intersection_otherlane,
             "weather": self._weather,
-            "map": self._server_map,
+            "map": self.map,
             "start_coord": self._start_coord[actor_id],
             "end_coord": self._end_coord[actor_id],
             "current_scenario": self._scenario_map,
@@ -1456,7 +1463,7 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
     def _truncated(self, actor_id, py_measurements):
         """Decide whether terminating current episode or not"""
         m = py_measurements
-        lane_center=get_lane_center(self._map, self._actors[actor_id].get_location())
+        lane_center=get_lane_center(self.map, self._actors[actor_id].get_location())
         yaw_diff = math.degrees(get_yaw_diff(lane_center.transform.get_forward_vector(),
                         self._actors[actor_id].get_transform().get_forward_vector()))
 
@@ -1530,8 +1537,8 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
         if not self.RL_switch:
             if self._num_steps[actor_id] > self._scenario_config["max_steps"]:
                 # Let the traffic manager only execute 5000 steps. or it can fill the replay buffer
-                logging.info(f"{self._scenario_config['max_steps']
-                                } steps passed under traffic manager control")
+                logging.info(f"{self._scenario_config['max_steps']} "
+                             f"steps passed under traffic manager control")
                 return True
 
         return False

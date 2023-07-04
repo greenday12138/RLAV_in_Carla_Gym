@@ -1,6 +1,5 @@
 #!/usr/bin/env python
 import time
-
 from macad_gym.core.multi_env import MultiCarlaEnv
 
 
@@ -9,6 +8,12 @@ class FixedRoute2CarTown05(MultiCarlaEnv):
     def __init__(self):
         self.configs = {
             "scenarios": "FR2C_TOWN5",
+            "rl_parameters":{
+                #Let the RL controller and PID controller alternatively take control every 20 episodes
+                "switch_threshold": 20,
+                #During pre-train steps, agent is only under PID control.
+                "pre_train_steps": 320000,
+            },
             "env": {
                 "server_map": "/Game/Carla/Maps/Town05_Opt",
                 "render": True,
@@ -27,7 +32,22 @@ class FixedRoute2CarTown05(MultiCarlaEnv):
                 "sync_server": True,
                 "fixed_delta_seconds": 0.05,
                 "fixed_route": True,
-                "reward_policy": "PDQNReward"
+                "reward_policy": "PDQNReward",
+                #Distance for searching vehicles in front of ego vehicle, unit -- meters
+                "vehicle_proximity": 50.0, 
+                #Distance for searching traffic light in front of ego vehicle, unit -- meters, attention: this value is tricky
+                "traffic_light_proximity": 50.0,  
+                #Min distance between two vehicles, unit -- meters
+                "min_distance": 5.0,
+                #Activate hybrid mode for Traffic Manager
+                "hybrid": True,
+                "ignore_traffic_light": False,
+                #Set lane change behaviors of Traffic Manager
+                "auto_lane_change": False, 
+                #Distance between generated waypoints
+                "sampling_resolution": 2.0,
+                #The number of look-ahead waypoints in each step
+                "buffer_size": 50,
             },
             "actors": {
                 "car1": {
@@ -50,6 +70,12 @@ class FixedRoute2CarTown05(MultiCarlaEnv):
                     "y_res": 800,
                     "use_depth_camera": False,
                     "send_measurements": False,
+                    #Speed limit for hero vehicle, km/h
+                    "speed_limit": 90.0,
+                    #Speed threshold for hero vehicle, running in start phase before speed reach such threshold, km/h
+                    "speed_threshold": 20.0,
+                    #If hero vehicle speed reaches below this threshold across multiple steps, truncated this episode prematurely, km/h
+                    "speed_min": 3.6,
                 },
                 "car2": {
                     "type": "vehicle_4W",
@@ -71,6 +97,12 @@ class FixedRoute2CarTown05(MultiCarlaEnv):
                     "y_res": 800,
                     "use_depth_camera": False,
                     "send_measurements": False,
+                    #Speed limit for hero vehicle, km/h
+                    "speed_limit": 90.0,
+                    #Speed threshold for hero vehicle, running in start phase before speed reach such threshold, km/h
+                    "speed_threshold": 20.0,
+                    #If hero vehicle speed reaches below this threshold across multiple steps, truncated this episode prematurely, km/h
+                    "speed_min": 3.6,
                 }
             },
         }

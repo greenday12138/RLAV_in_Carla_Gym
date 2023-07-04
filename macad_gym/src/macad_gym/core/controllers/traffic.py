@@ -7,11 +7,16 @@ random.seed(10)
 logger = logging.getLogger(__name__)
 
 
-def apply_traffic(world, traffic_manager, num_vehicles, num_pedestrians, safe=False, route_points=None):
+def apply_traffic(world, traffic_manager, env_config, num_vehicles, num_pedestrians, safe=False, route_points=None):
     # set traffic manager
-    traffic_manager.global_percentage_speed_difference(30.0)
-    traffic_manager.set_global_distance_to_leading_vehicle(2.5)
-    traffic_manager.set_respawn_dormant_vehicles(True)
+    #traffic_manager.global_percentage_speed_difference(30.0)
+    traffic_manager.set_global_distance_to_leading_vehicle(env_config["min_distance"])
+    if env_config["hybrid"] is True:
+        traffic_manager.set_hybrid_physics_mode(True)
+        traffic_manager.set_hybrid_physics_radius(200)
+        traffic_manager.set_respawn_dormant_vehicles(True)
+        #To enable respawning of dormant vehicles within 25 and 700 meters of the hero vehicle
+        traffic_manager.set_boundaries_respawn_dormant_vehicles(200, 2000)
 
     # --------------
     # Spawn vehicles
@@ -65,7 +70,8 @@ def apply_traffic(world, traffic_manager, num_vehicles, num_pedestrians, safe=Fa
                                 ['Straight', 'Straight', 'Straight', 'Straight', 'Straight', 'Straight', 'Straight', 'Straight', 'Straight', 'Straight'])
                 traffic_manager.update_vehicle_lights(vehicle, True)
                 traffic_manager.ignore_signs_percentage(vehicle, 100)
-                traffic_manager.auto_lane_change(vehicle, True)
+                traffic_manager.ignore_lights_percentage(vehicle, 100 if env_config["ignore_traffic_light"] else 0)
+                traffic_manager.auto_lane_change(vehicle, env_config["auto_lane_change"])
                 # modify change probability
                 traffic_manager.random_left_lanechange_percentage(vehicle, 0)
                 traffic_manager.random_right_lanechange_percentage(vehicle, 0)

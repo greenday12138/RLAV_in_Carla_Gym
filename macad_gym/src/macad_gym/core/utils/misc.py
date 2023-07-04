@@ -13,7 +13,7 @@ def sigmoid(x):
     return np.exp(x) / (1 + np.exp(x))
 
 def remove_unnecessary_objects(world):
-    """Remove unuseful objects in the world"""
+    """Remove unuseful objects in the world, use opt maps for this function"""
     def remove_object(world,objs,obj):
         for ob in world.get_environment_objects(obj):
             objs.add(ob.id)
