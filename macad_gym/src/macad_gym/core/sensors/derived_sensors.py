@@ -2,7 +2,8 @@ import carla
 import weakref
 import math
 import collections
-
+from macad_gym.core.utils.wrapper import SemanticTags
+from macad_gym.core.utils.misc import get_actor_display_name
 
 class LaneInvasionSensor(object):
     """Lane Invasion class from carla manual_control.py
@@ -95,9 +96,20 @@ class CollisionSensor(object):
 
     def get_collision_history(self):
         history = collections.defaultdict(int)
-        for frame, intensity in self._history:
+        tags = set()
+        for tag, frame, intensity in self._history:
             history[frame] += intensity
-        return history
+            tags.update(tag)
+
+        if self._hud is not None:
+            #used in pygame
+            return history
+        else:
+            #used elsewhere
+            return history, tags
+        
+    def clear_history(self):
+        self.history.clear()
 
     @staticmethod
     def _on_collision(weak_self, event):
@@ -105,11 +117,13 @@ class CollisionSensor(object):
         if not self:
             return
 
-        # actor_type = get_actor_display_name(event.other_actor)
-        # self._hud.notification('Collision with %r' % actor_type)
+        if self._hud is not None:
+            actor_type = get_actor_display_name(event.other_actor)
+            self._hud.notification('Collision with %r' % actor_type)
         impulse = event.normal_impulse
         intensity = math.sqrt(impulse.x**2 + impulse.y**2 + impulse.z**2)
-        self._history.append((event.frame_number, intensity))
+        for tag in event.other_actor.semantic_tags:
+            self._history.append((SemanticTags(tag), event.frame_number, intensity))
         if len(self._history) > 400:
             self._history.pop(0)
         """

@@ -80,7 +80,7 @@ python -m macad_gym.envs.homo.ncom.inde.po.intrx.ma.stop_sign_3c_town03
      > NOTE: Change the carla client PyPI package version number to match with your CARLA server version.(Remember to install this:`conda install -c conda-forge libstdcxx-ng` , it can fix bugs caused by driver problem on Ubuntu)
      
 ### Bugs Report
-> Note: The following bugs are related Carla simulator settings.
+> Note: The following bugs are related with Carla simulator settings.
 - `Malloc Size=65538 LargeMemoryPoolOffset=65554` 
 
   `Malloc Size=131160 LargeMemoryPoolOffset=196744`

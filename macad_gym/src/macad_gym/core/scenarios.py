@@ -75,7 +75,7 @@ class Scenarios(object):
         "num_vehicles": 20,
         "num_pedestrians": 0,
         "weather_distribution": [0],
-        "max_steps": 2000
+        "max_steps": 5000
     }
 
     SSUI3C_TOWN3 = {

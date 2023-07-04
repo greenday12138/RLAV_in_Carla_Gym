@@ -21,7 +21,7 @@ class MultiActorEnv(gym.Env):
             "camera_0": [0.0, 0.0, 10.0, 20.0. 30.0],
             "traffic_light_1": [0, 3, 5, 1],
         }
-        >>> obs, rewards, dones, infos = env.step(
+        >>> obs, rewards, dones, truncateds, infos = env.step(
             action_dict={
             "car_0": 1, "car_1": 0, "camera_0": 1 "traffic_light_1": 2,
             })
@@ -39,6 +39,14 @@ class MultiActorEnv(gym.Env):
             "camera_0": False,
             "traffic_light_1": False,
             "__all__": False,
+        }
+        >>> print(truncateds)
+        {
+            "car_0": False,
+            "car_1": True,
+            "camera_0": False,
+            "Traffic_light_1": False,
+            "__all__": True,
         }
     """
 
@@ -64,6 +72,8 @@ class MultiActorEnv(gym.Env):
             rewards (dict): Reward values for each ready actor. If the
                 episode is just started, the value will be None.
             dones (dict): Done values for each ready actor. The special key
+                "__all__" is used to indicate env termination.
+            truncateds (dict): Truncated values for each ready actor. The special key
                 "__all__" is used to indicate env termination.
             infos (dict): Info values for each ready actor.
         """

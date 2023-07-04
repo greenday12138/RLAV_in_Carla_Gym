@@ -140,17 +140,55 @@ class VehicleWrapper:
             if 'dis_to_rear_vehs' in opt:
                 self.distance_to_rear_vehicles=opt['dis_to_rear_vehs']
 
+
+class SemanticTags(Enum):
+    """The  semantic tags change with  different Carla versions, 
+     the following tags only works under 0.9.14, 
+     refer to https://carla.readthedocs.io/en/latest/ref_sensors/#semantic-lidar-sensor 
+     for more information."""
+    
+    NONE = 0
+    Roads = 1
+    Sidewalks = 2
+    Buildings = 3
+    Walls = 4
+    Fences = 5
+    Poles = 6
+    TrafficLight = 7
+    TrafficSigns = 8
+    Vegetation = 9
+    Terrain = 10
+    Sky = 11
+    Pedestrians = 12
+    Rider = 13
+    Car = 14
+    Truck = 15
+    Bus = 16
+    Train = 17
+    Motorcycle = 18
+    Bicycle = 19
+    Static = 20
+    Dynamic = 21
+    Other = 22
+    Water = 23
+    RoadLines = 24
+    Ground = 25
+    Bridge = 26
+    RailTrack = 27
+    GuardRail = 28
+    Any = 255
+
 class Truncated(Enum):
     """Different truncate situations"""
-    FALSE=-1
-    OTHER=0
-    CHANGE_LANE_IN_LANE_FOLLOW=1
-    COLLISION=2
-    SPEED_LOW=3
-    OUT_OF_ROAD=4
-    OPPOSITE_DIRECTION=5
-    TRAFFIC_LIGHT_BREAK=6
-    CHANGE_TO_WRONG_LANE=7
+    FALSE = -1
+    OTHER = 0
+    CHANGE_LANE_IN_LANE_FOLLOW = 1 
+    COLLISION = 2
+    SPEED_LOW = 3
+    OUT_OF_ROAD = 4
+    OPPOSITE_DIRECTION = 5
+    TRAFFIC_LIGHT_BREAK = 6
+    CHANGE_TO_WRONG_LANE = 7
 
 class SpeedState(Enum):
     """Different ego vehicle speed state
@@ -165,10 +203,10 @@ class SpeedState(Enum):
 
 class Action(Enum):
     """Parametrized Action for P-DQN"""
-    LANE_FOLLOW=0
-    LANE_CHANGE_LEFT=-1
-    LANE_CHANGE_RIGHT=1
-    STOP=2
+    LANE_FOLLOW = 0
+    LANE_CHANGE_LEFT = -1
+    LANE_CHANGE_RIGHT = 1
+    STOP = 2
 
 class ControlInfo:
     """Wrapper for vehicle(model3) control info"""

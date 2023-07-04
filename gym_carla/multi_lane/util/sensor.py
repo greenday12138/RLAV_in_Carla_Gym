@@ -66,7 +66,7 @@ class CollisionSensor(object):
             history[frame] += intensity
             tags.add(tag)
         if self.hud:
-            #used in pypgam
+            #used in pygame
             return history
         else:
             #used elsewhere

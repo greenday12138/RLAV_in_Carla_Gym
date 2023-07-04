@@ -7,6 +7,11 @@ import numpy as np
 from enum import Enum
 from macad_gym.core.scenarios import ROADS, DISTURB_ROADS
 
+
+def sigmoid(x):
+    x = float(x)
+    return np.exp(x) / (1 + np.exp(x))
+
 def remove_unnecessary_objects(world):
     """Remove unuseful objects in the world"""
     def remove_object(world,objs,obj):

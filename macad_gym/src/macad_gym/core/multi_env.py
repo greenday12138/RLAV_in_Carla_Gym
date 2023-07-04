@@ -35,10 +35,11 @@ from macad_gym.multi_actor_env import MultiActorEnv
 from macad_gym import LOG_DIR
 from macad_gym.core.sensors.utils import preprocess_image
 from macad_gym.core.maps.nodeid_coord_map import MAP_TO_COORDS_MAPPING
-from macad_gym.core.utils.misc import remove_unnecessary_objects
-from macad_gym.core.utils.wrapper import (COMMANDS_ENUM, COMMAND_ORDINAL,
-    ROAD_OPTION_TO_COMMANDS_MAPPING, DISTANCE_TO_GOAL_THRESHOLD, ORIENTATION_TO_GOAL_THRESHOLD,
-    RETRIES_ON_ERROR, GROUND_Z, DISCRETE_ACTIONS, WEATHERS)
+from macad_gym.core.utils.misc import (remove_unnecessary_objects, sigmoid, get_lane_center, 
+    get_yaw_diff, test_waypoint, is_within_distance_ahead)
+from macad_gym.core.utils.wrapper import (COMMANDS_ENUM, COMMAND_ORDINAL, ROAD_OPTION_TO_COMMANDS_MAPPING, 
+    DISTANCE_TO_GOAL_THRESHOLD, ORIENTATION_TO_GOAL_THRESHOLD, RETRIES_ON_ERROR, GROUND_Z, 
+    DISCRETE_ACTIONS, WEATHERS, Truncated, Action, SpeedState)
 
 # from macad_gym.core.sensors.utils import get_transform_from_nearest_way_point
 from macad_gym.core.reward import Reward, PDQNReward
@@ -350,6 +351,7 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
         self._video = False
         self._obs_dict = {}
         self._done_dict = {}
+        self._truncated_dict = {}
         self._previous_actions = {}
         self._previous_rewards = {}
         self._last_reward = {}
@@ -470,7 +472,7 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
                     [
                         SERVER_BINARY,
                         "-windowed",
-                        #"-prefernvidia",
+                        "-prefernvidia",
                         "-quality-level=Low",
                         "-ResX=",
                         str(self._env_config["render_x_res"]),
@@ -532,7 +534,7 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
             # Set fixed_delta_seconds to have reliable physics between sim steps
             world_settings.fixed_delta_seconds = self._fixed_delta_seconds
         self.world.apply_settings(world_settings)
-        # Set up traffic manager
+        # Sign on traffic manager
         self._traffic_manager = self._client.get_trafficmanager()
         self._traffic_manager.set_synchronous_mode(self._sync_server)
         # Set the spectator/server view if rendering is enabled
@@ -543,11 +545,9 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
             angle = 160  # degrees
             a = math.radians(angle)
             location = (
-                carla.Location(d * math.cos(a), d * math.sin(a), 2.0) + spectator_loc
-            )
+                carla.Location(d * math.cos(a), d * math.sin(a), 2.0) + spectator_loc)
             spectator.set_transform(
-                carla.Transform(location, carla.Rotation(yaw=180 + angle, pitch=-15))
-            )
+                carla.Transform(location, carla.Rotation(yaw=180 + angle, pitch=-15)))
 
         if self._env_config.get("enable_planner"):
             planner_dao = GlobalRoutePlannerDAO(self.world.get_map())
@@ -658,6 +658,7 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
                 self._obs_dict[actor_id] = obs
                 # Actor correctly reset
                 self._done_dict[actor_id] = False
+                self._truncated_dict[actor_id] = False
 
         return self._obs_dict
 
@@ -815,6 +816,7 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
         """
 
         self._done_dict["__all__"] = False
+        self._truncated_dict["__all__"] = False
         if clean_world:
             self._clean_world()
 
@@ -847,6 +849,7 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
                     self._actors[actor_id] = self._spawn_new_actor(actor_id)
                 except RuntimeError as spawn_err:
                     del self._done_dict[actor_id]
+                    del self._truncated_dict[actor_id]
                     # Chain the exception & re-raise to be handled by the caller `self.reset()`
                     raise spawn_err from RuntimeError(
                         "Unable to spawn actor:{}".format(actor_id)
@@ -1094,17 +1097,40 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
             obs_dict = {}
             reward_dict = {}
             info_dict = {}
+            actions = {}
 
             for actor_id, action in action_dict.items():
-                obs, reward, done, info = self._step(actor_id, action)
+                actions.update({actor_id: self._step_before_tick(actor_id, action)})
+
+            # Asynchronosly (one actor at a time; not all at once in a sync) apply
+            # actor actions & perform a server tick after each actor's apply_action
+            # if running with sync_server steps
+            # NOTE: A distinction is made between "(A)Synchronous Environment" and
+            # "(A)Synchronous (carla) server"
+            if self._sync_server:
+                if self._render:
+                    spectator = self.world.get_spectator()
+                    transform = self._actors[actor_id].get_transform()
+                    spectator.set_transform(carla.Transform(transform.location + carla.Location(z=80),
+                                                            carla.Rotation(pitch=-90)))
+                self.world.tick()
+                # `wait_for_tick` is no longer needed, see https://github.com/carla-simulator/carla/pull/1803
+                # self.world.wait_for_tick()
+
+            for actor_id, _ in action_dict.items():
+                obs, reward, done, truncated, info = self._step_after_tick(actor_id, actions[actor_id])
                 obs_dict[actor_id] = obs
                 reward_dict[actor_id] = reward
                 if not self._done_dict.get(actor_id, False):
                     self._done_dict[actor_id] = done
+                if not self._truncated_dict.get(actor_id, False):
+                    self._truncated_dict[actor_id] = truncated
                 info_dict[actor_id] = info
-            self._done_dict["__all__"] = sum(self._done_dict.values()) >= len(
-                self._actors
-            )
+
+            self._done_dict["__all__"] = sum(self._done_dict.values()
+                                             ) >= len(self._actors)
+            self._truncated_dict["__all__"] = sum(self._truncated_dict.values()
+                                                  ) > 0
             # Find if any actor's config has render=True & render only for
             # that actor. NOTE: with async server stepping, enabling rendering
             # affects the step time & therefore MAX_STEPS needs adjustments
@@ -1122,14 +1148,14 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
                 if self._manual_controller is None:
                     Render.dummy_event_handler()
 
-            return obs_dict, reward_dict, self._done_dict, info_dict
+            return obs_dict, reward_dict, self._done_dict, self._truncated_dict, info_dict
         except Exception:
             print(
                 "Error during step, terminating episode early.", traceback.format_exc()
             )
             self._clear_server_state()
 
-    def _step(self, actor_id, action):
+    def _step_before_tick(self, actor_id, action):
         """Perform the actual step in the CARLA environment
 
         Applies control to `actor_id` based on `action`, process measurements,
@@ -1140,12 +1166,8 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
             action: Actions to be executed for the actor.
 
         Returns
-            obs (obs_space): Observation for the actor whose id is actor_id.
-            reward (float): Reward for actor. None for first step
-            done (bool): Done value for actor.
-            info (dict): Info for actor.
+            ation (dict)
         """
-
         if self._discrete_actions:
             action = DISCRETE_ACTIONS[int(action)]
         assert len(action) == 2, "Invalid action {}".format(action)
@@ -1229,22 +1251,35 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
                         reverse=reverse,
                     )
                 )
-        # Asynchronosly (one actor at a time; not all at once in a sync) apply
-        # actor actions & perform a server tick after each actor's apply_action
-        # if running with sync_server steps
-        # NOTE: A distinction is made between "(A)Synchronous Environment" and
-        # "(A)Synchronous (carla) server"
-        if self._sync_server:
-            if self._render:
-                spectator = self.world.get_spectator()
-                transform = self._actors[actor_id].get_transform()
-                spectator.set_transform(carla.Transform(transform.location + carla.Location(z=80),
-                                                        carla.Rotation(pitch=-90)))
-            self.world.tick()
-            # `wait_for_tick` is no longer needed, see https://github.com/carla-simulator/carla/pull/1803
-            # self.world.wait_for_tick()
+        
+        return {'steer':steer, 'throttle': throttle, 'brake': brake, 'reverse':reverse,
+                'hand_brake':hand_brake}
+
+    def _step_after_tick(self, actor_id, action={
+            "steer": 0.0,
+            "throttle": 0.0,
+            "brake": 0.0,
+            "reverse": False,
+            "hand_brake": False
+        }):
+        """Perform the actual step in the CARLA environment
+
+        process measurements,
+        compute the rewards and terminal state info (dones and truncateds).
+
+        Args:
+            actor_id(str): Actor identifier
+            action: Actions to be executed for the actor.
+
+        Returns
+            obs (obs_space): Observation for the actor whose id is actor_id.
+            reward (float): Reward for actor. None for first step
+            done (bool): Done value for actor.
+            info (dict): Info for actor.
+        """
 
         # Process observations
+        config = self._actor_configs[actor_id]
         py_measurements = self._read_observation(actor_id)
         if self._verbose:
             print("Next command", py_measurements["next_command"])
@@ -1255,26 +1290,29 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
         else:
             py_measurements["action"] = action
         py_measurements["control"] = {
-            "steer": steer,
-            "throttle": throttle,
-            "brake": brake,
-            "reverse": reverse,
-            "hand_brake": hand_brake,
+            "steer": action['steer'],
+            "throttle": action['throttle'],
+            "brake": action['brake'],
+            "reverse": action['reverse'],
+            "hand_brake": action['hand_brake'],
         }
 
+        # Compute truncated
+        truncated = self._truncated(actor_id)
         # Compute done
-        done = (
-            self._num_steps[actor_id] > self._scenario_map["max_steps"]
-            or py_measurements["next_command"] == "REACH_GOAL"
-            or (
-                config["early_terminate_on_collision"]
-                and collided_done(py_measurements)
-            )
-        )
+        done = self._done(actor_id, truncated)
+        # done = (
+        #     self._num_steps[actor_id] > self._scenario_map["max_steps"]
+        #     or py_measurements["next_command"] == "REACH_GOAL"
+        #     or (
+        #         config["early_terminate_on_collision"]
+        #         and collided_done(py_measurements)
+        #     )
+        # )
         py_measurements["done"] = done
+        py_measurements["truncated"] = truncated
 
         # Compute reward
-        config = self._actor_configs[actor_id]
         flag = config["reward_function"]
         reward = self._reward_policy.compute_reward(
             self._prev_measurement[actor_id], py_measurements, flag
@@ -1320,7 +1358,7 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
             done,
             py_measurements,
         )
-
+  
     def _read_observation(self, actor_id):
         """Read observation and return measurement.
 
@@ -1414,6 +1452,89 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
         }
 
         return py_measurements
+    
+    def _truncated(self, actor_id, py_measurements):
+        """Decide whether terminating current episode or not"""
+        m = py_measurements
+        lane_center=get_lane_center(self._map, self._actors[actor_id].get_location())
+        yaw_diff = math.degrees(get_yaw_diff(lane_center.transform.get_forward_vector(),
+                        self._actors[actor_id].get_transform().get_forward_vector()))
+
+        if (m["collision_vehicles"] > 0 or m["collision_pedestrians"] or m["collision_other"] > 0) \
+                and self._actor_configs[actor_id].get("early_terminate_on_collision", True):
+            # Here we judge speed state because there might be collision event when spawning vehicles
+            logging.warn('collison happend')
+            return Truncated.COLLISION
+        if not test_waypoint(lane_center,False):
+            logging.warn('vehicle drive out of road')
+            return Truncated.OUT_OF_ROAD
+        # if self.current_action == Action.LANE_FOLLOW and self.current_lane != self.last_lane:
+        #     logging.warn('change lane in lane following mode')
+        #     return Truncated.CHANGE_LANE_IN_LANE_FOLLOW
+        # if self.current_action == Action.LANE_CHANGE_LEFT and self.current_lane-self.last_lane<0:
+        #     logging.warn('vehicle change to wrong lane')
+        #     return Truncated.CHANGE_TO_WRONG_LANE
+        # if self.current_action == Action.LANE_CHANGE_RIGHT and self.current_lane-self.last_lane>0:
+        #     logging.warn('vehicle change to wrong lane')
+        #     return Truncated.CHANGE_TO_WRONG_LANE
+        # if self.speed_state!=SpeedState.START and not self.vehs_info.center_front_veh:
+        #     if not self.lights_info or self.lights_info.state!=carla.TrafficLightState.Red:
+        #         if len(self.vel_buffer)==self.vel_buffer.maxlen:
+        #             avg_vel=0
+        #             for vel in self.vel_buffer:
+        #                 avg_vel+=vel/self.vel_buffer.maxlen
+        #             if avg_vel*3.6<self.speed_min:
+        #                 logging.warn('vehicle speed too low')
+        #                 return Truncated.SPEED_LOW
+            
+        # if self.lane_invasion_sensor.get_invasion_count()!=0:
+        #     logging.warn('lane invasion occur')
+        #     return True
+        # if self.step_info['Lane_center'] <=-1.0:
+        #     logging.warn('drive out of road, lane invasion occur')
+        #     return True
+        if abs(yaw_diff)>90:
+            logging.warn('moving in opposite direction')
+            return Truncated.OPPOSITE_DIRECTION
+        # if self.lights_info and self.lights_info.state!=carla.TrafficLightState.Green:
+        #     self.world.debug.draw_point(self.lights_info.get_location(),size=0.3,life_time=0)
+        #     wps=self.lights_info.get_stop_waypoints()
+        #     for wp in wps:
+        #         self.world.debug.draw_point(wp.transform.location,size=0.1,life_time=0)
+        #         if is_within_distance_ahead(self.ego_vehicle.get_location(),wp.transform.location, wp.transform, self.min_distance):
+        #             logging.warn('break traffic light rule')
+        #             return Truncated.TRAFFIC_LIGHT_BREAK
+
+        return Truncated.FALSE
+
+    def _done(self, actor_id, truncated):
+        if truncated!=Truncated.FALSE:
+            return False
+        # if self.wps_info.center_front_wps[2].transform.location.distance(
+        #         self.ego_spawn_point.location) < self.sampling_resolution:          
+        #     # The local planner's waypoint list has been depleted
+        #     logging.info('vehicle reach destination, simulation terminate')                                 
+        #     return True
+        # if self.wps_info.left_front_wps and \
+        #         self.wps_info.left_front_wps[2].transform.location.distance(
+        #         self.ego_spawn_point.location)<self.sampling_resolution:
+        #     # The local planner's waypoint list has been depleted
+        #     logging.info('vehicle reach destination, simulation terminate')
+        #     return True
+        # if self.wps_info.right_front_wps and \
+        #         self.wps_info.right_front_wps[2].transform.location.distance(
+        #         self.ego_spawn_point.location)<self.sampling_resolution:
+        #     # The local planner's waypoint list has been depleted
+        #     logging.info('vehicle reach destination, simulation terminate')
+        #     return True
+        if not self.RL_switch:
+            if self._num_steps[actor_id] > self._scenario_config["max_steps"]:
+                # Let the traffic manager only execute 5000 steps. or it can fill the replay buffer
+                logging.info(f"{self._scenario_config['max_steps']
+                                } steps passed under traffic manager control")
+                return True
+
+        return False
 
     def close(self):
         """Clean-up the world, clear server state & close the Env"""
@@ -1442,23 +1563,6 @@ def print_measurements(measurements):
         agents_num=number_of_agents,
     )
     print(message)
-
-
-def sigmoid(x):
-    x = float(x)
-    return np.exp(x) / (1 + np.exp(x))
-
-
-def collided_done(py_measurements):
-    """Define the main episode termination criteria"""
-    m = py_measurements
-    collided = (
-        m["collision_vehicles"] > 0
-        or m["collision_pedestrians"] > 0
-        or m["collision_other"] > 0
-    )
-    return bool(collided)  # or m["total_reward"] < -100)
-
 
 def get_next_actions(measurements, is_discrete_actions):
     """Get/Update next action, work with way_point based planner.
