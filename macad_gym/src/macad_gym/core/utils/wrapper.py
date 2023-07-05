@@ -5,6 +5,57 @@ from enum import Enum
 from macad_gym.core.controllers.route_planner import RoadOption
 from macad_gym.core.utils.misc import get_speed,get_yaw_diff,test_waypoint,get_sign
 
+
+# TODO: Clean env & actor configs to have appropriate keys based on the nature
+# of env
+DEFAULT_MULTIENV_CONFIG = {
+    "scenarios": "DEFAULT_SCENARIO_TOWN1",
+    "env": {
+        # Since Carla 0.9.6, you have to use `client.load_world(server_map)`
+        # instead of passing the map name as an argument
+        "server_map": "/Game/Carla/Maps/Town01",
+        "render": True,
+        "render_x_res": 800,
+        "render_y_res": 600,
+        "x_res": 84,
+        "y_res": 84,
+        "framestack": 1,
+        "discrete_actions": True,
+        "squash_action_logits": False,
+        "verbose": False,
+        "use_depth_camera": False,
+        "send_measurements": False,
+        "enable_planner": True,
+        "sync_server": True,
+        "fixed_delta_seconds": 0.05,
+    },
+    "actors": {
+        "vehicle1": {
+            "enable_planner": True,
+            "render": True,  # Whether to render to screen or send to VFB
+            "framestack": 1,  # note: only [1, 2] currently supported
+            "convert_images_to_video": False,
+            "early_terminate_on_collision": True,
+            "verbose": False,
+            "reward_function": "corl2017",
+            "x_res": 84,
+            "y_res": 84,
+            "use_depth_camera": False,
+            "squash_action_logits": False,
+            "manual_control": False,
+            "auto_control": False,
+            "camera_type": "rgb",
+            "camera_position": 0,
+            "collision_sensor": "on",  # off
+            "lane_sensor": "on",  # off
+            "server_process": False,
+            "send_measurements": False,
+            "log_images": False,
+            "log_measurements": False,
+        }
+    },
+}
+
 # Carla planner commands
 COMMANDS_ENUM = {
     0.0: "REACH_GOAL",
@@ -200,6 +251,7 @@ class SpeedState(Enum):
     RUNNING = 1
     RUNNING_RL = 2
     RUNNING_PID = 3
+    STOP = 4
 
 class Action(Enum):
     """Parametrized Action for P-DQN"""
@@ -326,3 +378,55 @@ def fill_action_param(action, steer, throttle_brake, action_param, modify_change
         action_param[0][action*2] = steer
         action_param[0][action*2+1] = throttle_brake
     return action_param
+
+def print_measurements(measurements):
+    number_of_agents = len(measurements.non_player_agents)
+    player_measurements = measurements.player_measurements
+    message = "Vehicle at ({pos_x:.1f}, {pos_y:.1f}), "
+    message += "{speed:.2f} km/h, "
+    message += "Collision: {{vehicles={col_cars:.0f}, "
+    message += "pedestrians={col_ped:.0f}, other={col_other:.0f}}}, "
+    message += "{other_lane:.0f}% other lane, {offroad:.0f}% off-road, "
+    message += "({agents_num:d} non-player macad_agents in the scene)"
+    message = message.format(
+        pos_x=player_measurements.transform.location.x,
+        pos_y=player_measurements.transform.location.y,
+        speed=player_measurements.forward_speed,
+        col_cars=player_measurements.collision_vehicles,
+        col_ped=player_measurements.collision_pedestrians,
+        col_other=player_measurements.collision_other,
+        other_lane=100 * player_measurements.intersection_otherlane,
+        offroad=100 * player_measurements.intersection_offroad,
+        agents_num=number_of_agents,
+    )
+    print(message)
+
+
+def get_next_actions(measurements, is_discrete_actions):
+    """Get/Update next action, work with way_point based planner.
+
+    Args:
+        measurements (dict): measurement data.
+        is_discrete_actions (bool): whether use discrete actions
+
+    Returns:
+        dict: action_dict, dict of len-two integer lists.
+    """
+    action_dict = {}
+    for actor_id, meas in measurements.items():
+        m = meas
+        command = m["next_command"]
+        if command == "REACH_GOAL":
+            action_dict[actor_id] = 0
+        elif command == "GO_STRAIGHT":
+            action_dict[actor_id] = 3
+        elif command == "TURN_RIGHT":
+            action_dict[actor_id] = 6
+        elif command == "TURN_LEFT":
+            action_dict[actor_id] = 5
+        elif command == "LANE_FOLLOW":
+            action_dict[actor_id] = 3
+        # Test for discrete actions:
+        if not is_discrete_actions:
+            action_dict[actor_id] = [1, 0]
+    return action_dict

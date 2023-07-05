@@ -36,10 +36,12 @@ from macad_gym import LOG_DIR
 from macad_gym.core.sensors.utils import preprocess_image
 from macad_gym.core.maps.nodeid_coord_map import MAP_TO_COORDS_MAPPING
 from macad_gym.core.utils.misc import (remove_unnecessary_objects, sigmoid, get_lane_center, 
-    get_yaw_diff, test_waypoint, is_within_distance_ahead)
+    get_yaw_diff, test_waypoint, is_within_distance_ahead, get_projection, draw_waypoints,
+    get_speed)
 from macad_gym.core.utils.wrapper import (COMMANDS_ENUM, COMMAND_ORDINAL, ROAD_OPTION_TO_COMMANDS_MAPPING, 
     DISTANCE_TO_GOAL_THRESHOLD, ORIENTATION_TO_GOAL_THRESHOLD, RETRIES_ON_ERROR, GROUND_Z, 
-    DISCRETE_ACTIONS, WEATHERS, Truncated, Action, SpeedState)
+    DISCRETE_ACTIONS, WEATHERS, Truncated, Action, SpeedState, process_lane_wp, process_veh,
+    get_next_actions, DEFAULT_MULTIENV_CONFIG)
 
 # from macad_gym.core.sensors.utils import get_transform_from_nearest_way_point
 from macad_gym.core.reward import Reward, PDQNReward
@@ -53,17 +55,16 @@ from macad_gym.core.sensors.derived_sensors import LaneInvasionSensor
 from macad_gym.core.sensors.derived_sensors import CollisionSensor
 from macad_gym.core.controllers.keyboard_control import KeyboardControl
 from macad_gym.carla.PythonAPI.agents.navigation.global_route_planner_dao import (  # noqa: E501
-    GlobalRoutePlannerDAO,
-)
+    GlobalRoutePlannerDAO)
 from macad_gym.core.controllers.route_planner import RoutePlanner
+from macad_gym.core.controllers.local_planner import LocalPlanner
 
 # The following imports depend on these paths being in sys path
 # TODO: Fix this. This probably won't work after packaging/distribution
 sys.path.append("src/macad_gym/carla/PythonAPI")
 from macad_gym.core.maps.nav_utils import PathTracker  # noqa: E402
 from macad_gym.carla.PythonAPI.agents.navigation.global_route_planner import (  # noqa: E402, E501
-    GlobalRoutePlanner,
-)
+    GlobalRoutePlanner)
 
 logger = logging.getLogger(__name__)
 # Set this where you want to save image outputs (or empty string to disable)
@@ -119,55 +120,7 @@ try:
 except ImportError:
     logger.warning("\n Disabling RLlib support.", exc_info=True)
 
-# TODO: Clean env & actor configs to have appropriate keys based on the nature
-# of env
-DEFAULT_MULTIENV_CONFIG = {
-    "scenarios": "DEFAULT_SCENARIO_TOWN1",
-    "env": {
-        # Since Carla 0.9.6, you have to use `client.load_world(server_map)`
-        # instead of passing the map name as an argument
-        "server_map": "/Game/Carla/Maps/Town01",
-        "render": True,
-        "render_x_res": 800,
-        "render_y_res": 600,
-        "x_res": 84,
-        "y_res": 84,
-        "framestack": 1,
-        "discrete_actions": True,
-        "squash_action_logits": False,
-        "verbose": False,
-        "use_depth_camera": False,
-        "send_measurements": False,
-        "enable_planner": True,
-        "sync_server": True,
-        "fixed_delta_seconds": 0.05,
-    },
-    "actors": {
-        "vehicle1": {
-            "enable_planner": True,
-            "render": True,  # Whether to render to screen or send to VFB
-            "framestack": 1,  # note: only [1, 2] currently supported
-            "convert_images_to_video": False,
-            "early_terminate_on_collision": True,
-            "verbose": False,
-            "reward_function": "corl2017",
-            "x_res": 84,
-            "y_res": 84,
-            "use_depth_camera": False,
-            "squash_action_logits": False,
-            "manual_control": False,
-            "auto_control": False,
-            "camera_type": "rgb",
-            "camera_position": 0,
-            "collision_sensor": "on",  # off
-            "lane_sensor": "on",  # off
-            "server_process": False,
-            "send_measurements": False,
-            "log_images": False,
-            "log_measurements": False,
-        }
-    },
-}
+
 
 class MultiCarlaEnv(*MultiAgentEnvBases):
     def __init__(self, configs=None):
@@ -204,6 +157,7 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
         self._scenario_config = configs["scenarios"]
         self._env_config = configs["env"]
         self._actor_configs = configs["actors"]
+        self._rl_configs = configs["rl_parameters"]
 
         # At most one actor can be manual controlled
         manual_control_count = 0
@@ -359,6 +313,13 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
         self._agents = {}  # Dictionary of macad_agents with agent_id as key
         self._actors = {}  # Dictionary of actors with actor_id as key
         self._speed_state = {}  # Dictionary of actors' running state with actor_id as key
+        self._local_planner = {}
+        self._state = {
+            "wps":{},   #Dictionary of waypoints info with actor_id as keyw
+            "lights":{}, #Dictionary of traffic lights info with actor_id as key
+            "vehs":{},  #Dictionary of other vehicles info with actor_id as key
+            "meas":{},   #Dictionary of actor's py_measurements with actor_id as key
+        }
         self._cameras = {}  # Dictionary of sensors with actor_id as key
         self._path_trackers = {}  # Dictionary of sensors with actor_id as key
         self._collisions = {}  # Dictionary of sensors with actor_id as key
@@ -367,8 +328,8 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
         # RL_switch: True--currently RL in control, False--currently PID in control
         self.RL_switch = False
         self.switch_count=0
-        self.SWITCH_THRESHOLD = configs["rl_parameters"]["switch_threshold"]
-        self.pre_train_steps = configs["rl_parameters"]["pre_train_steps"]
+        self.SWITCH_THRESHOLD = self._rl_configs["switch_threshold"]
+        self.pre_train_steps = self._rl_configs["pre_train_steps"]
 
     @staticmethod
     def _get_tcp_port(port=0):
@@ -534,7 +495,8 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
         self.map = self.world.get_map()
         world_settings = self.world.get_settings()
         # Actors will become dormant 2km away from here vehicle
-        world_settings.actor_active_distance = 2000
+        if self._env_config["hybrid"]:
+            world_settings.actor_active_distance = 2000 
         world_settings.synchronous_mode = self._sync_server
         world_settings.no_rendering_mode = not self._render
         if self._sync_server:
@@ -652,8 +614,6 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
                 self._total_reward[actor_id] = None
                 self._num_steps[actor_id] = 0
 
-                py_measurement = self._read_observation(actor_id)
-                self._prev_measurement[actor_id] = py_measurement
                 cam = self._cameras[actor_id]
                 # Wait for the sensor (camera) actor to start streaming
                 # Shouldn't take too long
@@ -664,24 +624,15 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
                         # self.world.wait_for_tick()
                 if cam.image is None:
                     print("callback_count:", actor_id, ":", cam.callback_count)
-                obs = self._encode_obs(actor_id, cam.image, py_measurement)
+                state = self._read_observation(actor_id)
+                self._prev_measurement[actor_id] = self._state["meas"][actor_id]
+                obs = self._encode_obs(actor_id, cam.image, state)
                 self._obs_dict[actor_id] = obs
                 # Actor correctly reset
                 self._done_dict[actor_id] = False
                 self._truncated_dict[actor_id] = False
 
         return self._obs_dict
-
-    # ! Deprecated method
-    def _on_render(self):
-        """Render the pygame window.
-
-        Args:
-
-        Returns:
-            N/A
-        """
-        pass
 
     def _spawn_new_actor(self, actor_id):
         """Spawn an agent as per the blueprint at the given pose
@@ -773,6 +724,7 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
         if len(self._start_pos[actor_id]) > 3:
             rot.yaw = self._start_pos[actor_id][3]
         transform = carla.Transform(loc, rot)
+        draw_waypoints(self.world, [self.map.get_waypoint(transform.location)], life_time=0)
         self._actor_configs[actor_id]["start_transform"] = transform
         vehicle = None
         for retry in range(RETRIES_ON_ERROR):
@@ -852,13 +804,18 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
                 # Try to spawn actor (soft reset) or fail and reinitialize the server before get back here
                 try:
                     self._actors[actor_id] = self._spawn_new_actor(actor_id)
+                    self._local_planner[actor_id] = LocalPlanner(
+                        self._actors[actor_id], {
+                            'sampling_resolution': self._env_config["sampling_resolution"],
+                            'buffer_size': self._env_config["buffer_size"],
+                            'vehicle_proximity': self._env_config["vehicle_proximity"],
+                            'traffic_light_proximity':self._env_config["traffic_light_proximity"]})
                 except RuntimeError as spawn_err:
                     del self._done_dict[actor_id]
                     del self._truncated_dict[actor_id]
                     # Chain the exception & re-raise to be handled by the caller `self.reset()`
                     raise spawn_err from RuntimeError(
-                        "Unable to spawn actor:{}".format(actor_id)
-                    )
+                        "Unable to spawn actor:{}".format(actor_id))
 
                 if self._env_config["enable_planner"]:
                     self._path_trackers[actor_id] = PathTracker(
@@ -929,16 +886,14 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
                         CAMERA_TYPES["rgb"].value - 1, pos=2, notify=False
                     )
 
-                self._start_coord.update(
-                    {
+                self._start_coord.update({
                         actor_id: [
                             self._start_pos[actor_id][0] // 100,
                             self._start_pos[actor_id][1] // 100,
                         ]
                     }
                 )
-                self._end_coord.update(
-                    {
+                self._end_coord.update({
                         actor_id: [
                             self._end_pos[actor_id][0] // 100,
                             self._end_pos[actor_id][1] // 100,
@@ -1013,18 +968,18 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
             img = obs.swapaxes(0, 1) * 128 + 128
         return img
 
-    def _encode_obs(self, actor_id, image, py_measurements):
+    def _encode_obs(self, actor_id, image, state):
         """Encode sensor and measurements into obs based on state-space config.
 
         Args:
             actor_id (str): Actor identifier
             image (array): original unprocessed image
-            py_measurements (dict): measurement file
 
         Returns:
             obs (dict): properly encoded observation data for each actor
         """
         assert self._framestack in [1, 2]
+        py_measurements = self._state["meas"][actor_id]
         # Apply preprocessing
         config = self._actor_configs[actor_id]
         image = preprocess_image(image, config)
@@ -1041,8 +996,9 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
             return image
         obs = (
             image,
+            state,
             COMMAND_ORDINAL[py_measurements["next_command"]],
-            [py_measurements["forward_speed"], py_measurements["distance_to_goal"]],
+            [py_measurements["velocity"], py_measurements["distance_to_goal"]],
         )
 
         self._last_obs = obs
@@ -1133,8 +1089,7 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
                     self._truncated_dict[actor_id] = truncated
                 info_dict[actor_id] = info
 
-            self._done_dict["__all__"] = sum(self._done_dict.values()
-                                             ) >= len(self._actors)
+            self._done_dict["__all__"] = sum(self._done_dict.values()) >= len(self._actors)
             self._truncated_dict["__all__"] = sum(
                 filter(lambda x:  x!=Truncated.FALSE, self._truncated_dict.values())) > 0
             # Find if any actor's config has render=True & render only for
@@ -1214,9 +1169,9 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
             pygame.display.flip()
         elif config["auto_control"]:
             if getattr(self._actors[actor_id], "set_autopilot", 0):
-                self._actors[actor_id].set_autopilot(
-                    True, self._traffic_manager.get_port()
-                )
+                self._actors[actor_id].set_autopilot(True, self._traffic_manager.get_port())
+                self._traffic_manager.vehicle_percentage_speed_difference(self._actors[actor_id], 
+                    (30 - self._actor_configs[actor_id]["speed_limit"]) / 30 * 100)
         else:
             # TODO: Planner based on waypoints.
             # cur_location = self.actor_list[i].get_location()
@@ -1286,7 +1241,8 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
 
         # Process observations
         config = self._actor_configs[actor_id]
-        py_measurements = self._read_observation(actor_id)
+        state = self._read_observation(actor_id)
+        py_measurements = self._state["meas"][actor_id]
         if self._verbose:
             print("Next command", py_measurements["next_command"])
         # Store previous action
@@ -1304,7 +1260,7 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
         }
 
         # Compute truncated
-        truncated = self._truncated(actor_id, py_measurements)
+        truncated = self._truncated(actor_id)
         # Compute done
         done = self._done(actor_id, truncated)
         # done = (
@@ -1359,13 +1315,13 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
         original_image = self._cameras[actor_id].image
 
         return (
-            self._encode_obs(actor_id, original_image, py_measurements),
+            self._encode_obs(actor_id, original_image, state),
             reward,
             done,
             truncated,
             py_measurements,
         )
-  
+
     def _read_observation(self, actor_id):
         """Read observation and return measurement.
 
@@ -1373,7 +1329,7 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
             actor_id (str): Actor identifier
 
         Returns:
-            dict: measurement data.
+            dict: state dict information containing waypoints, hero vehicle, traffic lights and npc vehicles
 
         """
         cur = self._actors[actor_id]
@@ -1429,7 +1385,7 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
             )
         )
 
-        py_measurements = {
+        self._state["meas"].update({actor_id: {
             "episode_id": self._episode_id_dict[actor_id],
             "step": self._num_steps[actor_id],
             "x": self._actors[actor_id].get_location().x,
@@ -1437,7 +1393,6 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
             "pitch": self._actors[actor_id].get_transform().rotation.pitch,
             "yaw": self._actors[actor_id].get_transform().rotation.yaw,
             "roll": self._actors[actor_id].get_transform().rotation.roll,
-            "forward_speed": self._actors[actor_id].get_velocity().x,
             "distance_to_goal": distance_to_goal,
             "distance_to_goal_euclidean": distance_to_goal_euclidean,
             "collision_vehicles": collision_vehicles,
@@ -1446,7 +1401,7 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
             "intersection_offroad": intersection_offroad,
             "intersection_otherlane": intersection_otherlane,
             "weather": self._weather,
-            "map": self.map,
+            "map": self._server_map,
             "start_coord": self._start_coord[actor_id],
             "end_coord": self._end_coord[actor_id],
             "current_scenario": self._scenario_map,
@@ -1456,13 +1411,135 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
             "next_command": next_command,
             "previous_action": self._previous_actions.get(actor_id, None),
             "previous_reward": self._previous_rewards.get(actor_id, None),
-        }
+        }})
 
-        return py_measurements
-    
-    def _truncated(self, actor_id, py_measurements):
+        return self._get_state(actor_id)
+        
+    def _speed_switch(self, actor_id, a_index):
+        """a_index: the control command of RL agent"""
+        ego_speed = get_speed(self._actors[actor_id])
+        if self._speed_state[actor_id] == SpeedState.START:
+            # control = self.controller.run_step({'waypoints':self.next_wps,'vehicle_front':self.vehicle_front})
+            if ego_speed >= self._actor_configs[actor_id]["speed_threshold"]:
+                self._speed_state[actor_id] = SpeedState.RUNNING
+                #self._actors[actor_id].set_autopilot(False, self._traffic_manager.get_port())
+        elif self._speed_state[actor_id] == SpeedState.RUNNING:
+            if self.RL_switch:
+               pass
+            if self._state["wps"][actor_id].center_front_wps[1].road_id == self._scenario_map["dest_road_id"]:          
+                #Vehicle reaches destination, stop vehicle
+                self._speed_state[actor_id] = SpeedState.STOP
+        elif self._speed_state[actor_id] == SpeedState.STOP:
+            #Hero vehicle reaches destination, properly stop hero vehicle
+            self._collisions[actor_id].stop()
+            self._lane_invasions[actor_id].stop()
+            self._actors[actor_id].set_autopilot(False, self._traffic_manager.get_port())
+        else:
+            logging.error('CODE LOGIC ERROR')
+
+        return 
+
+    def _get_state(self, actor_id):
+        """return a tuple: the first element is next waypoints, 
+        the second element is vehicle_front information"""
+        wps_info, lights_info, vehs_info = self._local_planner[actor_id].run_step()
+        self._state["wps"].update({actor_id: wps_info})
+        self._state["lights"].update({actor_id: lights_info})
+        self._state["vehs"].update({actor_id: vehs_info})
+        if self._rl_configs["debug"]:
+            draw_waypoints(self.world, wps_info.center_front_wps+wps_info.center_rear_wps+\
+                wps_info.left_front_wps+wps_info.left_rear_wps+wps_info.right_front_wps+wps_info.right_rear_wps, 
+                self._fixed_delta_seconds + 0.001, z=1, 
+                color=random.choice([(255,0,0)]))
+
+        left_wps=wps_info.left_front_wps
+        center_wps=wps_info.center_front_wps
+        right_wps=wps_info.right_front_wps
+
+        lane_center = get_lane_center(self.map, self._actors[actor_id].get_location())
+        right_lane_dis = lane_center.get_right_lane(
+            ).transform.location.distance(self._actors[actor_id].get_location())
+        ego_t= lane_center.lane_width / 2 + lane_center.get_right_lane().lane_width / 2 - right_lane_dis
+
+        hero_vehicle_z = lane_center.transform.location.z
+        ego_forward_vector = self._actors[actor_id].get_transform().get_forward_vector()
+        my_sample_ratio = self._env_config["buffer_size"] // 10
+        center_wps_processed = process_lane_wp(center_wps, hero_vehicle_z, ego_forward_vector, my_sample_ratio, 0)
+        if len(left_wps) == 0:
+            left_wps_processed = center_wps_processed.copy()
+            for left_wp in left_wps_processed:
+                left_wp[2] = -1
+        else:
+            left_wps_processed = process_lane_wp(left_wps, hero_vehicle_z, ego_forward_vector, my_sample_ratio, -1)
+        if len(right_wps) == 0:
+            right_wps_processed = center_wps_processed.copy()
+            for right_wp in right_wps_processed:
+                right_wp[2] = 1
+        else:
+            right_wps_processed = process_lane_wp(right_wps, hero_vehicle_z, ego_forward_vector, my_sample_ratio, 1)
+
+        left_wall = False
+        if len(left_wps) == 0:
+            left_wall = True
+        right_wall = False
+        if len(right_wps) == 0:
+            right_wall = True
+        vehicle_inlane_processed = process_veh(self._actors[actor_id
+                    ],vehs_info, left_wall, right_wall, self._env_config["vehicle_proximity"])
+
+        yaw_diff_ego = math.degrees(get_yaw_diff(lane_center.transform.get_forward_vector(),
+                                    self._actors[actor_id].get_transform().get_forward_vector()))
+
+        yaw_forward = lane_center.transform.get_forward_vector()
+        v_3d = self._actors[actor_id].get_velocity()
+        v_s,v_t=get_projection(v_3d,yaw_forward)
+
+        a_3d = self._actors[actor_id].get_acceleration()
+        a_s,a_t=get_projection(a_3d,yaw_forward)
+
+        if lights_info:
+            wps=lights_info.get_stop_waypoints()
+            stop_dis=1.0
+            for wp in wps:
+                if wp.road_id==lane_center.road_id and wp.lane_id==lane_center.lane_id:
+                    stop_dis=wp.transform.location.distance(lane_center.transform.location
+                                                            )/self._env_config["traffic_light_proximity"]
+                    break
+            if (lights_info.state==carla.TrafficLightState.Red or lights_info.state==carla.TrafficLightState.Yellow):
+                light=[0,1,stop_dis]
+            else:
+                light=[1,0,stop_dis]
+        else:
+            stop_dis=1.0
+            light=[1,0,stop_dis]
+
+        """Attention:
+        Upon initializing, there are some bugs in the theta_v and theta_a, which could be greater than 90,
+        this might be caused by carla."""
+        self._state["meas"][actor_id].update({'velocity': v_s, 'acceleration': a_s})
+        #update informatino for rear vehicle
+        if vehs_info.center_rear_veh is None or \
+                (lights_info is not None and lights_info.state!=carla.TrafficLightState.Green):
+            self._state["meas"][actor_id].update({
+                'rear_id':-1, 'rear_v':0, 'rear_a':0, 'change_lane': None})
+        else:
+            lane_center=get_lane_center(self.map, vehs_info.center_rear_veh.get_location())
+            yaw_forward=lane_center.transform.get_forward_vector()
+            v_3d=vehs_info.center_rear_veh.get_velocity()
+            v_s,v_t=get_projection(v_3d,yaw_forward)
+            a_3d=vehs_info.center_rear_veh.get_acceleration()
+            a_s,a_t=get_projection(a_3d,yaw_forward)
+            self._state["meas"][actor_id].update({'rear_id':vehs_info.center_rear_veh.id, 
+                'rear_v':v_s,'rear_a':a_s, 'change_lane': None})
+
+        return {'left_waypoints': left_wps_processed, 'center_waypoints': center_wps_processed,
+                'right_waypoints': right_wps_processed, 'vehicle_info': vehicle_inlane_processed,
+                'hero_vehicle': [v_s/10, v_t/10, a_s/3, a_t/3, ego_t, yaw_diff_ego/90],
+                'light':light}  
+  
+    def _truncated(self, actor_id):
         """Decide whether terminating current episode or not"""
-        m = py_measurements
+        m = self._state["meas"][actor_id]
         lane_center=get_lane_center(self.map, self._actors[actor_id].get_location())
         yaw_diff = math.degrees(get_yaw_diff(lane_center.transform.get_forward_vector(),
                         self._actors[actor_id].get_transform().get_forward_vector()))
@@ -1517,23 +1594,10 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
     def _done(self, actor_id, truncated):
         if truncated!=Truncated.FALSE:
             return False
-        # if self.wps_info.center_front_wps[2].transform.location.distance(
-        #         self.ego_spawn_point.location) < self.sampling_resolution:          
-        #     # The local planner's waypoint list has been depleted
-        #     logging.info('vehicle reach destination, simulation terminate')                                 
-        #     return True
-        # if self.wps_info.left_front_wps and \
-        #         self.wps_info.left_front_wps[2].transform.location.distance(
-        #         self.ego_spawn_point.location)<self.sampling_resolution:
-        #     # The local planner's waypoint list has been depleted
-        #     logging.info('vehicle reach destination, simulation terminate')
-        #     return True
-        # if self.wps_info.right_front_wps and \
-        #         self.wps_info.right_front_wps[2].transform.location.distance(
-        #         self.ego_spawn_point.location)<self.sampling_resolution:
-        #     # The local planner's waypoint list has been depleted
-        #     logging.info('vehicle reach destination, simulation terminate')
-        #     return True
+        if self._state["wps"][actor_id].center_front_wps[1].road_id == self._scenario_map["dest_road_id"]:          
+            # The local planner's waypoint list has been depleted
+            logging.info('vehicle reach destination, stop '+str(actor_id))                              
+            return True
         if not self.RL_switch:
             if self._num_steps[actor_id] > self._scenario_config["max_steps"]:
                 # Let the traffic manager only execute 5000 steps. or it can fill the replay buffer
@@ -1547,58 +1611,6 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
         """Clean-up the world, clear server state & close the Env"""
         self._clean_world()
         self._clear_server_state()
-
-
-def print_measurements(measurements):
-    number_of_agents = len(measurements.non_player_agents)
-    player_measurements = measurements.player_measurements
-    message = "Vehicle at ({pos_x:.1f}, {pos_y:.1f}), "
-    message += "{speed:.2f} km/h, "
-    message += "Collision: {{vehicles={col_cars:.0f}, "
-    message += "pedestrians={col_ped:.0f}, other={col_other:.0f}}}, "
-    message += "{other_lane:.0f}% other lane, {offroad:.0f}% off-road, "
-    message += "({agents_num:d} non-player macad_agents in the scene)"
-    message = message.format(
-        pos_x=player_measurements.transform.location.x,
-        pos_y=player_measurements.transform.location.y,
-        speed=player_measurements.forward_speed,
-        col_cars=player_measurements.collision_vehicles,
-        col_ped=player_measurements.collision_pedestrians,
-        col_other=player_measurements.collision_other,
-        other_lane=100 * player_measurements.intersection_otherlane,
-        offroad=100 * player_measurements.intersection_offroad,
-        agents_num=number_of_agents,
-    )
-    print(message)
-
-def get_next_actions(measurements, is_discrete_actions):
-    """Get/Update next action, work with way_point based planner.
-
-    Args:
-        measurements (dict): measurement data.
-        is_discrete_actions (bool): whether use discrete actions
-
-    Returns:
-        dict: action_dict, dict of len-two integer lists.
-    """
-    action_dict = {}
-    for actor_id, meas in measurements.items():
-        m = meas
-        command = m["next_command"]
-        if command == "REACH_GOAL":
-            action_dict[actor_id] = 0
-        elif command == "GO_STRAIGHT":
-            action_dict[actor_id] = 3
-        elif command == "TURN_RIGHT":
-            action_dict[actor_id] = 6
-        elif command == "TURN_LEFT":
-            action_dict[actor_id] = 5
-        elif command == "LANE_FOLLOW":
-            action_dict[actor_id] = 3
-        # Test for discrete actions:
-        if not is_discrete_actions:
-            action_dict[actor_id] = [1, 0]
-    return action_dict
 
 
 if __name__ == "__main__":

@@ -49,7 +49,7 @@ class Reward(object):
         self.reward += np.clip(prev_dist - cur_dist, -10.0, 10.0)
         # Change in speed (km/h)
         self.reward += 0.05 * (
-            self.curr["forward_speed"] - self.prev["forward_speed"])
+            self.curr["velocity"] - self.prev["velocity"])
         # New collision damage
         self.reward -= .00002 * (
             self.curr["collision_vehicles"] +

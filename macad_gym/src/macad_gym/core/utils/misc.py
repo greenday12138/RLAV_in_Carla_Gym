@@ -56,7 +56,7 @@ def test_waypoint(waypoint, ego=False):
         return False
 
 
-def draw_waypoints(world, waypoints, life_time=0.0, z=0.5):
+def draw_waypoints(world, waypoints, life_time=0.0, z=0.5, color=(255, 0, 0)):
     """
     Draw a list of waypoints at a certain height given in z.
 
@@ -69,7 +69,8 @@ def draw_waypoints(world, waypoints, life_time=0.0, z=0.5):
         begin = wpt_t.location + carla.Location(z=z)
         angle = math.radians(wpt_t.rotation.yaw)
         end = begin + carla.Location(x=math.cos(angle), y=math.sin(angle))
-        world.debug.draw_arrow(begin, end, arrow_size=0.3, life_time=life_time)
+        world.debug.draw_arrow(begin, end, arrow_size=0.3, life_time=life_time,
+            color=carla.Color(r=color[0], g=color[1], b=color[2], a=255))
 
 def get_lane_center(map, location):
     """Project current loction to its lane center, return lane center waypoint"""

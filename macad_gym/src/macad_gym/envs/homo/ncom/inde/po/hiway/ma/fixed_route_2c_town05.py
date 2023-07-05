@@ -13,6 +13,8 @@ class FixedRoute2CarTown05(MultiCarlaEnv):
                 "switch_threshold": 20,
                 #During pre-train steps, agent is only under PID control.
                 "pre_train_steps": 320000,
+                "train": True,
+                "debug": False,
             },
             "env": {
                 "server_map": "/Game/Carla/Maps/Town05_Opt",
@@ -40,7 +42,7 @@ class FixedRoute2CarTown05(MultiCarlaEnv):
                 #Min distance between two vehicles, unit -- meters
                 "min_distance": 5.0,
                 #Activate hybrid mode for Traffic Manager
-                "hybrid": True,
+                "hybrid": False,
                 "ignore_traffic_light": False,
                 #Set lane change behaviors of Traffic Manager
                 "auto_lane_change": False, 

@@ -72,10 +72,11 @@ class Scenarios(object):
                 "end": -1
             }
         },
-        "num_vehicles": 20,
+        "num_vehicles": 50,
         "num_pedestrians": 0,
         "weather_distribution": [0],
-        "max_steps": 5000
+        "max_steps": 5000,
+        "dest_road_id": 36
     }
 
     SSUI3C_TOWN3 = {
