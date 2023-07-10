@@ -18,7 +18,7 @@ class FixedRoute2CarTown05(MultiCarlaEnv):
             },
             "env": {
                 "server_map": "/Game/Carla/Maps/Town05_Opt",
-                "render": True,
+                "render": False,
                 "render_x_res": 2000,
                 "render_y_res": 1500,
                 "x_res": 800,
@@ -42,7 +42,7 @@ class FixedRoute2CarTown05(MultiCarlaEnv):
                 #Min distance between two vehicles, unit -- meters
                 "min_distance": 5.0,
                 #Activate hybrid mode for Traffic Manager
-                "hybrid": False,
+                "hybrid": True,
                 "ignore_traffic_light": False,
                 #Set lane change behaviors of Traffic Manager
                 "auto_lane_change": False, 
@@ -61,7 +61,7 @@ class FixedRoute2CarTown05(MultiCarlaEnv):
                     "reward_function": "corl2017",
                     "scenarios": "FR2C_TOWN5_CAR1",
                     "manual_control": False,
-                    "auto_control": True,
+                    "auto_control": False,
                     "camera_type": "rgb",
                     "collision_sensor": "on",
                     "lane_sensor": "on",
@@ -88,7 +88,7 @@ class FixedRoute2CarTown05(MultiCarlaEnv):
                     "reward_function": "corl2017",
                     "scenarios": "FR2C_TOWN5_CAR2",
                     "manual_control": False,
-                    "auto_control": True,
+                    "auto_control": False,
                     "camera_type": "rgb",
                     "collision_sensor": "on",
                     "lane_sensor": "on",

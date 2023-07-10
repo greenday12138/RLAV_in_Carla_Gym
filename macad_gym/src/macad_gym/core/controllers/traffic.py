@@ -6,6 +6,32 @@ import carla
 random.seed(10)
 logger = logging.getLogger(__name__)
 
+def hero_autopilot(actor, traffic_manager, actor_config, env_config,setting=True):
+    # Use traffic manager to control hero vehicle
+    actor.set_autopilot(setting, traffic_manager.get_port())
+    if setting:
+        traffic_manager.distance_to_leading_vehicle(actor, env_config['min_distance'])
+        if env_config['ignore_traffic_light']:
+            traffic_manager.ignore_lights_percentage(actor, 100)
+            traffic_manager.ignore_walkers_percentage(actor, 100)
+        traffic_manager.ignore_signs_percentage(actor, 100)
+        traffic_manager.ignore_vehicles_percentage(actor, 0)
+        traffic_manager.vehicle_percentage_speed_difference(actor, 
+                                                (30 - actor_config['speed_limit']) / 30 * 100)
+        traffic_manager.auto_lane_change(actor, True)
+        traffic_manager.random_left_lanechange_percentage(actor, 0)
+        traffic_manager.random_right_lanechange_percentage(actor, 0)
+
+        # traffic_manager.set_desired_speed(actor, 72)
+        # ego_wp=map.get_waypoint(actor.get_location())
+        # traffic_manager.set_path(actor,path)
+        """set_route(self, actor, path):
+            Sets a list of route instructions for a vehicle to follow while controlled by the Traffic Manager. 
+            The possible route instructions are 'Left', 'Right', 'Straight'.
+            The traffic manager only need this instruction when faces with a junction."""
+        traffic_manager.set_route(actor,
+            ['Straight', 'Straight', 'Straight', 'Straight', 'Straight', 'Straight', 'Straight', 'Straight', 'Straight', 'Straight'])
+
 
 def apply_traffic(world, traffic_manager, env_config, num_vehicles, num_pedestrians, safe=False, route_points=None):
     # set traffic manager

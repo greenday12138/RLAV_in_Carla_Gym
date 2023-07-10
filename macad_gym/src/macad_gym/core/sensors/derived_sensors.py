@@ -9,7 +9,7 @@ class LaneInvasionSensor(object):
     """Lane Invasion class from carla manual_control.py
     """
 
-    def __init__(self, parent_actor, hud):
+    def __init__(self, parent_actor, hud=None):
         self.sensor = None
         self._history = []
         self._parent = parent_actor
@@ -31,6 +31,9 @@ class LaneInvasionSensor(object):
         for frame, text in self._history:
             history[frame] = text
         return history
+
+    def stop(self):
+        self.sensor.stop()
 
     @staticmethod
     def _on_invasion(weak_self, event):
@@ -74,7 +77,7 @@ class CollisionSensor(object):
     """Collision sensor class from carla manual_control.py
     """
 
-    def __init__(self, parent_actor, hud):
+    def __init__(self, parent_actor, hud=None):
         self.sensor = None
         self._history = []
         self._parent = parent_actor
@@ -110,6 +113,9 @@ class CollisionSensor(object):
         
     def clear_history(self):
         self.history.clear()
+
+    def stop(self):
+        self.sensor.stop()
 
     @staticmethod
     def _on_collision(weak_self, event):

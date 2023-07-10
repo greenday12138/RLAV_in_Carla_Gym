@@ -231,7 +231,8 @@ class SemanticTags(Enum):
 
 class Truncated(Enum):
     """Different truncate situations"""
-    FALSE = -1
+    FALSE = -2
+    TRUE = -1
     OTHER = 0
     CHANGE_LANE_IN_LANE_FOLLOW = 1 
     COLLISION = 2
@@ -262,13 +263,15 @@ class Action(Enum):
 
 class ControlInfo:
     """Wrapper for vehicle(model3) control info"""
-    def __init__(self,throttle=0.0,brake=0.0,steer=0.0,gear=1) -> None:
+    def __init__(self,throttle=0.0,brake=0.0,steer=0.0,gear=1, reverse=False, 
+                 hand_brake=False, manual_gear_shift=False) -> None:
         self.throttle=throttle
         self.steer=steer
         self.brake=brake
         self.gear=gear
-        self.reverse=False
-        self.manual_gear_shift=False
+        self.reverse=reverse
+        self.manual_gear_shift=manual_gear_shift
+        self.hand_brake=hand_brake
 
 def process_lane_wp(wps_list, ego_vehicle_z, ego_forward_vector, my_sample_ratio, lane_offset):
     wps = []
@@ -299,7 +302,7 @@ def process_veh(ego_vehicle, vehs_info, left_wall, right_wall,vehicle_proximity)
     ego_bounding_x = ego_vehicle.bounding_box.extent.x
     ego_bounding_y = ego_vehicle.bounding_box.extent.y
     all_v_info = []
-    print('vehicle_inlane: ', vehicle_inlane)
+    #print('vehicle_inlane: ', vehicle_inlane)
     for i in range(6):
         if i == 0 or i == 3:
             lane = -1
@@ -379,28 +382,37 @@ def fill_action_param(action, steer, throttle_brake, action_param, modify_change
         action_param[0][action*2+1] = throttle_brake
     return action_param
 
-def print_measurements(measurements):
-    number_of_agents = len(measurements.non_player_agents)
-    player_measurements = measurements.player_measurements
-    message = "Vehicle at ({pos_x:.1f}, {pos_y:.1f}), "
-    message += "{speed:.2f} km/h, "
-    message += "Collision: {{vehicles={col_cars:.0f}, "
-    message += "pedestrians={col_ped:.0f}, other={col_other:.0f}}}, "
-    message += "{other_lane:.0f}% other lane, {offroad:.0f}% off-road, "
-    message += "({agents_num:d} non-player macad_agents in the scene)"
-    message = message.format(
-        pos_x=player_measurements.transform.location.x,
-        pos_y=player_measurements.transform.location.y,
-        speed=player_measurements.forward_speed,
-        col_cars=player_measurements.collision_vehicles,
-        col_ped=player_measurements.collision_pedestrians,
-        col_other=player_measurements.collision_other,
-        other_lane=100 * player_measurements.intersection_otherlane,
-        offroad=100 * player_measurements.intersection_offroad,
-        agents_num=number_of_agents,
-    )
-    print(message)
+# def print_measurements(measurements):
+#     number_of_agents = len(measurements.non_player_agents)
+#     player_measurements = measurements.player_measurements
+#     message = "Vehicle at ({pos_x:.1f}, {pos_y:.1f}), "
+#     message += "{speed:.2f} km/h, "
+#     message += "Collision: {{vehicles={col_cars:.0f}, "
+#     message += "pedestrians={col_ped:.0f}, other={col_other:.0f}}}, "
+#     message += "{other_lane:.0f}% other lane, {offroad:.0f}% off-road, "
+#     message += "({agents_num:d} non-player macad_agents in the scene)"
+#     message = message.format(
+#         pos_x=player_measurements.transform.location.x,
+#         pos_y=player_measurements.transform.location.y,
+#         speed=player_measurements.forward_speed,
+#         col_cars=player_measurements.collision_vehicles,
+#         col_ped=player_measurements.collision_pedestrians,
+#         col_other=player_measurements.collision_other,
+#         other_lane=100 * player_measurements.intersection_otherlane,
+#         offroad=100 * player_measurements.intersection_offroad,
+#         agents_num=number_of_agents,
+#     )
+#     print(message)
 
+def print_measurements(measurements):
+    m = measurements
+    for actor_id in m.keys():
+        print(f"actor_id:{actor_id}, episode:{m[actor_id]['episode']}, step:{m[actor_id]['step']}, "
+            f"done:{m[actor_id]['done']}, truncated:{m[actor_id]['truncated']} \n"
+            f"speed_state:{m[actor_id]['speed_state']}, control_state:{'RL' if m[actor_id]['rl_switch'] else 'PID'}, \n"
+            f"vel:{m[actor_id]['velocity']}, cur_acc:{m[actor_id]['cur_acc']}, prev_acc:{m[actor_id]['prev_acc']}, \n"
+            f"throttle:{m[actor_id]['control'].throttle}, brake:{m[actor_id]['control'].brake}, steer:{m[actor_id]['control'].steer}, \n"
+            f"rew:{m[actor_id]['reward']}")
 
 def get_next_actions(measurements, is_discrete_actions):
     """Get/Update next action, work with way_point based planner.

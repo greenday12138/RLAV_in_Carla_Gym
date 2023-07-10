@@ -33,10 +33,10 @@ class SimpleAgent(object):
 
 agent = SimpleAgent(actor_configs)  # Plug-in your agent or use MACAD-Agents
 for ep in range(2):
-    obs = env.reset()
-    done, truncated = {"__all__": False}, {"__all__": False}
+    obs, _ = env.reset()
+    done, truncated = False, False
     step = 0
-    while not done["__all__"] and not truncated["__all__"]:
+    while not done and not truncated:
         obs, reward, done, truncated, info = env.step(agent.get_action(obs))
         print(f"Step#:{step}  Rew:{reward}  Done:{done} Truncated:{truncated}")
         step += 1

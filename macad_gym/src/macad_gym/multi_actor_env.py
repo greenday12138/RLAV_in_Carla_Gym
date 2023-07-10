@@ -52,11 +52,12 @@ class MultiActorEnv(gym.Env):
 
     _gym_disable_underscore_compat = True
 
-    def reset(self):
+    def reset(self, seed=None, options=None):
         """Resets the env and returns observations from ready actors.
 
         Returns:
             obs (dict): New observations for each ready actors.
+            info (dict): Environment reset information
         """
         raise NotImplementedError
 
