@@ -18,13 +18,13 @@ class FixedRoute2CarTown05(MultiCarlaEnv):
             },
             "env": {
                 "server_map": "/Game/Carla/Maps/Town05_Opt",
-                "render": False,
+                "render": True,
                 "render_x_res": 2000,
                 "render_y_res": 1500,
                 "x_res": 800,
                 "y_res": 800,
                 "framestack": 1,
-                "discrete_actions": True,
+                "discrete_actions": False,
                 "squash_action_logits": False,
                 "verbose": False,
                 "use_depth_camera": False,
@@ -40,14 +40,14 @@ class FixedRoute2CarTown05(MultiCarlaEnv):
                 #Distance for searching traffic light in front of ego vehicle, unit -- meters, attention: this value is tricky
                 "traffic_light_proximity": 50.0,  
                 #Min distance between two vehicles, unit -- meters
-                "min_distance": 5.0,
+                "min_distance": 7.0,
                 #Activate hybrid mode for Traffic Manager
                 "hybrid": True,
                 "ignore_traffic_light": False,
                 #Set lane change behaviors of Traffic Manager
                 "auto_lane_change": False, 
                 #Distance between generated waypoints
-                "sampling_resolution": 2.0,
+                "sampling_resolution": 4.0,
                 #The number of look-ahead waypoints in each step
                 "buffer_size": 50,
             },
@@ -78,6 +78,12 @@ class FixedRoute2CarTown05(MultiCarlaEnv):
                     "speed_threshold": 20.0,
                     #If hero vehicle speed reaches below this threshold across multiple steps, truncated this episode prematurely, km/h
                     "speed_min": 3.6,
+                    #Steer bound for hero vehicle controller
+                    "steer_bound": 1.0,
+                    #Throttle bound for ego vehicle controller
+                    "throttle_bound": 1.0,
+                    #Brake bound for ego vehicle controller
+                    "brake_bound": 1.0,
                 },
                 "car2": {
                     "type": "vehicle_4W",
@@ -105,6 +111,12 @@ class FixedRoute2CarTown05(MultiCarlaEnv):
                     "speed_threshold": 20.0,
                     #If hero vehicle speed reaches below this threshold across multiple steps, truncated this episode prematurely, km/h
                     "speed_min": 3.6,
+                    #Steer bound for hero vehicle controller
+                    "steer_bound": 1.0,
+                    #Throttle bound for ego vehicle controller
+                    "throttle_bound": 1.0,
+                    #Brake bound for ego vehicle controller
+                    "brake_bound": 1.0,
                 }
             },
         }

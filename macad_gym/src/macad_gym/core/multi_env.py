@@ -11,7 +11,6 @@ from __future__ import print_function
 import argparse
 import atexit
 import shutil
-from datetime import datetime
 import logging
 import json
 import os
@@ -23,12 +22,14 @@ import time
 import traceback
 import socket
 import math
-
-import numpy as np  # linalg.norm is used
-import GPUtil
-from gym.spaces import Box, Discrete, Tuple, Dict
 import pygame
 import carla
+import GPUtil
+import numpy as np  # linalg.norm is used
+
+from datetime import datetime
+from collections import deque
+from gym.spaces import Box, Discrete, Tuple, Dict
 
 from macad_gym.core.controllers.traffic import apply_traffic, hero_autopilot
 from macad_gym.multi_actor_env import MultiActorEnv
@@ -41,6 +42,7 @@ from macad_gym.core.utils.misc import (remove_unnecessary_objects, sigmoid, get_
 from macad_gym.core.utils.wrapper import (COMMANDS_ENUM, COMMAND_ORDINAL, ROAD_OPTION_TO_COMMANDS_MAPPING, 
     DISTANCE_TO_GOAL_THRESHOLD, ORIENTATION_TO_GOAL_THRESHOLD, RETRIES_ON_ERROR, GROUND_Z, DISCRETE_ACTIONS,
     WEATHERS, process_lane_wp, process_veh, get_next_actions, DEFAULT_MULTIENV_CONFIG, print_measurements,
+    CARLA_OUT_PATH, SERVER_BINARY, IS_WINDOWS_PLATFORM,
     Truncated, Action, SpeedState, ControlInfo)
 
 # from macad_gym.core.sensors.utils import get_transform_from_nearest_way_point
@@ -58,27 +60,14 @@ from macad_gym.carla.PythonAPI.agents.navigation.global_route_planner_dao import
     GlobalRoutePlannerDAO)
 from macad_gym.core.controllers.route_planner import RoutePlanner
 from macad_gym.core.controllers.local_planner import LocalPlanner
+from macad_gym.core.controllers.basic_agent import Basic_Agent
 
-# The following imports depend on these paths being in sys path
-# TODO: Fix this. This probably won't work after packaging/distribution
-sys.path.append("src/macad_gym/carla/PythonAPI")
 from macad_gym.core.maps.nav_utils import PathTracker  # noqa: E402
 from macad_gym.carla.PythonAPI.agents.navigation.global_route_planner import (  # noqa: E402, E501
     GlobalRoutePlanner)
 
 logger = logging.getLogger(__name__)
-# Set this where you want to save image outputs (or empty string to disable)
-CARLA_OUT_PATH = os.environ.get("CARLA_OUT", os.path.expanduser("~/Git/RLAV_in_Carla_Gym/carla_out"))
-if CARLA_OUT_PATH and not os.path.exists(CARLA_OUT_PATH):
-    os.makedirs(CARLA_OUT_PATH)
-
-# Set this to the path of your Carla binary
-SERVER_BINARY = os.environ.get(
-    "CARLA_SERVER", os.path.expanduser("~/ProgramFiles/Carla/CarlaUE4.sh")
-)
-
-# Check if is using on Windows
-IS_WINDOWS_PLATFORM = "win" in sys.platform
+live_carla_processes = set()
 
 assert os.path.exists(SERVER_BINARY), (
     "Make sure CARLA_SERVER environment"
@@ -86,9 +75,6 @@ assert os.path.exists(SERVER_BINARY), (
     " CARLA server startup script (Carla"
     "UE4.sh). Refer to the README file/docs."
 )
-
-live_carla_processes = set()
-
 
 def cleanup():
     print("Killing live carla processes", live_carla_processes)
@@ -102,11 +88,9 @@ def cleanup():
 
     live_carla_processes.clear()
 
-
 def termination_cleanup(*_):
     cleanup()
     sys.exit(0)
-
 
 signal.signal(signal.SIGTERM, termination_cleanup)
 signal.signal(signal.SIGINT, termination_cleanup)
@@ -279,6 +263,7 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
                 {actor_id: self._image_space for actor_id in self._actor_configs.keys()}
             )
 
+        # Following info will only be initialized once in _init_server() (env configs)
         # Set appropriate node-id to coordinate mappings for Town01 or Town02.
         self.pos_coor_map = MAP_TO_COORDS_MAPPING[self._server_map]
         self._spec = lambda: None
@@ -286,50 +271,54 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
         self._server_port = None
         self._server_process = None
         self._client = None
-        self._num_steps = {}
-        self._num_episodes = {}
-        self._total_reward = {}
-        self._prev_measurement = {}
-        self._prev_image = None
+        self._scenario_map = {}  # Dictionary with current scenario map config
         self._measurements_file_dict = {}
-        self._weather = None
         self._start_pos = {}  # Start pose for each actor
         self._end_pos = {}  # End pose for each actor
         self._start_coord = {}
         self._end_coord = {}
+        self.SWITCH_THRESHOLD = self._rl_configs["switch_threshold"]
+        self.pre_train_steps = self._rl_configs["pre_train_steps"]
+        self._npc_vehicles_spawn_points = []
+        self._agents = {}  # Dictionary of macad_agents with agent_id as key
+        # Env statistics
+        self._previous_actions = {}
+        self._previous_rewards = {}
+        self._total_reward = {}
+        self._prev_measurement = {}
+        self._rl_switch = False    # rl_switch: True--currently RL in control, False--currently PID in control
+        self.switch_count=0
+        self._num_episodes = {}
+        self._total_steps = {}
+        self._rl_control_steps = {}
+
+        # Following info will be reset during reset phase
+        self._weather = None
+        self._time_steps = {}
+        self._vel_buffer = {}   # Dictionary recording hero vehicles' velocity
+        self._cameras = {}  # Dictionary of sensors with actor_id as key
+        self._actors = {}  # Dictionary of actors with actor_id as key
+        self._npc_vehicles = []  # List of NPC vehicles
+        self._npc_pedestrians = []  # List of NPC pedestrians
+        self._path_trackers = {}  # Dictionary of sensors with actor_id as key
+        self._collisions = {}  # Dictionary of sensors with actor_id as key
+        self._lane_invasions = {}  # Dictionary of sensors with actor_id as key
+        self._speed_state = {}  # Dictionary of actors' running state with actor_id as key
+        self._local_planner = {}
+        self._auto_controller = {} # Dictionary of vehicles' automatic controllers
+
+        # Following info will be modified every step
         self._last_obs = None
-        self._image = None
-        self._surface = None
-        self._video = False
+        self._prev_image = None
         self._obs_dict = {}
         self._done_dict = {}
         self._truncated_dict = {}
-        self._previous_actions = {}
-        self._previous_rewards = {}
-        self._last_reward = {}
-        self._npc_vehicles = []  # List of NPC vehicles
-        self._npc_vehicles_spawn_points = []
-        self._npc_pedestrians = []  # List of NPC pedestrians
-        self._agents = {}  # Dictionary of macad_agents with agent_id as key
-        self._actors = {}  # Dictionary of actors with actor_id as key
-        self._speed_state = {}  # Dictionary of actors' running state with actor_id as key
-        self._local_planner = {}
         self._state = {
             "wps":{},   #Dictionary of waypoints info with actor_id as keyw
             "lights":{}, #Dictionary of traffic lights info with actor_id as key
             "vehs":{},  #Dictionary of other vehicles info with actor_id as key
             "meas":{},   #Dictionary of actor's py_measurements with actor_id as key
         }
-        self._cameras = {}  # Dictionary of sensors with actor_id as key
-        self._path_trackers = {}  # Dictionary of sensors with actor_id as key
-        self._collisions = {}  # Dictionary of sensors with actor_id as key
-        self._lane_invasions = {}  # Dictionary of sensors with actor_id as key
-        self._scenario_map = {}  # Dictionary with current scenario map config
-        # rl_switch: True--currently RL in control, False--currently PID in control
-        self._rl_switch = {}
-        self.switch_count=0
-        self.SWITCH_THRESHOLD = self._rl_configs["switch_threshold"]
-        self.pre_train_steps = self._rl_configs["pre_train_steps"]
 
     @staticmethod
     def _get_tcp_port(port=0):
@@ -552,6 +541,7 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
             npc[0].destroy()  # kill entity
         # Note: the destroy process for cameras is handled in camera_manager.py
 
+        self._vel_buffer = {}
         self._cameras = {}
         self._actors = {}
         self._npc_vehicles = []
@@ -559,6 +549,9 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
         self._path_trackers = {}
         self._collisions = {}
         self._lane_invasions = {}
+        self._speed_state = {}  
+        self._local_planner = {}
+        self._auto_controller = {} 
 
         print("Cleaned-up the world...")
 
@@ -610,9 +603,8 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
         # Set appropriate initial values for all actors
         for actor_id, actor_config in self._actor_configs.items():
             if self._done_dict.get(actor_id, True):
-                self._last_reward[actor_id] = None
                 self._total_reward[actor_id] = None
-                self._num_steps[actor_id] = 0
+                self._time_steps[actor_id] = 0
 
                 cam = self._cameras[actor_id]
                 # Wait for the sensor (camera) actor to start streaming
@@ -811,8 +803,23 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
                             'buffer_size': self._env_config["buffer_size"],
                             'vehicle_proximity': self._env_config["vehicle_proximity"],
                             'traffic_light_proximity':self._env_config["traffic_light_proximity"]})
+                    self._auto_controller[actor_id] = Basic_Agent(self._actors[actor_id], dt=self._fixed_delta_seconds,
+                        opt_dict={'ignore_traffic_lights': self._env_config["ignore_traffic_light"],
+                                  'ignore_stop_signs': True, 
+                                  'sampling_resolution': self._env_config["sampling_resolution"],
+                                  'max_steering': self._actor_configs[actor_id]["steer_bound"], 
+                                  'max_throttle': self._actor_configs[actor_id]["throttle_bound"],
+                                  'max_brake': self._actor_configs[actor_id]["brake_bound"], 
+                                  'buffer_size': self._env_config["buffer_size"], 
+                                  'target_speed':self._actor_configs[actor_id]["speed_limit"],
+                                  'ignore_front_vehicle':False,
+                                  'ignore_change_gap':False,
+                                #   'ignore_front_vehicle': random.choice([False,True]),
+                                #   'ignore_change_gap': random.choice([True, True, False]), 
+                                  'lanechanging_fps': random.choice([40, 50, 60]),
+                                  'random_lane_change':False})
                     self._speed_state[actor_id] = SpeedState.START
-                    self._rl_switch[actor_id] = False
+                    self._rl_switch = False
                 except RuntimeError as spawn_err:
                     del self._done_dict[actor_id]
                     del self._truncated_dict[actor_id]
@@ -871,6 +878,9 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
                 )
                 assert camera_manager.sensor.is_listening
                 self._cameras.update({actor_id: camera_manager})
+
+                # Spawn vehicle velocity recorder
+                self._vel_buffer.update({actor_id: deque(maxlen=10)})
 
                 # Manual Control
                 if actor_config["manual_control"]:
@@ -1066,8 +1076,22 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
             actions = {}
 
             for actor_id, action in action_dict.items():
+                self._auto_controller[actor_id].set_info(
+                    {'left_wps': self._state["wps"][actor_id].left_front_wps, 
+                     'center_wps': self._state["wps"][actor_id].center_front_wps,
+                     'right_wps': self._state["wps"][actor_id].right_front_wps, 
+                     'left_rear_wps': self._state["wps"][actor_id].left_rear_wps,
+                     'center_rear_wps': self._state["wps"][actor_id].center_rear_wps, 
+                     'right_rear_wps': self._state["wps"][actor_id].right_rear_wps,
+                     'vehs_info': self._state["vehs"][actor_id]})
                 actions.update({actor_id: self._step_before_tick(actor_id, action)})
 
+            self._state = {
+                "wps":{},   #Dictionary of waypoints info with actor_id as key
+                "lights":{}, #Dictionary of traffic lights info with actor_id as key
+                "vehs":{},  #Dictionary of other vehicles info with actor_id as key
+                "meas":{},   #Dictionary of actor's py_measurements with actor_id as key
+            }
             # Asynchronosly (one actor at a time; not all at once in a sync) apply
             # actor actions & perform a server tick after each actor's apply_action
             # if running with sync_server steps
@@ -1089,6 +1113,8 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
                 reward_dict[actor_id] = reward
                 self._done_dict[actor_id] = done
                 self._truncated_dict[actor_id] = truncated
+                if self._speed_state[actor_id] == SpeedState.RUNNING:
+                    self._vel_buffer[actor_id].append(self._state["meas"][actor_id]["velocity"])
                 info_dict[actor_id] = info
 
             self._done_dict["__all__"] = sum(self._done_dict.values()) >= len(self._actors)
@@ -1113,9 +1139,7 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
             return obs_dict, reward_dict, self._done_dict["__all__"]!=False, \
                     self._truncated_dict["__all__"]!=Truncated.FALSE, info_dict
         except Exception:
-            print(
-                "Error during step, terminating episode early.", traceback.format_exc()
-            )
+            print("Error during step, terminating episode early.", traceback.format_exc())
             self._clear_server_state()
 
     def _step_before_tick(self, actor_id, action):
@@ -1247,7 +1271,7 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
         # Compute done
         done = self._done(actor_id, truncated)
         # done = (
-        #     self._num_steps[actor_id] > self._scenario_map["max_steps"]
+        #     self._time_steps[actor_id] > self._scenario_map["max_steps"]
         #     or py_measurements["next_command"] == "REACH_GOAL"
         #     or (
         #         config["early_terminate_on_collision"]
@@ -1274,7 +1298,7 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
 
         # End iteration updating parameters and logging
         self._prev_measurement[actor_id] = py_measurements
-        self._num_steps[actor_id] += 1
+        self._time_steps[actor_id] += 1
 
         if config["log_measurements"] and CARLA_OUT_PATH:
             # Write out measurements to file
@@ -1370,7 +1394,7 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
 
         self._state["meas"].update({actor_id: {
             "episode": self._num_episodes[actor_id],
-            "step": self._num_steps[actor_id],
+            "step": self._time_steps[actor_id],
             "x": self._actors[actor_id].get_location().x,
             "y": self._actors[actor_id].get_location().y,
             "pitch": self._actors[actor_id].get_transform().rotation.pitch,
@@ -1395,7 +1419,7 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
             "previous_action": self._previous_actions.get(actor_id, None),
             "previous_reward": self._previous_rewards.get(actor_id, None),
             "speed_state": self._speed_state[actor_id],
-            "rl_switch": self._rl_switch[actor_id],
+            "rl_switch": self._rl_switch,
         }})
 
         return self._get_state(actor_id)
@@ -1415,7 +1439,7 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
                 else:
                     hero_autopilot(self._actors[actor_id], self._traffic_manager, 
                                 self._actor_configs[actor_id], self._env_config, False)
-                    if self._rl_switch[actor_id]:
+                    if self._rl_switch:
                         # RL in control
                         pass
                     else:
@@ -1425,7 +1449,7 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
             else:
                 control = cont
         elif self._speed_state[actor_id] == SpeedState.RUNNING:
-            if self._rl_switch[actor_id]:
+            if self._rl_switch:
                 # RL in control
                 pass
             else:
@@ -1553,7 +1577,10 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
         lane_center=get_lane_center(self.map, self._actors[actor_id].get_location())
         yaw_diff = math.degrees(get_yaw_diff(lane_center.transform.get_forward_vector(),
                         self._actors[actor_id].get_transform().get_forward_vector()))
-
+        
+        if self._speed_state[actor_id] == SpeedState.STOP:
+            logging.info("vehicle reach destination, stop truncation")
+            return Truncated.FALSE
         if (m["collision_vehicles"] > 0 or m["collision_pedestrians"]>0 or m["collision_other"] > 0) \
                 and self._actor_configs[actor_id].get("early_terminate_on_collision", True):
             # Here we judge speed state because there might be collision event when spawning vehicles
@@ -1571,33 +1598,32 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
         # if self.current_action == Action.LANE_CHANGE_RIGHT and self.current_lane-self.last_lane>0:
         #     logging.warn('vehicle change to wrong lane')
         #     return Truncated.CHANGE_TO_WRONG_LANE
-        # if self.speed_state!=SpeedState.START and not self.vehs_info.center_front_veh:
-        #     if not self.lights_info or self.lights_info.state!=carla.TrafficLightState.Red:
-        #         if len(self.vel_buffer)==self.vel_buffer.maxlen:
-        #             avg_vel=0
-        #             for vel in self.vel_buffer:
-        #                 avg_vel+=vel/self.vel_buffer.maxlen
-        #             if avg_vel*3.6<self.speed_min:
-        #                 logging.warn('vehicle speed too low')
-        #                 return Truncated.SPEED_LOW
+        if self._speed_state[actor_id] not in [SpeedState.START, SpeedState.STOP] \
+                    and not self._state["vehs"][actor_id].center_front_veh:
+            if not self._state["lights"][actor_id] or self._state["lights"][actor_id].state!=carla.TrafficLightState.Red:
+                if len(self._vel_buffer[actor_id])==self._vel_buffer[actor_id].maxlen:
+                    avg_vel=0
+                    for vel in self._vel_buffer[actor_id]:
+                        avg_vel+=vel/self._vel_buffer[actor_id].maxlen
+                    if avg_vel*3.6<self._actor_configs[actor_id]["speed_min"]:
+                        logging.warn('vehicle speed too low')
+                        return Truncated.SPEED_LOW
             
         # if self.lane_invasion_sensor.get_invasion_count()!=0:
         #     logging.warn('lane invasion occur')
         #     return True
-        # if self.step_info['Lane_center'] <=-1.0:
-        #     logging.warn('drive out of road, lane invasion occur')
-        #     return True
         if abs(yaw_diff)>90:
             logging.warn('moving in opposite direction')
             return Truncated.OPPOSITE_DIRECTION
-        # if self.lights_info and self.lights_info.state!=carla.TrafficLightState.Green:
-        #     self.world.debug.draw_point(self.lights_info.get_location(),size=0.3,life_time=0)
-        #     wps=self.lights_info.get_stop_waypoints()
-        #     for wp in wps:
-        #         self.world.debug.draw_point(wp.transform.location,size=0.1,life_time=0)
-        #         if is_within_distance_ahead(self.ego_vehicle.get_location(),wp.transform.location, wp.transform, self.min_distance):
-        #             logging.warn('break traffic light rule')
-        #             return Truncated.TRAFFIC_LIGHT_BREAK
+        if self._state["lights"][actor_id] and self._state["lights"][actor_id].state!=carla.TrafficLightState.Green:
+            self.world.debug.draw_point(self._state["lights"][actor_id].get_location(),size=0.3,life_time=0)
+            wps=self._state["lights"][actor_id].get_stop_waypoints()
+            for wp in wps:
+                self.world.debug.draw_point(wp.transform.location,size=0.1,life_time=0)
+                if is_within_distance_ahead(self._actors[actor_id].get_location(),
+                        wp.transform.location, wp.transform, self._env_config["min_distance"]):
+                    logging.warn('break traffic light rule')
+                    return Truncated.TRAFFIC_LIGHT_BREAK
 
         return Truncated.FALSE
 
@@ -1607,8 +1633,8 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
         if self._speed_state[actor_id] == SpeedState.STOP:
             logging.info('vehicle reach destination, stop '+str(actor_id))                              
             return True
-        if not self._rl_switch[actor_id]:
-            if self._num_steps[actor_id] > self._scenario_config["max_steps"]:
+        if not self._rl_switch:
+            if self._time_steps[actor_id] > self._scenario_config["max_steps"]:
                 # Let the traffic manager only execute 5000 steps. or it can fill the replay buffer
                 logging.info(f"{self._scenario_config['max_steps']} "
                              f"steps passed under traffic manager control")

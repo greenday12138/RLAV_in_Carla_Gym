@@ -1,10 +1,21 @@
-import math
-import carla
+import math, os, sys, carla
 import numpy as np
 from enum import Enum
 from macad_gym.core.controllers.route_planner import RoadOption
 from macad_gym.core.utils.misc import get_speed,get_yaw_diff,test_waypoint,get_sign
 
+# Set this where you want to save image outputs (or empty string to disable)
+CARLA_OUT_PATH = os.environ.get("CARLA_OUT", os.path.expanduser("~/Git/RLAV_in_Carla_Gym/carla_out"))
+if CARLA_OUT_PATH and not os.path.exists(CARLA_OUT_PATH):
+    os.makedirs(CARLA_OUT_PATH)
+
+# Set this to the path of your Carla binary
+SERVER_BINARY = os.environ.get(
+    "CARLA_SERVER", os.path.expanduser("~/ProgramFiles/Carla/CarlaUE4.sh")
+)
+
+# Check if is using on Windows
+IS_WINDOWS_PLATFORM = "win" in sys.platform
 
 # TODO: Clean env & actor configs to have appropriate keys based on the nature
 # of env
