@@ -14,7 +14,7 @@ class FixedRoute2CarTown05(MultiCarlaEnv):
                 #During pre-train steps, agent is only under PID control.
                 "pre_train_steps": 320000,
                 "train": True,
-                "debug": False,
+                "debug": True,
             },
             "env": {
                 "server_map": "/Game/Carla/Maps/Town05_Opt",
