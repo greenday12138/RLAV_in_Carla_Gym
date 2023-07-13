@@ -27,13 +27,11 @@ import carla
 import GPUtil
 import numpy as np  # linalg.norm is used
 
-from datetime import datetime
 from collections import deque
 from gym.spaces import Box, Discrete, Tuple, Dict
 
 from macad_gym.core.controllers.traffic import apply_traffic, hero_autopilot
 from macad_gym.multi_actor_env import MultiActorEnv
-from macad_gym import LOG_DIR
 from macad_gym.core.sensors.utils import preprocess_image
 from macad_gym.core.maps.nodeid_coord_map import MAP_TO_COORDS_MAPPING
 from macad_gym.core.utils.misc import (remove_unnecessary_objects, sigmoid, get_lane_center, 
@@ -42,7 +40,7 @@ from macad_gym.core.utils.misc import (remove_unnecessary_objects, sigmoid, get_
 from macad_gym.core.utils.wrapper import (COMMANDS_ENUM, COMMAND_ORDINAL, ROAD_OPTION_TO_COMMANDS_MAPPING, 
     DISTANCE_TO_GOAL_THRESHOLD, ORIENTATION_TO_GOAL_THRESHOLD, RETRIES_ON_ERROR, GROUND_Z, DISCRETE_ACTIONS,
     WEATHERS, process_lane_wp, process_veh, get_next_actions, DEFAULT_MULTIENV_CONFIG, print_measurements,
-    CARLA_OUT_PATH, SERVER_BINARY, IS_WINDOWS_PLATFORM,
+    SERVER_BINARY, IS_WINDOWS_PLATFORM, json_dumper, LOG_PATH,
     Truncated, Action, SpeedState, ControlInfo)
 
 # from macad_gym.core.sensors.utils import get_transform_from_nearest_way_point
@@ -277,10 +275,8 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
         self._npc_vehicles_spawn_points = []
         self._agents = {}  # Dictionary of macad_agents with agent_id as key
         # Env statistics
-        self._previous_actions = {}
         self._previous_rewards = {}
         self._total_reward = {}
-        self._prev_measurement = {}
         self._rl_switch = False    # rl_switch: True--currently RL in control, False--currently PID in control
         self._switch_count=0
         self._num_episodes = {}
@@ -309,6 +305,8 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
         self._auto_controller = {} # Dictionary of vehicles' automatic controllers
 
         # Following info will be modified every step
+        self._prev_measurement = {}
+        self._cur_measurement = {}
         self._last_obs = None
         self._prev_image = None
         self._obs_dict = {}
@@ -318,9 +316,9 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
             "wps":{},   #Dictionary of waypoints info with actor_id as keyw
             "lights":{}, #Dictionary of traffic lights info with actor_id as key
             "vehs":{},  #Dictionary of other vehicles info with actor_id as key
-            "meas":{},   #Dictionary of actor's py_measurements with actor_id as key
         }
         # Lane change info and action
+        self.control_info = {}
         self.last_lane,self.current_lane = {}, {}
         self.last_action,self.current_action = {}, {}
         self.last_target_lane,self.current_target_lane = {}, {}
@@ -355,7 +353,7 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
 
         multigpu_success = False
         gpus = GPUtil.getGPUs()
-        log_file = os.path.join(LOG_DIR, "server_" + str(self._server_port) + ".log")
+        log_file = os.path.join(LOG_PATH, "server_" + str(self._server_port) + ".log")
         logger.info(
             f"1. Port: {self._server_port}\n"
             f"2. Map: {self._server_map}\n"
@@ -607,44 +605,7 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
                 print("reset(): Retry #: {}/{}".format(retry + 1, RETRIES_ON_ERROR))
                 self._clear_server_state()
                 raise e
-
-        # Set appropriate initial values for all actors
-        for actor_id, actor_config in self._actor_configs.items():
-            cam = self._cameras[actor_id]
-            # Wait for the sensor (camera) actor to start streaming
-            # Shouldn't take too long
-            while cam.callback_count == 0:
-                if self._sync_server:
-                    self.world.tick()
-                    # `wait_for_tick` is no longer needed, see https://github.com/carla-simulator/carla/pull/1803
-                    # self.world.wait_for_tick()
-            if cam.image is None:
-                print("callback_count:", actor_id, ":", cam.callback_count)
-            state = self._read_observation(actor_id)
-            obs = self._encode_obs(actor_id, cam.image, state)
-            self._obs_dict[actor_id] = obs
-            # Actor correctly reset
-            self._done_dict[actor_id] = False
-            self._truncated_dict[actor_id] = Truncated.FALSE
-            self._total_reward[actor_id] = None
             
-            #update prev step info
-            self._prev_measurement[actor_id] = {}
-            current_lane=get_lane_center(self.map, self._actors[actor_id].get_location()).lane_id
-            self.last_lane[actor_id] = self.current_lane[actor_id] = current_lane
-            self.last_action[actor_id] = self.current_action[actor_id] = Action.LANE_FOLLOW
-            self.last_target_lane[actor_id] = self.current_target_lane[actor_id] = current_lane
-            self.last_light_state[actor_id] = None
-            self.last_acc[actor_id] = 0
-            self.last_yaw[actor_id] = carla.Vector3D()
-
-            #update timesteps
-            if actor_id in self._num_episodes.keys():
-                self._num_episodes[actor_id]+=1
-            else:
-                self._num_episodes[actor_id]=0
-            self._time_steps[actor_id] = 0
-
         # vehicle controller switch
         if not self._debug:
             if self.total_step-self.rl_control_step <self.pre_train_steps:
@@ -667,9 +628,49 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
             #     spawn_point=random.choice(self.spawn_points).location
             #     if self.map.get_waypoint(spawn_point).lane_id==self.map.get_waypoint(self.ego_spawn_point.location).lane_id:
             #         break
-            # self.controller.set_destination(spawn_point)        
+            # self.controller.set_destination(spawn_point)     
 
-        return self._obs_dict, _
+        # Set appropriate initial values for all actors
+        for actor_id, actor_config in self._actor_configs.items():
+            cam = self._cameras[actor_id]
+            # Wait for the sensor (camera) actor to start streaming
+            # Shouldn't take too long
+            while cam.callback_count == 0:
+                if self._sync_server:
+                    self.world.tick()
+                    # `wait_for_tick` is no longer needed, see https://github.com/carla-simulator/carla/pull/1803
+                    # self.world.wait_for_tick()
+            if cam.image is None:
+                print("callback_count:", actor_id, ":", cam.callback_count)
+            # Actor correctly reset
+            self._done_dict[actor_id] = False
+            self._truncated_dict[actor_id] = Truncated.FALSE
+            self._total_reward[actor_id] = None
+            
+            #update prev step info
+            current_lane=get_lane_center(self.map, self._actors[actor_id].get_location()).lane_id
+            self.last_lane[actor_id] = self.current_lane[actor_id] = current_lane
+            self.last_action[actor_id] = self.current_action[actor_id] = Action.LANE_FOLLOW
+            self.last_target_lane[actor_id] = self.current_target_lane[actor_id] = current_lane
+            self.last_light_state[actor_id] = None
+            self.last_acc[actor_id] = 0
+            self.last_yaw[actor_id] = carla.Vector3D()
+            self.control_info[actor_id] = ControlInfo()
+
+            #update time steps and prev step info
+            current_lane=get_lane_center(self.map, self._actors[actor_id].get_location()).lane_id
+            if actor_id in self._num_episodes.keys():
+                self._num_episodes[actor_id]+=1
+            else:
+                self._num_episodes[actor_id]=0
+            self._time_steps[actor_id] = 0
+
+            state = self._read_observation(actor_id)
+            obs = self._encode_obs(actor_id, cam.image, state)
+            self._obs_dict[actor_id] = obs
+            self._prev_measurement[actor_id] = self._cur_measurement[actor_id]
+
+        return self._obs_dict, {}
 
     def _spawn_new_actor(self, actor_id):
         """Spawn an agent as per the blueprint at the given pose
@@ -1028,7 +1029,7 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
             obs (dict): properly encoded observation data for each actor
         """
         assert self._framestack in [1, 2]
-        py_measurements = self._state["meas"][actor_id]
+        py_measurements = self._cur_measurement[actor_id]
         # Apply preprocessing
         config = self._actor_configs[actor_id]
         image = preprocess_image(image, config)
@@ -1126,8 +1127,8 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
                 "wps":{},   #Dictionary of waypoints info with actor_id as key
                 "lights":{}, #Dictionary of traffic lights info with actor_id as key
                 "vehs":{},  #Dictionary of other vehicles info with actor_id as key
-                "meas":{},   #Dictionary of actor's py_measurements with actor_id as key
             }
+            self.control_info = {}
             # Asynchronosly (one actor at a time; not all at once in a sync) apply
             # actor actions & perform a server tick after each actor's apply_action
             # if running with sync_server steps
@@ -1150,7 +1151,7 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
                 self._done_dict[actor_id] = done
                 self._truncated_dict[actor_id] = truncated
                 if self._speed_state[actor_id] == SpeedState.RUNNING:
-                    self._vel_buffer[actor_id].append(self._state["meas"][actor_id]["velocity"])
+                    self._vel_buffer[actor_id].append(self._cur_measurement[actor_id]["velocity"])
                 info_dict[actor_id] = info
 
                 #update last step info
@@ -1170,6 +1171,13 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
             self._done_dict["__all__"] = sum(self._done_dict.values()) >= len(self._actors)
             if len(list(filter(lambda x:  x!=Truncated.FALSE, self._truncated_dict.values()))) > 0:
                 self._truncated_dict["__all__"] = Truncated.TRUE
+            for actor_id in self._measurements_file_dict:
+                if self._actor_configs[actor_id]["log_measurements"] and LOG_PATH and \
+                                self._truncated_dict["__all__"] == Truncated.TRUE and \
+                                self._measurements_file_dict[actor_id] is not None:
+                    self._measurements_file_dict[actor_id].write("{}]\n")
+                    self._measurements_file_dict[actor_id].close()
+                    self._measurements_file_dict[actor_id] = None
             # Find if any actor's config has render=True & render only for
             # that actor. NOTE: with async server stepping, enabling rendering
             # affects the step time & therefore MAX_STEPS needs adjustments
@@ -1185,7 +1193,7 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
                 if self._manual_controller is None:
                     Render.dummy_event_handler()
 
-            print_measurements(self._state["meas"])
+            print_measurements(self._cur_measurement)
             return obs_dict, reward_dict, self._done_dict["__all__"]!=False, \
                     self._truncated_dict["__all__"]!=Truncated.FALSE, info_dict
         except Exception:
@@ -1304,17 +1312,16 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
         """
 
         # Process observations
-        config = self._actor_configs[actor_id]
-        state = self._read_observation(actor_id)
-        py_measurements = self._state["meas"][actor_id]
         control = self._actors[actor_id].get_control()
-        # if self._verbose:
-        #     print("Next command", py_measurements["next_command"])
-        # Store previous action
-        self._previous_actions[actor_id] = ControlInfo(
+        self.control_info[actor_id] = ControlInfo(
             throttle=control.throttle, brake=control.brake, steer=control.steer, gear=control.gear, 
             reverse=control.reverse, hand_brake=control.hand_brake, manual_gear_shift=control.manual_gear_shift)
-        py_measurements["control"] = control
+        self._time_steps[actor_id] += 1
+        config = self._actor_configs[actor_id]
+        state = self._read_observation(actor_id)
+        py_measurements = self._cur_measurement[actor_id]
+        # if self._verbose:
+        #     print("Next command", py_measurements["next_command"])
 
         # Compute truncated
         truncated = self._truncated(actor_id)
@@ -1329,7 +1336,7 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
         #     )
         # )
         py_measurements["done"] = done
-        py_measurements["truncated"] = truncated
+        py_measurements["truncated"] = str(truncated)
 
         # Compute reward
         flag = config["reward_function"]
@@ -1345,24 +1352,27 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
 
         py_measurements["reward"] = reward
         py_measurements["total_reward"] = self._total_reward[actor_id]
+        py_measurements["step"]=self._time_steps[actor_id]
 
         # End iteration updating parameters and logging
         self._prev_measurement[actor_id] = py_measurements
-        self._time_steps[actor_id] += 1
+        self._time_steps[actor_id] += 1   
 
-        if config["log_measurements"] and CARLA_OUT_PATH:
+        if config["log_measurements"] and LOG_PATH:
             # Write out measurements to file
             if not self._measurements_file_dict[actor_id]:
                 self._measurements_file_dict[actor_id] = open(
                     os.path.join(
-                        CARLA_OUT_PATH,
-                        "measurements_{}.json".format(self._num_episodes[actor_id]),
+                        LOG_PATH,
+                        "measurements_{}_{}.json".format(actor_id, self._num_episodes[actor_id]),
                     ),
-                    "w",
+                    "a",
                 )
-            self._measurements_file_dict[actor_id].write(json.dumps(py_measurements))
-            self._measurements_file_dict[actor_id].write("\n")
-            if done:
+                self._measurements_file_dict[actor_id].write("[\n")
+            self._measurements_file_dict[actor_id].write(json.dumps(py_measurements, indent=4))
+            self._measurements_file_dict[actor_id].write(",\n")
+            if done or truncated!=Truncated.FALSE:
+                self._measurements_file_dict[actor_id].write("{}]\n")
                 self._measurements_file_dict[actor_id].close()
                 self._measurements_file_dict[actor_id] = None
                 # if self.config["convert_images_to_video"] and\
@@ -1442,34 +1452,43 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
             )
         )
 
-        self._state["meas"].update({actor_id: {
-            "episode": self._num_episodes[actor_id],
-            "step": self._time_steps[actor_id],
-            "x": self._actors[actor_id].get_location().x,
-            "y": self._actors[actor_id].get_location().y,
-            "pitch": self._actors[actor_id].get_transform().rotation.pitch,
-            "yaw": self._actors[actor_id].get_transform().rotation.yaw,
-            "roll": self._actors[actor_id].get_transform().rotation.roll,
+        self._cur_measurement.update({actor_id: {
+            # "x": self._actors[actor_id].get_location().x,
+            # "y": self._actors[actor_id].get_location().y,
+            # "pitch": self._actors[actor_id].get_transform().rotation.pitch,
+            # "yaw": self._actors[actor_id].get_transform().rotation.yaw,
+            # "roll": self._actors[actor_id].get_transform().rotation.roll,
             "distance_to_goal": distance_to_goal,
-            "distance_to_goal_euclidean": distance_to_goal_euclidean,
+            # "distance_to_goal_euclidean": distance_to_goal_euclidean,
+            "intersection_offroad": intersection_offroad,
+            "intersection_otherlane": intersection_otherlane,
+            # "weather": self._weather,
+            # "map": self._server_map,
+            # "start_coord": self._start_coord[actor_id],
+            # "end_coord": self._end_coord[actor_id],
+            # "current_scenario": self._scenario_map,
+            # "x_res": self._x_res,
+            # "y_res": self._y_res,
+            # "max_steps": self._scenario_map["max_steps"],
+            # "next_command": next_command,
             "collision_vehicles": collision_vehicles,
             "collision_pedestrians": collision_pedestrians,
             "collision_other": collision_other,
-            "intersection_offroad": intersection_offroad,
-            "intersection_otherlane": intersection_otherlane,
-            "weather": self._weather,
-            "map": self._server_map,
-            "start_coord": self._start_coord[actor_id],
-            "end_coord": self._end_coord[actor_id],
-            "current_scenario": self._scenario_map,
-            "x_res": self._x_res,
-            "y_res": self._y_res,
-            "max_steps": self._scenario_map["max_steps"],
-            "next_command": next_command,
-            "previous_action": self._previous_actions.get(actor_id, None),
+            "control_info": self.control_info.get(actor_id, ControlInfo()).toDict(),
             "previous_reward": self._previous_rewards.get(actor_id, None),
-            "speed_state": self._speed_state[actor_id],
+            "speed_state": str(self._speed_state[actor_id]),
             "rl_switch": self._rl_switch,
+            "step": self._time_steps[actor_id],
+            "episode": self._num_episodes[actor_id],
+            "last_acc": self.last_acc[actor_id],
+            "last_yaw": str(self.last_yaw[actor_id]),
+            "last_lane": self.last_lane[actor_id],
+            "current_lane": self.current_lane[actor_id],
+            "last_action": str(self.last_action[actor_id]),
+            "current_action": str(self.current_action[actor_id]),
+            "last_traget_lane": self.last_target_lane[actor_id],
+            "current_target_lane": self.current_target_lane[actor_id],
+            "last_light_state": self.last_light_state[actor_id],
         }})
 
         return self._get_state(actor_id)
@@ -1622,12 +1641,11 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
         """Attention:
         Upon initializing, there are some bugs in the theta_v and theta_a, which could be greater than 90,
         this might be caused by carla."""
-        self._state["meas"][actor_id].update({'velocity': v_s, 'cur_acc': a_s, 
-            'prev_acc':self._prev_measurement[actor_id]['cur_acc'] if len(self._prev_measurement)!=0 else 0})
+        self._cur_measurement[actor_id].update({'velocity': v_s, 'cur_acc': a_s})
         #update informatino for rear vehicle
         if vehs_info.center_rear_veh is None or \
                 (lights_info is not None and lights_info.state!=carla.TrafficLightState.Green):
-            self._state["meas"][actor_id].update({
+            self._cur_measurement[actor_id].update({
                 'rear_id':-1, 'rear_v':0, 'rear_a':0, 'change_lane': None})
         else:
             lane_center=get_lane_center(self.map, vehs_info.center_rear_veh.get_location())
@@ -1636,7 +1654,7 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
             v_s,v_t=get_projection(v_3d,yaw_forward)
             a_3d=vehs_info.center_rear_veh.get_acceleration()
             a_s,a_t=get_projection(a_3d,yaw_forward)
-            self._state["meas"][actor_id].update({'rear_id':vehs_info.center_rear_veh.id, 
+            self._cur_measurement[actor_id].update({'rear_id':vehs_info.center_rear_veh.id, 
                 'rear_v':v_s,'rear_a':a_s, 'change_lane': None})
 
         return {'left_waypoints': left_wps_processed, 'center_waypoints': center_wps_processed,
@@ -1646,7 +1664,7 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
   
     def _truncated(self, actor_id):
         """Decide whether terminating current episode or not"""
-        m = self._state["meas"][actor_id]
+        m = self._cur_measurement[actor_id]
         lane_center=get_lane_center(self.map, self._actors[actor_id].get_location())
         yaw_diff = math.degrees(get_yaw_diff(lane_center.transform.get_forward_vector(),
                         self._actors[actor_id].get_transform().get_forward_vector()))

@@ -1,13 +1,16 @@
-import math, os, sys, carla
+import math, os, sys, carla, json
 import numpy as np
 from enum import Enum
+from datetime import datetime
+from macad_gym import LOG_DIR
 from macad_gym.core.controllers.route_planner import RoadOption
 from macad_gym.core.utils.misc import get_speed,get_yaw_diff,test_waypoint,get_sign
 
 # Set this where you want to save image outputs (or empty string to disable)
-CARLA_OUT_PATH = os.environ.get("CARLA_OUT", os.path.expanduser("~/Git/RLAV_in_Carla_Gym/carla_out"))
-if CARLA_OUT_PATH and not os.path.exists(CARLA_OUT_PATH):
-    os.makedirs(CARLA_OUT_PATH)
+LOG_PATH = os.path.join(LOG_DIR, f"{datetime.today().strftime('%Y-%m-%d_%H-%M-%S_%f')}")
+#CARLA_OUT_PATH = os.environ.get("CARLA_OUT", os.path.expanduser("~/Git/RLAV_in_Carla_Gym/carla_out"))
+if not os.path.exists(LOG_PATH):
+    os.makedirs(LOG_PATH)
 
 # Set this to the path of your Carla binary
 SERVER_BINARY = os.environ.get(
@@ -284,6 +287,27 @@ class ControlInfo:
         self.manual_gear_shift=manual_gear_shift
         self.hand_brake=hand_brake
 
+    def toDict(self):
+        return dict({
+            "throttle": self.throttle,
+            "brake": self.brake,
+            "steer": self.steer,
+            "gear": self.gear,
+            "hand_brake": self.hand_brake,
+            "reverse": self.reverse,
+            "manual_gear_shift": self.manual_gear_shift,
+        })
+
+    def toJSON(self):
+        return json.dumps(self, default=lambda o: o.__dict__, 
+            sort_keys=True)
+    
+def json_dumper(obj):
+    try:
+        return obj.toJSON()
+    except:
+        return obj.__dict__
+
 def process_lane_wp(wps_list, ego_vehicle_z, ego_forward_vector, my_sample_ratio, lane_offset):
     wps = []
     idx = 0
@@ -421,8 +445,8 @@ def print_measurements(measurements):
         print(f"actor_id:{actor_id}, episode:{m[actor_id]['episode']}, step:{m[actor_id]['step']}, "
             f"done:{m[actor_id]['done']}, truncated:{m[actor_id]['truncated']} \n"
             f"speed_state:{m[actor_id]['speed_state']}, control_state:{'RL' if m[actor_id]['rl_switch'] else 'PID'}, \n"
-            f"vel:{m[actor_id]['velocity']}, cur_acc:{m[actor_id]['cur_acc']}, prev_acc:{m[actor_id]['prev_acc']}, \n"
-            f"throttle:{m[actor_id]['control'].throttle}, brake:{m[actor_id]['control'].brake}, steer:{m[actor_id]['control'].steer}, \n"
+            f"vel:{m[actor_id]['velocity']}, cur_acc:{m[actor_id]['cur_acc']}, last_acc:{m[actor_id]['last_acc']}, \n"
+            f"throttle:{m[actor_id]['control_info']['throttle']}, brake:{m[actor_id]['control_info']['brake']}, steer:{m[actor_id]['control_info']['steer']}, \n"
             f"rew:{m[actor_id]['reward']}")
 
 def get_next_actions(measurements, is_discrete_actions):
