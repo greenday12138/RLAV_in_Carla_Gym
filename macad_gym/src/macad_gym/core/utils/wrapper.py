@@ -7,7 +7,7 @@ from macad_gym.core.controllers.route_planner import RoadOption
 from macad_gym.core.utils.misc import get_speed,get_yaw_diff,test_waypoint,get_sign
 
 # Set this where you want to save image outputs (or empty string to disable)
-LOG_PATH = os.path.join(LOG_DIR, f"{datetime.today().strftime('%Y-%m-%d_%H-%M-%S_%f')}")
+LOG_PATH = os.path.join(LOG_DIR, f"{datetime.today().strftime('%Y-%m-%d_%H-%M')}")
 #CARLA_OUT_PATH = os.environ.get("CARLA_OUT", os.path.expanduser("~/Git/RLAV_in_Carla_Gym/carla_out"))
 if not os.path.exists(LOG_PATH):
     os.makedirs(LOG_PATH)

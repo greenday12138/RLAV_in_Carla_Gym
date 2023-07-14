@@ -26,9 +26,9 @@ class FixedRoute2CarTown05(MultiCarlaEnv):
                 "framestack": 1,
                 "discrete_actions": False,
                 "squash_action_logits": False,
-                "verbose": False,
+                "verbose": True,
                 "use_depth_camera": False,
-                "send_measurements": False,
+                "send_measurements": True,
                 "enable_planner": False,
                 "spectator_loc": [140, 68, 9],
                 "sync_server": True,
@@ -71,7 +71,7 @@ class FixedRoute2CarTown05(MultiCarlaEnv):
                     "x_res": 800,
                     "y_res": 800,
                     "use_depth_camera": False,
-                    "send_measurements": False,
+                    "send_measurements": True,
                     #Speed limit for hero vehicle, km/h
                     "speed_limit": 90.0,
                     #Speed threshold for hero vehicle, running in start phase before speed reach such threshold, km/h
@@ -104,7 +104,7 @@ class FixedRoute2CarTown05(MultiCarlaEnv):
                     "x_res": 800,
                     "y_res": 800,
                     "use_depth_camera": False,
-                    "send_measurements": False,
+                    "send_measurements": True,
                     #Speed limit for hero vehicle, km/h
                     "speed_limit": 90.0,
                     #Speed threshold for hero vehicle, running in start phase before speed reach such threshold, km/h

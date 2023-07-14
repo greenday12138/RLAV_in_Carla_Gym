@@ -246,11 +246,15 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
                 {
                     actor_id: Tuple(
                         [
-                            self._image_space,  # image
-                            Discrete(len(COMMANDS_ENUM)),  # next_command
-                            Box(
-                                -128.0, 128.0, shape=(2,)
-                            ),  # forward_speed, dist to goal
+                            self._image_space,
+                            Dict({
+                                "left_waypoints": Box(-2.0, 2.0, shape=(10, 3), dtype=np.float32), 
+                                "center_waypoints": Box(-2.0, 2.0, shape=(10, 3), dtype=np.float32),
+                                "right_waypoints": Box(-2.0, 2.0, shape=(10, 3), dtype=np.float32), 
+                                "vehicle_info": Box(-np.inf, np.inf,shape=(6, 3), dtype=np.float32),
+                                "hero_vehicle": Box(-2.0, 2.0, shape=(1, 6), dtype=np.float32),
+                                "light":Box(-np.inf, np.inf, shape=(1, 3), dtype=np.float32),
+                            })
                         ]
                     )
                     for actor_id in self._actor_configs.keys()
@@ -307,8 +311,7 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
         # Following info will be modified every step
         self._prev_measurement = {}
         self._cur_measurement = {}
-        self._last_obs = None
-        self._prev_image = None
+        self._prev_image = {}
         self._obs_dict = {}
         self._done_dict = {}
         self._truncated_dict = {}
@@ -608,7 +611,7 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
             
         # vehicle controller switch
         if not self._debug:
-            if self.total_step-self.rl_control_step <self.pre_train_steps:
+            if self._total_steps-self._rl_control_steps <self.pre_train_steps:
                 #During pre-train steps, let rl and pid alternatively take control
                 if self._rl_switch:
                     if self._switch_count>=self.SWITCH_THRESHOLD:
@@ -669,6 +672,7 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
             obs = self._encode_obs(actor_id, cam.image, state)
             self._obs_dict[actor_id] = obs
             self._prev_measurement[actor_id] = self._cur_measurement[actor_id]
+            self._prev_image[actor_id] = None
 
         return self._obs_dict, {}
 
@@ -1034,24 +1038,22 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
         config = self._actor_configs[actor_id]
         image = preprocess_image(image, config)
         # Stack frames
-        prev_image = self._prev_image
-        self._prev_image = image
+        prev_image = self._prev_image.get(actor_id, None)
+        self._prev_image[actor_id] = image
         if prev_image is None:
             prev_image = image
         if self._framestack == 2:
             # image = np.concatenate([prev_image, image], axis=2)
             image = np.concatenate([prev_image, image])
+        del prev_image
         # Structure the observation
         if not self._actor_configs[actor_id]["send_measurements"]:
             return image
         obs = (
             image,
             state,
-            COMMAND_ORDINAL[py_measurements["next_command"]],
-            [py_measurements["velocity"], py_measurements["distance_to_goal"]],
         )
 
-        self._last_obs = obs
         return obs
 
     def step(self, action_dict):
@@ -1171,6 +1173,8 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
             self._done_dict["__all__"] = sum(self._done_dict.values()) >= len(self._actors)
             if len(list(filter(lambda x:  x!=Truncated.FALSE, self._truncated_dict.values()))) > 0:
                 self._truncated_dict["__all__"] = Truncated.TRUE
+            self._total_steps += 1
+            self._rl_control_steps += 1 if self._rl_switch else None
             for actor_id in self._measurements_file_dict:
                 if self._actor_configs[actor_id]["log_measurements"] and LOG_PATH and \
                                 self._truncated_dict["__all__"] == Truncated.TRUE and \
@@ -1193,7 +1197,8 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
                 if self._manual_controller is None:
                     Render.dummy_event_handler()
 
-            print_measurements(self._cur_measurement)
+            if self._verbose:
+                print_measurements(self._cur_measurement)
             return obs_dict, reward_dict, self._done_dict["__all__"]!=False, \
                     self._truncated_dict["__all__"]!=Truncated.FALSE, info_dict
         except Exception:
@@ -1226,10 +1231,6 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
             brake = float(np.abs(np.clip(action[0], -1, 0)))
             steer = float(np.clip(action[1], -1, 1))
         control = ControlInfo(throttle=throttle, brake=brake, steer=steer)
-        # if self._verbose:
-        #     print(
-        #         "steer", steer, "throttle", throttle, "brake", brake, "reverse", reverse
-        #     )
 
         config = self._actor_configs[actor_id]
         if config["manual_control"]:
@@ -1320,8 +1321,6 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
         config = self._actor_configs[actor_id]
         state = self._read_observation(actor_id)
         py_measurements = self._cur_measurement[actor_id]
-        # if self._verbose:
-        #     print("Next command", py_measurements["next_command"])
 
         # Compute truncated
         truncated = self._truncated(actor_id)
@@ -1495,6 +1494,7 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
         
     def _speed_switch(self, actor_id, cont):
         """cont: the control command of RL agent"""
+        control = cont
         ego_speed = get_speed(self._actors[actor_id])
         if self._speed_state[actor_id] == SpeedState.START:
             hero_autopilot(self._actors[actor_id], self._traffic_manager, 
@@ -1537,7 +1537,7 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
                 hero_autopilot(self._actors[actor_id], self._traffic_manager, self._actor_configs[actor_id],
                            self._env_config, False)
                 control = cont
-            else:
+            elif not self._actor_configs[actor_id]["auto_control"]:
                 if self._rl_switch:
                     # RL in control
                     pass

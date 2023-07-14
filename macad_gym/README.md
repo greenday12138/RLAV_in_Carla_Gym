@@ -90,6 +90,7 @@ python -m macad_gym.envs.homo.ncom.inde.po.intrx.ma.stop_sign_3c_town03
   `Segmentation fault (core dumped)`
 
   If you encounter above crash reports, try `./CarlaUE4.sh -prefernvidia` or load opt map like `client.load_world('Town05_Opt')` in replacement of `client.load_world('Town05')`
+- If segmentation fault cannot be fixed by above method, try to keep the Carla client window in the foreground without minimizing it. Experiments have shown that minimizing the Carla client can lead to an increase in memory usage until it reaches a point of memory overflow and program crashes. (On Ubuntu)
 
 
 ### Learning Platform and Agent Interface

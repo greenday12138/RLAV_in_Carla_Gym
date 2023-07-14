@@ -1,66 +1,74 @@
 import logging
 import torch
 import datetime,time, os
-import random, collections
+import gym, macad_gym
+import random, sys
 import numpy as np
 import matplotlib.pyplot as plt
 import multiprocessing as mp
 from tqdm import tqdm
 from copy import deepcopy
 from collections import deque
-from algs.pdqn import P_DQN
 from tensorboardX import SummaryWriter
-from multiprocessing import Process,Queue,Pipe,connection
-from gym_carla.multi_lane.settings import ARGS
-from gym_carla.multi_lane.carla_env_ma import CarlaEnv
-from main.util.process import start_process, kill_process
-from gym_carla.multi_lane.util.wrapper import fill_action_param,recover_steer,Action
+from multiprocessing import Process, Queue, Pipe, connection, Lock
+sys.path.append(os.getcwd())
+from macad_gym.core.utils.wrapper import fill_action_param,recover_steer,Action
+from algs.pdqn import P_DQN
 
 # neural network hyper parameters
-SIGMA = 0.5
-SIGMA_STEER = 0.3
-SIGMA_ACC = 0.5
-THETA = 0.05
-DEVICE = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
-LR_ACTOR = 0.0002
-LR_CRITIC = 0.0002
-GAMMA = 0.9  # q值更新系数
-TAU = 0.01  # 软更新参数
-EPSILON = 0.5  # epsilon-greedy
-BUFFER_SIZE = 160000
-MINIMAL_SIZE = 10000
-BATCH_SIZE = 256
-REPLACE_A = 500
-REPLACE_C = 300
-TOTAL_EPISODE = 50000
-SIGMA_DECAY = 0.9999
-PER_FLAG=True
+AGENT_PARAM = {
+    "s_dim": {
+        'waypoints': 10, 
+        'ego_vehicle': 6, 
+        'companion_vehicle': 3, 
+        'light':3
+    },
+    "a_dim": 2,
+    "a_bound":{
+        'steer': 1.0, 
+        'throttle': 1.0, 
+        'brake': 1.0
+    },
+    "acc3": True,
+    "Kaiming_normal": False,
+    "buffer_size": 160000,
+    "minimal_size": 10000,
+    "batch_size": 256,
+    "per_flag": True,
+    "device": torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu'),
+    "sigma": 0.5,
+    "sigma_steer": 0.3,
+    "sigma_acc": 0.5,
+    "sigma_decay": 0.9999,
+    "theta": 0.05,
+    "lr_actor": 0.0002,
+    "lr_critic": 0.0002,
+    "gamma": 0.9,   # q值更新系数
+    "tau": 0.01,    # 软更新参数
+    "epsilon": 0.5, # epsilon-greedy
+    "clip_grad": 10,
+    "zero_index_gradients": True,
+    "inverting_gradients": True,
+}
+TRAIN = True
+UPDATE_FREQ = 100
 modify_change_steer=False
-clip_grad = 10
-zero_index_gradients = True
-inverting_gradients = True
 base_name = f'origin_NOCA'
-time=datetime.datetime.now().strftime('%Y%m%d%H%M%S')
+time=datetime.datetime.now().strftime('%Y-%m-%d_%H-%M')
 SAVE_PATH=f"./out/multi_agent/pdqn/{time}"
 if not os.path.exists(SAVE_PATH):
     os.makedirs(SAVE_PATH)
 
 def main():
-    Args = ARGS.parse_args()
-    log_level = logging.DEBUG if Args.debug else logging.INFO
-    logging.basicConfig(format='%(levelname)s: %(message)s', level=log_level)
+    logging.basicConfig(format='%(levelname)s: %(message)s', level=logging.INFO)
     # env=gym.make('CarlaEnv-v0')
-    env = CarlaEnv(Args)
-    globals()['modify_change_steer'] = Args.modify_change_steer
+    env = gym.make("HomoNcomIndePoHiwaySAFR2CTWN5-v0")
 
     done = False
     truncated = False
 
     random.seed(0)
     torch.manual_seed(16)
-    s_dim = env.get_observation_space()
-    a_bound = env.get_action_bound()
-    a_dim = 2
 
     episode_writer=SummaryWriter(SAVE_PATH)
     n_run = 3
@@ -68,8 +76,12 @@ def main():
     result = []
 
     for run in [base_name]:
-        worker_agent = P_DQN(deepcopy(s_dim), a_dim, a_bound, GAMMA, TAU, SIGMA_STEER, SIGMA, SIGMA_ACC, THETA, EPSILON, BUFFER_SIZE, BATCH_SIZE, LR_ACTOR,
-                     LR_CRITIC, clip_grad, zero_index_gradients, inverting_gradients,PER_FLAG, torch.device('cpu'))
+        param = deepcopy(AGENT_PARAM)
+        worker_agent = P_DQN(param["s_dim"], param["a_dim"], param["a_bound"], param["gamma"],
+                            param["tau"], param["sigma_steer"], param["sigma"], param["sigma_acc"], 
+                            param["theta"], param["epsilon"], param["buffer_size"], param["batch_size"], 
+                            param["lr_actor"], param["lr_critic"], param["clip_grad"], param["zero_index_gradients"],
+                            param["inverting_gradients"], param["per_flag"], param["device"])
         # learner_agent = P_DQN(deepcopy(s_dim), a_dim, a_bound, GAMMA, TAU, SIGMA_STEER, SIGMA, SIGMA_ACC, THETA, EPSILON, BUFFER_SIZE, BATCH_SIZE, LR_ACTOR,
         #              LR_CRITIC, clip_grad, zero_index_gradients, inverting_gradients,PER_FLAG, DEVICE)
 
@@ -79,7 +91,6 @@ def main():
         agent_q=Queue(maxsize=1)
         traj_send,traj_recv=Pipe()
         agent_send,agent_recv=Pipe()
-        mp.set_start_method(method='spawn',force=True)  # force all the multiprocessing to 'spawn' methods
         #process.append(mp.Process(target=learner_mp,args=(traj_recv,agent_send,(deepcopy(s_dim), a_dim, a_bound),Args.ego_num)))
         process.append(mp.Process(target=learner_mp,args=(traj_q,agent_q,(deepcopy(s_dim), a_dim, a_bound),Args.ego_num)))
         [p.start() for p in process]
@@ -238,7 +249,7 @@ def main():
         # except BaseException as e:
         #      logging.info(e.args)
         finally:
-            env.__del__()
+            env.close()
             #process[-1].join() # waiting for learner
             episode_writer.close()
             worker_agent.save_net(f"{SAVE_PATH}/pdqn_final.pth")
@@ -276,31 +287,34 @@ def process_safely_terminate(process: list):
 #                 agent_send.send((a,a_t,c,c_t))
 
 #Queue vesion multiprocess
-def learner_mp(traj_q: Queue, agent_q:Queue, agent_param, ego_num):
-    learner_agent=P_DQN(deepcopy(agent_param[0]), agent_param[1], agent_param[2], GAMMA, TAU, SIGMA_STEER, SIGMA, SIGMA_ACC, THETA, EPSILON, BUFFER_SIZE, BATCH_SIZE, LR_ACTOR,
-                     LR_CRITIC, clip_grad, zero_index_gradients, inverting_gradients,PER_FLAG, DEVICE)
-    temp_agent=P_DQN(deepcopy(agent_param[0]), agent_param[1], agent_param[2], GAMMA, TAU, SIGMA_STEER, SIGMA, SIGMA_ACC, THETA, EPSILON, BUFFER_SIZE, BATCH_SIZE, LR_ACTOR,
-                     LR_CRITIC, clip_grad, zero_index_gradients, inverting_gradients,PER_FLAG, torch.device('cpu'))
-    impact_deques=[deque(maxlen=2) for _ in range(ego_num)]
-    actor,actor_t,critic,critic_t=None,None,None,None
-    a,a_t,c,c_t=None,None,None,None
+def learner_mp(lock:Lock, traj_q: Queue, agent_q:Queue, agent_param, ego_num):
+    param = deepcopy(AGENT_PARAM)
+    learner = P_DQN(param["s_dim"], param["a_dim"], param["a_bound"], param["gamma"],
+                        param["tau"], param["sigma_steer"], param["sigma"], param["sigma_acc"], 
+                        param["theta"], param["epsilon"], param["buffer_size"], param["batch_size"], 
+                        param["lr_actor"], param["lr_critic"], param["clip_grad"], param["zero_index_gradients"],
+                        param["inverting_gradients"], param["per_flag"], param["device"])
+    if TRAIN and os.path.exists(f"./model_params/{SAVE_PATH}_net_params.pth"):
+        learner.load_state_dict(torch.load(f"./model_params/{SAVE_PATH}_net_params.pth", map_location=param["device"]))
     update_count=0
+
     while(True):
         #alter the batch_size and update times according to the replay buffer size:
         #reference: https://zhuanlan.zhihu.com/p/345353294, https://arxiv.org/abs/1711.00489
-        k=max(learner_agent.replay_buffer.size()//MINIMAL_SIZE, 1)
-        learner_agent.batch_size=k*BATCH_SIZE
-        for _ in range(k):
+        k = max(learner.replay_buffer.size()// param["minimal_size"], 1)
+        learner.batch_size = k * param["batch_size"]
+        for _ in range(UPDATE_FREQ):
             trajectory=traj_q.get(block=True,timeout=None)
-            ego_id, state, next_state, all_action_param, reward, truncated, done, info=trajectory[0],trajectory[1],trajectory[2],trajectory[3],\
-                    trajectory[4],trajectory[5],trajectory[6],trajectory[7]
+            state, next_state, all_action_param, reward, done, truncated, info = trajectory[0], \
+                trajectory[1], trajectory[2], trajectory[3], trajectory[4], trajectory[5], trajectory[6]
+            
             replay_buffer_adder(learner_agent,impact_deques[ego_id],state,next_state,all_action_param,reward,truncated,done,info)        
-        if learner_agent.replay_buffer.size()>=MINIMAL_SIZE:
+        if learner.replay_buffer.size()>=param["minimal_size"]:
             logging.info("LEARN BEGIN")
             #print(f"LEARN TIME:{learner_agent.learn_time}")
             [learner_agent.learn() for _ in range(k)]
-            if update_count!=0 and update_count//10>0:
-                update_count%=10
+            if update_count!=0 and update_count//UPDATE_FREQ>0:
+                update_count%=UPDATE_FREQ
                 if not agent_q.full():
                     actor=deepcopy(learner_agent.actor).to('cpu')
                     critic=deepcopy(learner_agent.critic).to('cpu')
@@ -368,9 +382,7 @@ def replay_buffer_adder(agent,impact_deque, state, next_state,all_action_param,r
 
 if __name__ == '__main__':
     try:
-        start_process()
+        mp.set_start_method(method='spawn',force=True)  # force all the multiprocessing to 'spawn' methods
         main()
-    # except BaseException as e:
-    #     logging.warning(e.args)
-    finally:
-        kill_process()
+    except BaseException as e:
+        logging.warning(e.args)
