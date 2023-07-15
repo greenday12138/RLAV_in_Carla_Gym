@@ -40,7 +40,7 @@ from macad_gym.core.utils.misc import (remove_unnecessary_objects, sigmoid, get_
 from macad_gym.core.utils.wrapper import (COMMANDS_ENUM, COMMAND_ORDINAL, ROAD_OPTION_TO_COMMANDS_MAPPING, 
     DISTANCE_TO_GOAL_THRESHOLD, ORIENTATION_TO_GOAL_THRESHOLD, RETRIES_ON_ERROR, GROUND_Z, DISCRETE_ACTIONS,
     WEATHERS, process_lane_wp, process_veh, get_next_actions, DEFAULT_MULTIENV_CONFIG, print_measurements,
-    SERVER_BINARY, IS_WINDOWS_PLATFORM, json_dumper, LOG_PATH,
+    SERVER_BINARY, IS_WINDOWS_PLATFORM, json_dumper, LOG_PATH, process_steer,
     Truncated, Action, SpeedState, ControlInfo)
 
 # from macad_gym.core.sensors.utils import get_transform_from_nearest_way_point
@@ -1123,7 +1123,7 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
                      'center_rear_wps': self._state["wps"][actor_id].center_rear_wps, 
                      'right_rear_wps': self._state["wps"][actor_id].right_rear_wps,
                      'vehs_info': self._state["vehs"][actor_id]})
-                actions.update({actor_id: self._step_before_tick(actor_id, action)})
+                actions.update({actor_id: self._step_before_tick(actor_id, action_dict[actor_id])})
 
             self._state = {
                 "wps":{},   #Dictionary of waypoints info with actor_id as key
@@ -1174,7 +1174,8 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
             if len(list(filter(lambda x:  x!=Truncated.FALSE, self._truncated_dict.values()))) > 0:
                 self._truncated_dict["__all__"] = Truncated.TRUE
             self._total_steps += 1
-            self._rl_control_steps += 1 if self._rl_switch else None
+            if self._rl_switch:
+                self._rl_control_steps += 1
             for actor_id in self._measurements_file_dict:
                 if self._actor_configs[actor_id]["log_measurements"] and LOG_PATH and \
                                 self._truncated_dict["__all__"] == Truncated.TRUE and \
@@ -1199,8 +1200,7 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
 
             if self._verbose:
                 print_measurements(self._cur_measurement)
-            return obs_dict, reward_dict, self._done_dict["__all__"]!=False, \
-                    self._truncated_dict["__all__"]!=Truncated.FALSE, info_dict
+            return obs_dict, reward_dict, self._done_dict, self._truncated_dict, info_dict
         except Exception:
             print("Error during step, terminating episode early.", traceback.format_exc())
             self._clear_server_state()
@@ -1213,26 +1213,36 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
 
         Args:
             actor_id(str): Actor identifier
-            action: Actions to be executed for the actor.
-
+            action:{
+                "action_index": 
+                "action_param":
+            }   Actions to be executed for the actor.
         Returns
-            ation (dict)
+            control info (dict)
         """
-        if self._discrete_actions:
-            action = DISCRETE_ACTIONS[int(action)]
+        # if self._discrete_actions:
+        #     action = DISCRETE_ACTIONS[int(action)]
+        config = self._actor_configs[actor_id]
         assert len(action) == 2, "Invalid action {}".format(action)
         if self._squash_action_logits:
-            forward = 2 * float(sigmoid(action[0]) - 0.5)
-            throttle = float(np.clip(forward, 0, 1))
-            brake = float(np.abs(np.clip(forward, -1, 0)))
-            steer = 2 * float(sigmoid(action[1]) - 0.5)
+            # forward = 2 * float(sigmoid(action_param[0]) - 0.5)
+            # throttle = float(np.clip(forward, 0, 1))
+            # brake = float(np.abs(np.clip(forward, -1, 0)))
+            # steer = 2 * float(sigmoid(action_param[1]) - 0.5)
+            pass
         else:
-            throttle = float(np.clip(action[0], 0, 0.6))
-            brake = float(np.abs(np.clip(action[0], -1, 0)))
-            steer = float(np.clip(action[1], -1, 1))
+            if not self._rl_configs["modify_steer"]:
+                steer = np.clip(action["action_param"][0][0], -config["steer_bound"], config["steer_bound"])
+            else:
+                steer = float(process_steer(action["action_index"], action["action_param"][0][0]))
+            if action["action_param"][0][1] >= 0:
+                brake = 0
+                throttle = np.clip(action["action_param"][0][1], 0, config["throttle_bound"])
+            else:
+                throttle = 0
+                brake = np.clip(abs(action["action_param"][0][1]), 0, config["brake_bound"])
         control = ControlInfo(throttle=throttle, brake=brake, steer=steer)
 
-        config = self._actor_configs[actor_id]
         if config["manual_control"]:
             self._control_clock.tick(60)
             self._manual_control_camera_manager._hud.tick(
@@ -1282,16 +1292,18 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
             # TODO: Change this if different vehicle types (Eg.:vehicle_4W,
             #  vehicle_2W, etc) have different control APIs
             elif "vehicle" in agent_type:
-                control = self._speed_switch(actor_id, control)
-                self._actors[actor_id].apply_control(
-                    carla.VehicleControl(
-                        throttle=control.throttle,
-                        steer=control.steer,
-                        brake=control.brake,
-                        hand_brake=control.hand_brake,
-                        reverse=control.reverse,
+                cont = self._speed_switch(actor_id, action["action_index"], control)
+                if cont is not None:
+                    self._actors[actor_id].apply_control(
+                        carla.VehicleControl(
+                            throttle=cont.throttle,
+                            steer=cont.steer,
+                            brake=cont.brake,
+                            hand_brake=cont.hand_brake,
+                            reverse=cont.reverse,
+                        )
                     )
-                )
+                    control = cont
         
         return {'steer':control.steer, 'throttle': control.throttle, 'brake': control.brake, 
                 'reverse':control.reverse, 'hand_brake':control.hand_brake, 'gear':control.gear}
@@ -1492,25 +1504,43 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
 
         return self._get_state(actor_id)
         
-    def _speed_switch(self, actor_id, cont):
+    def _speed_switch(self, actor_id, action_index, cont):
         """cont: the control command of RL agent"""
-        control = cont
         ego_speed = get_speed(self._actors[actor_id])
         if self._speed_state[actor_id] == SpeedState.START:
             hero_autopilot(self._actors[actor_id], self._traffic_manager, 
                            self._actor_configs[actor_id], self._env_config, True)
+            control = None
             # control = self.controller.run_step({'waypoints':self.next_wps,'vehicle_front':self.vehicle_front})
             if ego_speed >= self._actor_configs[actor_id]["speed_threshold"]:
                 self._speed_state[actor_id] = SpeedState.RUNNING
                 if self._actor_configs[actor_id]["auto_control"]:
                     hero_autopilot(self._actors[actor_id], self._traffic_manager, 
                                 self._actor_configs[actor_id], self._env_config, True)
+                    control = None
                 else:
                     hero_autopilot(self._actors[actor_id], self._traffic_manager, 
                                 self._actor_configs[actor_id], self._env_config, False)
                     if self._rl_switch:
                         # RL in control
-                        pass
+                        if action_index==0:
+                            self.current_action[actor_id]=Action.LANE_CHANGE_LEFT
+                            self.current_target_lane[actor_id]=self.current_lane[actor_id]+1
+                        elif action_index==2:
+                            self.current_action[actor_id]=Action.LANE_CHANGE_RIGHT
+                            self.current_target_lane[actor_id]=self.current_lane[actor_id]-1
+                        elif action_index==1:
+                            self.current_action[actor_id]=Action.LANE_FOLLOW
+                            self.current_target_lane[actor_id]=self.current_lane[actor_id]
+                        else:
+                            #action_index=4
+                            self.current_action[actor_id]=Action.STOP
+                            self.current_target_lane[actor_id]=self.current_lane[actor_id]
+                        print("initial: last_lane, current_lane, last_target_lane, current_target_lane, last action, current action: ",
+                                self.last_lane[actor_id], self.current_lane[actor_id], 
+                                self.last_target_lane[actor_id], self.current_target_lane[actor_id],
+                                self.last_action[actor_id].value,self.current_action[actor_id].value)          
+                        control = cont
                     else:
                         # PID in control
                         print("basic_lanechanging_agent before: last_lane, current_lane, last_target_lane, current_target_lane, last action, current action: ",
@@ -1526,8 +1556,6 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
                             self.last_lane[actor_id], self.current_lane[actor_id], 
                             self.last_target_lane[actor_id], self.current_target_lane[actor_id], 
                             self.last_action[actor_id].value,self.current_action[actor_id].value)
-            else:
-                control = cont
         elif self._speed_state[actor_id] == SpeedState.RUNNING:
             if self._state["wps"][actor_id].center_front_wps[2].road_id == self._scenario_map["dest_road_id"]:          
                 #Vehicle reaches destination, stop vehicle
@@ -1536,11 +1564,34 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
                 self._lane_invasions[actor_id].stop()
                 hero_autopilot(self._actors[actor_id], self._traffic_manager, self._actor_configs[actor_id],
                            self._env_config, False)
-                control = cont
+                control = None
             elif not self._actor_configs[actor_id]["auto_control"]:
                 if self._rl_switch:
-                    # RL in control
-                    pass
+                    # under Rl control, used to set the self.new_action.                        
+                    print("initial: last_lane, current_lane, last_target_lane, current_target_lane, last action, current action: ",
+                            self.last_lane[actor_id], self.current_lane[actor_id], 
+                            self.last_target_lane[actor_id], self.current_target_lane[actor_id],
+                            self.last_action[actor_id].value,self.current_action[actor_id].value)
+                    if action_index==0:
+                        self.current_action[actor_id]=Action.LANE_CHANGE_LEFT
+                        self.current_target_lane[actor_id]=self.current_lane[actor_id]+1
+                    elif action_index==2:
+                        self.current_action[actor_id]=Action.LANE_CHANGE_RIGHT
+                        self.current_target_lane[actor_id]=self.current_lane[actor_id]-1
+                    elif action_index==1:
+                        self.current_action[actor_id]=Action.LANE_FOLLOW
+                        self.current_target_lane[actor_id]=self.current_lane[actor_id]
+                    else:
+                        #action_index=4
+                        self.current_action[actor_id]=Action.STOP
+                        self.current_target_lane[actor_id]=self.current_lane[actor_id]
+                    # _, _, _, self.distance_to_front_vehicles, self.distance_to_rear_vehicles = \
+                    #     self.autopilot_controller.run_step(self.last_lane, self.last_target_lane, self.last_action, True, action_index, self.modify_change_steer)
+                    print("initial: last_lane, current_lane, last_target_lane, current_target_lane, last action, current action: ",
+                            self.last_lane[actor_id], self.current_lane[actor_id], 
+                            self.last_target_lane[actor_id], self.current_target_lane[actor_id],
+                            self.last_action[actor_id].value,self.current_action[actor_id].value)
+                    control = cont
                 else:
                     # PID in control
                     print("basic_lanechanging_agent before: last_lane, current_lane, last_target_lane, current_target_lane, last action, current action: ",
@@ -1558,7 +1609,7 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
                         self.last_action[actor_id].value,self.current_action[actor_id].value)
         elif self._speed_state[actor_id] == SpeedState.STOP:
             #Hero vehicle reaches destination, properly stop hero vehicle
-            control = cont
+            control = None
         else:
             logging.error('CODE LOGIC ERROR')
 

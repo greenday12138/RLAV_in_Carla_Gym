@@ -101,7 +101,7 @@ class lane_wise_cross_attention_encoder(torch.nn.Module):
         self.lane_encoder = nn.Linear(state_dim['waypoints'], self.hidden_size)
         self.veh_encoder = nn.Linear(state_dim['companion_vehicle'] * 2, self.hidden_size)
         self.light_encoder = nn.Linear(state_dim['light'], self.hidden_size)
-        self.ego_encoder = nn.Linear(state_dim['ego_vehicle'], self.hidden_size)
+        self.ego_encoder = nn.Linear(state_dim['hero_vehicle'], self.hidden_size)
         self.w = nn.Linear(self.hidden_size, self.hidden_size)
         self.ego_a = nn.Linear(self.hidden_size, 1)
         self.ego_o = nn.Linear(self.hidden_size, 1)
@@ -141,7 +141,7 @@ class PolicyNet_multi(torch.nn.Module):
         self.left_encoder = lane_wise_cross_attention_encoder(self.state_dim)
         self.center_encoder = lane_wise_cross_attention_encoder(self.state_dim)
         self.right_encoder = lane_wise_cross_attention_encoder(self.state_dim)
-        self.ego_encoder = nn.Linear(self.state_dim['ego_vehicle'], 64)
+        self.ego_encoder = nn.Linear(self.state_dim['hero_vehicle'], 64)
         self.fc = nn.Linear(256, 256)
         self.fc_out = nn.Linear(256, self.action_parameter_size)
         # torch.nn.init.normal_(self.fc1_1.weight.data,0,0.01)
@@ -192,7 +192,7 @@ class QValueNet_multi(torch.nn.Module):
         self.left_encoder = lane_wise_cross_attention_encoder(self.state_dim)
         self.center_encoder = lane_wise_cross_attention_encoder(self.state_dim)
         self.right_encoder = lane_wise_cross_attention_encoder(self.state_dim)
-        self.ego_encoder = nn.Linear(self.state_dim['ego_vehicle'], 32)
+        self.ego_encoder = nn.Linear(self.state_dim['hero_vehicle'], 32)
         self.action_encoder = nn.Linear(self.action_param_dim, 32)
         self.fc = nn.Linear(256, 256)
         self.fc_out = nn.Linear(256, self.num_actions)
@@ -226,7 +226,7 @@ class QValueNet_multi_td3(torch.nn.Module):
         self.left_encoder = lane_wise_cross_attention_encoder(self.state_dim)
         self.center_encoder = lane_wise_cross_attention_encoder(self.state_dim)
         self.right_encoder = lane_wise_cross_attention_encoder(self.state_dim)
-        self.ego_encoder = nn.Linear(self.state_dim['ego_vehicle'], 32)
+        self.ego_encoder = nn.Linear(self.state_dim['hero_vehicle'], 32)
         self.action_encoder = nn.Linear(self.action_param_dim, 32)
         self.fc = nn.Linear(256, 256)
         self.fc_out = nn.Linear(256, self.num_actions)
@@ -234,7 +234,7 @@ class QValueNet_multi_td3(torch.nn.Module):
         self.left_encoder2 = lane_wise_cross_attention_encoder(self.state_dim)
         self.center_encoder2 = lane_wise_cross_attention_encoder(self.state_dim)
         self.right_encoder2 = lane_wise_cross_attention_encoder(self.state_dim)
-        self.ego_encoder2 = nn.Linear(self.state_dim['ego_vehicle'], 32)
+        self.ego_encoder2 = nn.Linear(self.state_dim['hero_vehicle'], 32)
         self.action_encoder2 = nn.Linear(self.action_param_dim, 32)
         self.fc2 = nn.Linear(256, 256)
         self.fc_out2 = nn.Linear(256, self.num_actions)
@@ -348,7 +348,7 @@ class P_DQN:
         state_veh_rear = torch.tensor(state['vehicle_info'][4], dtype=torch.float32).view(1, -1).to(self.device)
         state_veh_right_rear = torch.tensor(state['vehicle_info'][5], dtype=torch.float32).view(1, -1).to(self.device)
         state_light = torch.tensor(state['light'], dtype=torch.float32).view(1, -1).to(self.device)
-        state_ev = torch.tensor(state['ego_vehicle'],dtype=torch.float32).view(1,-1).to(self.device)
+        state_ev = torch.tensor(state['hero_vehicle'],dtype=torch.float32).view(1,-1).to(self.device)
         state_ = torch.cat((state_left_wps, state_veh_left_front, state_veh_left_rear, state_light,
                             state_center_wps, state_veh_front, state_veh_rear, state_light,
                             state_right_wps, state_veh_right_front, state_veh_right_rear, state_light, state_ev), dim=1)
@@ -532,6 +532,8 @@ class P_DQN:
             self.soft_update(self.actor, self.actor_target)
             self.soft_update(self.critic, self.critic_target)
 
+        return loss_q.detach().cpu().numpy()
+
     def _print_grad(self, model):
         '''Print the grad of each layer'''
         for name, parms in model.named_parameters():
@@ -567,7 +569,7 @@ class P_DQN:
             state_veh_left_rear = np.array(state['vehicle_info'][3], dtype=np.float32).reshape((1, -1))
             state_veh_rear = np.array(state['vehicle_info'][4], dtype=np.float32).reshape((1, -1))
             state_veh_right_rear = np.array(state['vehicle_info'][5], dtype=np.float32).reshape((1, -1))
-            state_ev = np.array(state['ego_vehicle'], dtype=np.float32).reshape((1, -1))
+            state_ev = np.array(state['hero_vehicle'], dtype=np.float32).reshape((1, -1))
             state_light = np.array(state['light'], dtype=np.float32).reshape((1, -1))
             state_ = np.concatenate((state_left_wps, state_veh_left_front, state_veh_left_rear, state_light,
                                         state_center_wps, state_veh_front, state_veh_rear, state_light,
@@ -577,13 +579,6 @@ class P_DQN:
         state=_compress(state)
         next_state=_compress(next_state)
 
-        if not truncated:
-            lane_center = info["offlane"]
-            reward_ttc = info["TTC"]
-            reward_eff = info["velocity"]
-            reward_com = info["Comfort"]
-            reward_eff = info["velocity"]
-            reward_yaw = info["yaw_diff"]
         # if reward_ttc < -0.1 or reward_eff < 3:
         #     self.change_buffer.append((state, action, action_param, reward, next_state, truncated, done))
         # if truncated:

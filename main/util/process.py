@@ -16,7 +16,7 @@ def get_exec_command():
 def kill_process():
     binary=get_binary()
     for process in psutil.process_iter():
-        if process.name().lower().startswith(binary.split('.')[0].lower()):
+        if process.name().lower().find(binary.split('.')[0].lower())!=-1:
             try:
                 process.terminate()
             except:
@@ -24,7 +24,7 @@ def kill_process():
 
     still_alive=[]
     for process in psutil.process_iter():
-        if process.name().lower().startswith(binary.split('.')[0].lower()):
+        if process.name().lower().find(binary.split('.')[0].lower())!=-1:
             still_alive.append(process)
 
     if len(still_alive):

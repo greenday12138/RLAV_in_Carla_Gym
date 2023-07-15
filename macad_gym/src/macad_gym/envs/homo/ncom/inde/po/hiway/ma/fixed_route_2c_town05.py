@@ -15,6 +15,7 @@ class FixedRoute2CarTown05(MultiCarlaEnv):
                 "pre_train_steps": 320000,
                 "train": True,
                 "debug": True,
+                "modify_steer": True,
             },
             "env": {
                 "server_map": "/Game/Carla/Maps/Town05_Opt",
