@@ -152,3 +152,39 @@ class HUD(object):
                 v_offset += 18
         # self._notifications.render(display)
         # self.help.render(display)
+ 
+class Logger:
+    def __init__(self, name, path = None, Flevel = None, clevel = None):
+        self.logger = logging.getLogger(name)
+        self.logger.setLevel(logging.DEBUG)
+        fmt = logging.Formatter('[%(asctime)s] [%(levelname)s] %(message)s', '%Y-%m-%d %H:%M:%S')
+        #设置CMD日志
+        if clevel is not None:
+            sh = logging.StreamHandler()
+            sh.setFormatter(fmt)
+            sh.setLevel(clevel)
+            self.logger.addHandler(sh)
+        #设置文件日志
+        if path is not None:
+            fh = logging.FileHandler(path)
+            fh.setFormatter(fmt)
+            fh.setLevel(Flevel)
+            self.logger.addHandler(fh)
+ 
+    def debug(self,message):
+        self.logger.debug(message)
+ 
+    def info(self,message):
+        self.logger.info(message)
+ 
+    def warning(self, message, *args, **kwargs):
+        self.logger.warn(message, *args, *kwargs)
+
+    def warn(self,message):
+        self.logger.warn(message)
+ 
+    def error(self,message):
+        self.logger.error(message)
+ 
+    def critical(self,message):
+        self.logger.critical(message)

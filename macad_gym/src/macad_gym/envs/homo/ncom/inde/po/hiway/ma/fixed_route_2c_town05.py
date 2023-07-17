@@ -12,10 +12,13 @@ class FixedRoute2CarTown05(MultiCarlaEnv):
                 #Let the RL controller and PID controller alternatively take control every 20 episodes
                 "switch_threshold": 20,
                 #During pre-train steps, agent is only under PID control.
-                "pre_train_steps": 320000,
+                "pre_train_steps": 0,
                 "train": True,
-                "debug": True,
+                "debug": False,
                 "modify_steer": True,
+                "penalty": 40,
+                "lane_penalty": 20,
+                "lane_change_reward": 25,
             },
             "env": {
                 "server_map": "/Game/Carla/Maps/Town05_Opt",
@@ -35,7 +38,7 @@ class FixedRoute2CarTown05(MultiCarlaEnv):
                 "sync_server": True,
                 "fixed_delta_seconds": 0.05,
                 "fixed_route": True,
-                "reward_policy": "PDQNReward",
+                "reward_policy": "PDQN",
                 #Distance for searching vehicles in front of ego vehicle, unit -- meters
                 "vehicle_proximity": 50.0, 
                 #Distance for searching traffic light in front of ego vehicle, unit -- meters, attention: this value is tricky

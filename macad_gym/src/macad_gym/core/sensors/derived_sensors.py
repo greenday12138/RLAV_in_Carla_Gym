@@ -42,7 +42,8 @@ class LaneInvasionSensor(object):
             return
 
         text = ['%r' % str(x).split()[-1] for x in set(event.crossed_lane_markings)]
-        self._hud.notification('Crossed line %s' % ' and '.join(text))
+        if self._hud is not None:
+            self._hud.notification('Crossed line %s' % ' and '.join(text))
         text = [
             '%r' % str(x).split()[-1] for x in set(event.crossed_lane_markings)
         ]

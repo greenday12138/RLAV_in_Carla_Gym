@@ -1,7 +1,6 @@
 import os
 import sys
 import logging
-
 from gym.envs.registration import register
 
 os.environ["PYGAME_HIDE_SUPPORT_PROMPT"] = "yes please"
@@ -10,6 +9,8 @@ if not os.path.isdir(LOG_DIR):
     os.mkdir(LOG_DIR)
 
 # Init and setup the root logger
+if os.path.isfile(LOG_DIR + '/macad-gym.log'):
+    os.remove(LOG_DIR + '/macad-gym.log')
 logging.basicConfig(filename=LOG_DIR + '/macad-gym.log', level=logging.DEBUG)
 
 # Fix path issues with included CARLA API

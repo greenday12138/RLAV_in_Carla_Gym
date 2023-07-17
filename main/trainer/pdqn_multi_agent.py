@@ -17,6 +17,8 @@ from macad_gym.core.utils.wrapper import (fill_action_param, recover_steer, Acti
     SpeedState, Truncated)
 from algs.pdqn import P_DQN
 
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.DEBUG)
 # neural network hyper parameters
 AGENT_PARAM = {
     "s_dim": {
@@ -63,7 +65,6 @@ if not os.path.exists(SAVE_PATH):
     os.makedirs(SAVE_PATH)
 
 def main():
-    logging.basicConfig(format='%(levelname)s: %(message)s', level=logging.NOTSET)
     env = gym.make("HomoNcomIndePoHiwaySAFR2CTWN5-v0")
 
     done = False
@@ -103,6 +104,8 @@ def main():
         score_efficiency = []
         score_comfort = []
         losses_episode = []
+        total_reward, avg_reward = {}, {}
+        ttc, efficiency, comfort, lcen, lane_change_reward = {}, {}, {}, {}, {}  # part objective scores
 
         try:
             for i in range(10):
@@ -110,8 +113,10 @@ def main():
                     for i_episode in range(TOTAL_EPISODE // 10):
                         states,_ = env.reset()
                         worker.reset_noise()
-                        score = 0
-                        ttc, efficiency,comfort,lcen,yaw,impact,lane_change_reward = 0, 0, 0, 0, 0, 0, 0  # part objective scores
+                        for actor_id in states.keys():
+                            ttc[actor_id], efficiency[actor_id], comfort[actor_id], lcen[actor_id],\
+                                lane_change_reward[actor_id], total_reward[actor_id], avg_reward[actor_id] = 0, 0, 0, 0, 0, 0, 0
+                       
                         while not done and not truncated:
                             action_dict, actions, action_params, all_action_params={}, {}, {}, {}
                             if TRAIN and not agent_q.empty():
@@ -136,7 +141,16 @@ def main():
                             next_states, rewards, dones, truncateds, infos = env.step(action_dict)
                             for actor_id in next_states.keys():
                                 if infos[actor_id]["speed_state"] == str(SpeedState.RUNNING):
-                                    logging.info(f"actor {actor_id} INFO, LEARN TIME:{learn_time}")
+                                    total_reward[actor_id] = infos[actor_id]["total_reward"]
+                                    if truncateds[actor_id] == Truncated.FALSE:
+                                        info = infos[actor_id]["reward_info"]
+                                        ttc[actor_id] += info["ttc_reward"]
+                                        efficiency[actor_id] += info["efficiency_reward"]
+                                        comfort[actor_id] += info["comfort_reward"]
+                                        lcen[actor_id] += info["lane_center_reward"]
+                                        lane_change_reward[actor_id] += info["lane_change_reward"]
+
+                                    logger.info(f"actor {actor_id} INFO, LEARN TIME:{learn_time}")
                                     traj_q.put((deepcopy(states[actor_id][1]), deepcopy(next_states[actor_id][1]),
                                                 deepcopy(all_action_params[actor_id]), deepcopy(rewards[actor_id]),
                                                 deepcopy(dones[actor_id]), deepcopy(truncateds[actor_id]!=Truncated.FALSE),
@@ -162,6 +176,30 @@ def main():
                             done = False
                             truncated = False
 
+                        # record episode results
+                        if env.unwrapped._rl_switch:
+                            episode_writer.add_scalars("Total_Reward", total_reward, i*(TOTAL_EPISODE // 10)+i_episode)
+                            for actor_id in total_reward.keys():
+                                avg_reward[actor_id] = total_reward[actor_id] / env.unwrapped._time_steps[actor_id] + 1 
+                                ttc[actor_id] /= env.unwrapped._time_steps[actor_id] + 1
+                                efficiency[actor_id] /= env.unwrapped._time_steps[actor_id]
+                                comfort[actor_id] /= env.unwrapped._time_steps[actor_id]
+                                lcen[actor_id] /= env.unwrapped._time_steps[actor_id]
+                                lane_change_reward[actor_id] /= env.unwrapped._time_steps[actor_id]
+                            episode_writer.add_scalars('Avg_Reward', avg_reward, i*(TOTAL_EPISODE // 10)+i_episode)
+                            episode_writer.add_scalars('Time_Steps', env.unwrapped._time_steps, i*(TOTAL_EPISODE // 10)+i_episode)
+                            episode_writer.add_scalars('TTC', ttc, i*(TOTAL_EPISODE // 10)+i_episode)
+                            episode_writer.add_scalars('Efficiency', efficiency, i*(TOTAL_EPISODE // 10)+i_episode)
+                            episode_writer.add_scalars('Comfort', comfort, i*(TOTAL_EPISODE // 10)+i_episode)
+                            episode_writer.add_scalars('Lcen', lcen, i*(TOTAL_EPISODE // 10)+i_episode)
+                            episode_writer.add_scalars('Lane_change_reward', lane_change_reward, i*(TOTAL_EPISODE // 10)+i_episode)
+                            
+                            score_safe.append(ttc)
+                            score_efficiency.append(efficiency)
+                            score_comfort.append(comfort)
+                            # rolling_score.append(np.mean(episode_score[max]))
+                            cum_collision_num.append(collision_train)
+
                         """ if rolling_score[rolling_score.__len__-1]>max_rolling_score:
                             max_rolling_score=rolling_score[rolling_score.__len__-1]
                             agent.save_net() """
@@ -169,21 +207,21 @@ def main():
                         if (i_episode + 1) % 10 == 0:
                             pbar.set_postfix({
                                 'episodes': '%d' % (TOTAL_EPISODE / 10 * i + i_episode + 1),
-                                'score': '%.2f' % score
+                                'score': '%.2f' % total_reward[total_reward.keys()[0]]
                             })
                         pbar.update(1)
                         worker.save_net(f"{SAVE_PATH}/pdqn_final.pth")
            
         except KeyboardInterrupt:
-            logging.info("Premature Terminated")
+            logger.info("Premature Terminated")
         # except BaseException as e:
-        #      logging.info(e.args)
+        #      logger.info(e.args)
         finally:
             env.close()
             [p.join() for p in process]
             episode_writer.close()
             worker.save_net(f"{SAVE_PATH}/pdqn_final.pth")
-            logging.info('\nDone.')
+            logger.info('\nDone.')
 
 #Queue vesion multiprocess
 def learner_mp(lock:Lock, traj_q: Queue, agent_q:Queue, agent_param:dict):
@@ -239,6 +277,6 @@ if __name__ == '__main__':
         mp.set_start_method(method='spawn',force=True)  # force all the multiprocessing to 'spawn' methods
         main()
     except BaseException as e:
-        logging.warning(e.args)
+        logger.warning(e.args)
     finally:
         kill_process()
