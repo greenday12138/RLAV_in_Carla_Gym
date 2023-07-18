@@ -3,6 +3,7 @@ import torch
 import datetime,time, os
 import gym, macad_gym
 import random, sys
+import traceback
 import numpy as np
 import matplotlib.pyplot as plt
 import multiprocessing as mp
@@ -13,12 +14,11 @@ from tensorboardX import SummaryWriter
 from multiprocessing import Process, Queue, Lock
 sys.path.append(os.getcwd())
 from main.util.process import kill_process
+from macad_gym import LOG_DIR
 from macad_gym.core.utils.wrapper import (fill_action_param, recover_steer, Action, 
     SpeedState, Truncated)
 from algs.pdqn import P_DQN
 
-logger = logging.getLogger(__name__)
-logger.setLevel(logging.DEBUG)
 # neural network hyper parameters
 AGENT_PARAM = {
     "s_dim": {
@@ -63,6 +63,14 @@ time=datetime.datetime.now().strftime('%Y-%m-%d_%H-%M')
 SAVE_PATH=f"./out/multi_agent/pdqn/{time}"
 if not os.path.exists(SAVE_PATH):
     os.makedirs(SAVE_PATH)
+
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.DEBUG)
+fmt = logging.Formatter('%(asctime)s  [%(filename)s] [%(process)d %(thread)d] [%(levelname)s] %(message)s', '%Y-%m-%d %H:%M:%S')
+fh = logging.FileHandler("./out/multi_agent/multi_agent.log")
+fh.setFormatter(fmt)
+fh.setLevel(logging.DEBUG)
+logger.addHandler(fh)
 
 def main():
     env = gym.make("HomoNcomIndePoHiwaySAFR2CTWN5-v0")
@@ -130,8 +138,8 @@ def main():
                                 lock.release()
                                 worker.learn_time=learn_time
                                 if q_loss is not None:
+                                    logger.info(f"LEARN TIME:{learn_time}, Q_loss:{q_loss}")
                                     losses_episode.append(q_loss)
-                                    print('Q_loss ', q_loss)
 
                             for actor_id in states.keys():
                                 actions[actor_id], action_params[actor_id], all_action_params[actor_id
@@ -150,7 +158,6 @@ def main():
                                         lcen[actor_id] += info["lane_center_reward"]
                                         lane_change_reward[actor_id] += info["lane_change_reward"]
 
-                                    logger.info(f"actor {actor_id} INFO, LEARN TIME:{learn_time}")
                                     traj_q.put((deepcopy(states[actor_id][1]), deepcopy(next_states[actor_id][1]),
                                                 deepcopy(all_action_params[actor_id]), deepcopy(rewards[actor_id]),
                                                 deepcopy(dones[actor_id]), deepcopy(truncateds[actor_id]!=Truncated.FALSE),
@@ -169,7 +176,7 @@ def main():
                                 param["sigma_steer"] *= param["sigma_decay"]
                                 param["sigma_acc"] *= param["sigma_decay"]
                                 worker.set_sigma(param["sigma_steer"], param["sigma_acc"])
-                                logging.info("Agent Sigma %f %f", param["sigma_steer"], param["sigma_acc"])
+                                logger.info("Agent Sigma %f %f", param["sigma_steer"], param["sigma_acc"])
                            
                         if done or truncated:
                             # restart the training
@@ -194,28 +201,29 @@ def main():
                             episode_writer.add_scalars('Lcen', lcen, i*(TOTAL_EPISODE // 10)+i_episode)
                             episode_writer.add_scalars('Lane_change_reward', lane_change_reward, i*(TOTAL_EPISODE // 10)+i_episode)
                             
-                            score_safe.append(ttc)
-                            score_efficiency.append(efficiency)
-                            score_comfort.append(comfort)
+                            # score_safe.append(ttc)
+                            # score_efficiency.append(efficiency)
+                            # score_comfort.append(comfort)
                             # rolling_score.append(np.mean(episode_score[max]))
-                            cum_collision_num.append(collision_train)
+                            # cum_collision_num.append(collision_train)
 
                         """ if rolling_score[rolling_score.__len__-1]>max_rolling_score:
                             max_rolling_score=rolling_score[rolling_score.__len__-1]
                             agent.save_net() """
 
-                        if (i_episode + 1) % 10 == 0:
-                            pbar.set_postfix({
-                                'episodes': '%d' % (TOTAL_EPISODE / 10 * i + i_episode + 1),
-                                'score': '%.2f' % total_reward[total_reward.keys()[0]]
-                            })
+                        #if (i_episode + 1) % 10 == 0:
+                        # pbar.set_postfix({
+                        #     'episodes': '%d' % (TOTAL_EPISODE // 10 * i + i_episode),
+                        #     'score': '%.2f' % total_reward
+                        # })
                         pbar.update(1)
                         worker.save_net(f"{SAVE_PATH}/pdqn_final.pth")
            
         except KeyboardInterrupt:
             logger.info("Premature Terminated")
-        # except BaseException as e:
-        #      logger.info(e.args)
+        except BaseException as e:
+            logger.error(traceback.format_exc())
+            #logger.error(traceback.print_tb(sys.exc_info()[2]))
         finally:
             env.close()
             [p.join() for p in process]
