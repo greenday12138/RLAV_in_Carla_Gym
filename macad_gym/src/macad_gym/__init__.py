@@ -9,9 +9,7 @@ if not os.path.isdir(LOG_DIR):
     os.mkdir(LOG_DIR)
 
 # Init and setup the root logger
-if os.path.isfile(LOG_DIR + '/macad-gym.log'):
-    os.remove(LOG_DIR + '/macad-gym.log')
-logging.basicConfig(filename=LOG_DIR + '/macad-gym.log', level=logging.DEBUG)
+#logging.basicConfig(filename=LOG_DIR + '/macad-gym.log', filemode='w', level=logging.DEBUG)
 
 # Fix path issues with included CARLA API
 sys.path.append(

@@ -11,6 +11,7 @@ LOG_PATH = os.path.join(LOG_DIR, f"{datetime.today().strftime('%Y-%m-%d_%H-%M')}
 #CARLA_OUT_PATH = os.environ.get("CARLA_OUT", os.path.expanduser("~/Git/RLAV_in_Carla_Gym/carla_out"))
 if not os.path.exists(LOG_PATH):
     os.makedirs(LOG_PATH)
+LOG_FILE = LOG_PATH + '/server.log'
 
 # Set this to the path of your Carla binary
 SERVER_BINARY = os.environ.get(
@@ -362,10 +363,10 @@ def fill_action_param(action, steer, throttle_brake, action_param, modify_change
 #     )
 #     print(message)
 
-def print_measurements(measurements):
+def print_measurements(logger, measurements):
     m = measurements
     for actor_id in m.keys():
-        print(f"actor_id:{actor_id}, episode:{m[actor_id]['episode']}, step:{m[actor_id]['step']}, "
+        logger.info(f"actor_id:{actor_id}, episode:{m[actor_id]['episode']}, step:{m[actor_id]['step']}, "
             f"done:{m[actor_id]['done']}, truncated:{m[actor_id]['truncated']} \n"
             f"speed_state:{m[actor_id]['speed_state']}, control_state:{'RL' if m[actor_id]['rl_switch'] else 'PID'}, \n"
             f"vel:{m[actor_id]['velocity']}, cur_acc:{m[actor_id]['current_acc']}, last_acc:{m[actor_id]['last_acc']}, \n"

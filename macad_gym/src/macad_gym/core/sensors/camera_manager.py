@@ -1,15 +1,12 @@
 from __future__ import absolute_import
 import os
-from enum import Enum
-
-import numpy as np
 import pygame
 import weakref
 import carla
+import numpy as np
+from enum import Enum
+from macad_gym.core.utils.wrapper import LOG_PATH
 
-CARLA_OUT_PATH = os.environ.get("CARLA_OUT", os.path.expanduser("~/carla_out"))
-if CARLA_OUT_PATH and not os.path.exists(CARLA_OUT_PATH):
-    os.makedirs(CARLA_OUT_PATH)
 
 CAMERA_TYPES = Enum('CameraType', ['rgb',
                                    'depth_raw',
@@ -174,7 +171,7 @@ class CameraManager(object):
             self._surface = pygame.surfarray.make_surface(array.swapaxes(0, 1))
         if self._recording:
             image_dir = os.path.join(
-                CARLA_OUT_PATH, 'images/{}/%04d.png'.format(self._parent.id) %
+                LOG_PATH, 'images/{}/%04d.png'.format(self._parent.id) %
                 image.frame_number)
             image.save_to_disk(image_dir)  # , env.cc
             # image.save_to_disk('_out/%08d' % image.frame_number)

@@ -1,16 +1,52 @@
 import logging
-
 import pygame
 import datetime
 import math
+from macad_gym.core.utils.wrapper import LOG_FILE
+from macad_gym.core.utils.misc import get_actor_display_name
 
-logger = logging.getLogger(__name__)
+class Logger:
+    def __init__(self, name, path = None, Flevel = None, Clevel = None):
+        self.logger = logging.getLogger(name)
+        self.logger.setLevel(logging.DEBUG)
+        fmt = logging.Formatter('[%(levelname)s] %(name)s [%(process)d %(thread)d] [%(asctime)s] %(message)s', '%Y-%m-%d %H:%M:%S')
+        # set command line logging
+        if Clevel is not None:
+            sh = logging.StreamHandler()
+            sh.setFormatter(fmt)
+            sh.setLevel(Clevel)
+            self.logger.addHandler(sh)
+        # set file logging
+        if path is not None:
+            fh = logging.FileHandler(path)
+            fh.setFormatter(fmt)
+            fh.setLevel(Flevel)
+            self.logger.addHandler(fh) 
+ 
+    def debug(self, message, *args, **kwargs):
+        self.logger.debug(message, *args, **kwargs)
+ 
+    def info(self, message, *args, **kwargs):
+        self.logger.info(message, *args, **kwargs)
+ 
+    def warning(self, message, *args, **kwargs):
+        self.logger.warn(message, *args, **kwargs)
+
+    def warn(self, message, *args, **kwargs):
+        self.logger.warn(message, *args, **kwargs)
+ 
+    def error(self, message, *args, **kwargs):
+        self.logger.error(message, *args, **kwargs)
+ 
+    def critical(self, message, *args, **kwargs):
+        self.logger.critical(message, *args, **kwargs)
+
+    def exception(self, message, *args, **kwargs):
+        self.logger.exception(message, *args, **kwargs)
 
 
-def get_actor_display_name(actor, truncate=250):
-    name = ' '.join(actor.type_id.replace('_', '.').title().split('.')[1:])
-    return (name[:truncate - 1] + u'\u2026') if len(name) > truncate else name
 
+logger = Logger(__name__, LOG_FILE, logging.DEBUG, logging.ERROR)
 
 class HUD(object):
     def __init__(self, width, height):
@@ -153,38 +189,3 @@ class HUD(object):
         # self._notifications.render(display)
         # self.help.render(display)
  
-class Logger:
-    def __init__(self, name, path = None, Flevel = None, clevel = None):
-        self.logger = logging.getLogger(name)
-        self.logger.setLevel(logging.DEBUG)
-        fmt = logging.Formatter('[%(asctime)s] [%(levelname)s] %(message)s', '%Y-%m-%d %H:%M:%S')
-        #设置CMD日志
-        if clevel is not None:
-            sh = logging.StreamHandler()
-            sh.setFormatter(fmt)
-            sh.setLevel(clevel)
-            self.logger.addHandler(sh)
-        #设置文件日志
-        if path is not None:
-            fh = logging.FileHandler(path)
-            fh.setFormatter(fmt)
-            fh.setLevel(Flevel)
-            self.logger.addHandler(fh)
- 
-    def debug(self,message):
-        self.logger.debug(message)
- 
-    def info(self,message):
-        self.logger.info(message)
- 
-    def warning(self, message, *args, **kwargs):
-        self.logger.warn(message, *args, *kwargs)
-
-    def warn(self,message):
-        self.logger.warn(message)
- 
-    def error(self,message):
-        self.logger.error(message)
- 
-    def critical(self,message):
-        self.logger.critical(message)

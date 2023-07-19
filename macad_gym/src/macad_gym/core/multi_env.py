@@ -42,12 +42,12 @@ from macad_gym.core.utils.misc import (remove_unnecessary_objects, sigmoid, get_
 from macad_gym.core.utils.wrapper import (COMMANDS_ENUM, COMMAND_ORDINAL, ROAD_OPTION_TO_COMMANDS_MAPPING, 
     DISTANCE_TO_GOAL_THRESHOLD, ORIENTATION_TO_GOAL_THRESHOLD, RETRIES_ON_ERROR, GROUND_Z, DISCRETE_ACTIONS,
     WEATHERS, get_next_actions, DEFAULT_MULTIENV_CONFIG, print_measurements, SERVER_BINARY, 
-    IS_WINDOWS_PLATFORM, json_dumper, LOG_PATH, process_steer,
+    IS_WINDOWS_PLATFORM, json_dumper, LOG_PATH, process_steer, LOG_FILE,
     Truncated, Action, SpeedState, ControlInfo)
 
 # from macad_gym.core.sensors.utils import get_transform_from_nearest_way_point
 from macad_gym.core.utils.reward import Reward, PDQNReward
-from macad_gym.core.sensors.hud import HUD
+from macad_gym.core.sensors.hud import HUD, Logger
 from macad_gym.viz.render import Render
 from macad_gym.core.scenarios import Scenarios
 
@@ -66,8 +66,7 @@ from macad_gym.core.maps.nav_utils import PathTracker  # noqa: E402
 from macad_gym.carla.PythonAPI.agents.navigation.global_route_planner import (  # noqa: E402, E501
     GlobalRoutePlanner)
 
-logger = logging.getLogger(__name__)
-logger.setLevel(logging.DEBUG)
+logger = Logger(__name__, LOG_FILE, logging.DEBUG, logging.ERROR)
 live_carla_processes = set()
 
 assert os.path.exists(SERVER_BINARY), (
@@ -78,7 +77,7 @@ assert os.path.exists(SERVER_BINARY), (
 )
 
 def cleanup():
-    print("Killing live carla processes", live_carla_processes)
+    logger.info(f"Killing live carla processes:{live_carla_processes}")
     for pgid in live_carla_processes:
         if IS_WINDOWS_PLATFORM:
             # for Windows
@@ -103,7 +102,7 @@ try:
 
     MultiAgentEnvBases.append(MultiAgentEnv)
 except ImportError:
-    logging.warning("\n Disabling RLlib support.", exc_info=True)
+    logger.warning("\n Disabling RLlib support.", exc_info=True)
 
 
 
@@ -354,15 +353,18 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
         Returns:
             N/A
         """
-        print("Initializing new Carla server...")
+        logger.info("Initializing new Carla server...")
         # Create a new server process and start the client.
         # First find a port that is free and then use it in order to avoid
         # crashes due to:"...bind:Address already in use"
         self._server_port = self._get_tcp_port()
-
         multigpu_success = False
         gpus = GPUtil.getGPUs()
-        log_file = os.path.join(LOG_PATH, "server_" + str(self._server_port) + ".log")
+        logger.info(
+            f"1. Port: {self._server_port}\n"
+            f"2. Map: {self._server_map}\n"
+            f"3. Binary: {SERVER_BINARY}"
+        )
 
         if not self._render and (gpus is not None and len(gpus)) > 0:
             try:
@@ -390,7 +392,7 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
                         creationflags=subprocess.CREATE_NEW_PROCESS_GROUP
                         if IS_WINDOWS_PLATFORM
                         else 0,
-                        stdout=open(log_file, "w"),
+                        stdout=open(LOG_FILE, "a"),
                     )
 
                 # Else, run in headless mode
@@ -413,26 +415,26 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
                         creationflags=subprocess.CREATE_NEW_PROCESS_GROUP
                         if IS_WINDOWS_PLATFORM
                         else 0,
-                        stdout=open(log_file, "w"),
+                        stdout=open(LOG_FILE, "a"),
                     )
             # TODO: Make the try-except style handling work with Popen
             # exceptions after launching the server procs are not caught
             except Exception as e:
-                print(e)
+                logger.exception(traceback.format_exc())
             # Temporary soln to check if CARLA server proc started and wrote
             # something to stdout which is the usual case during startup
-            if os.path.isfile(log_file):
+            if os.path.isfile(LOG_FILE):
                 multigpu_success = True
             else:
                 multigpu_success = False
 
             if multigpu_success:
-                print("Running sim servers in headless/multi-GPU mode")
+                logger.info("Running sim servers in headless/multi-GPU mode")
 
         # Rendering mode and also a fallback if headless/multi-GPU doesn't work
         if multigpu_success is False:
             try:
-                print("Using single gpu to initialize carla server")
+                logger.info("Using single gpu to initialize carla server")
 
                 self._server_process = subprocess.Popen(
                     [
@@ -456,24 +458,12 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
                     creationflags=subprocess.CREATE_NEW_PROCESS_GROUP
                     if IS_WINDOWS_PLATFORM
                     else 0,
-                    stdout=open(log_file, "w"),
+                    stdout=open(LOG_FILE, "a"),
                     #bufsize=131072
                 )
-                print("Running simulation in single-GPU mode")
+                logger.info("Running simulation in single-GPU mode")
             except Exception as e:
-                logger.debug(e)
-                print("FATAL ERROR while launching server:", sys.exc_info()[0])
-
-        fmt = logging.Formatter('[%(asctime)s] [%(levelname)s] %(message)s', '%Y-%m-%d %H:%M:%S')
-        fh = logging.FileHandler(log_file)
-        fh.setFormatter(fmt)
-        fh.setLevel(logging.DEBUG)
-        logger.addHandler(fh)
-        logger.info(
-            f"1. Port: {self._server_port}\n"
-            f"2. Map: {self._server_map}\n"
-            f"3. Binary: {SERVER_BINARY}"
-        )
+                logger.error(f"FATAL ERROR while launching server:{sys.exc_info()[0]}")
 
         if IS_WINDOWS_PLATFORM:
             live_carla_processes.add(self._server_process.pid)
@@ -488,13 +478,11 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
                 # The socket establishment could takes some time
                 time.sleep(2)
                 self._client.set_timeout(2.0)
-                print(
-                    "Client successfully connected to server, Carla-Server version: ",
-                    self._client.get_server_version(),
-                )
+                logger.info(
+                    f"Client successfully connected to server, Carla-Server version: {self._client.get_server_version()}",)
             except RuntimeError as re:
                 if "timeout" not in str(re) and "time-out" not in str(re):
-                    print("Could not connect to Carla server because:", re)
+                    logger.error(f"Could not connect to Carla server because:{re}")
                 self._client = None
 
         self._client.set_timeout(60.0)
@@ -574,16 +562,16 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
         self._state_getter = None
         self._auto_controller = {} 
 
-        print("Cleaned-up the world...")
+        logger.info("Cleaned-up the world...")
 
     def _clear_server_state(self):
         """Clear server process"""
-        print("Clearing Carla server state")
+        logger.info("Clearing Carla server state")
         try:
             if self._client:
                 self._client = None
         except Exception as e:
-            print("Error disconnecting client: {}".format(e))
+            logger.exception("Error disconnecting client: {}".format(e))
         if self._server_process:
             if IS_WINDOWS_PLATFORM:
                 subprocess.call(
@@ -616,8 +604,8 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
                     self._reset()
                 break
             except Exception as e:
-                print("Error during reset: {}".format(traceback.format_exc()))
-                print("reset(): Retry #: {}/{}".format(retry + 1, RETRIES_ON_ERROR))
+                logger.exception("Error during reset: {}".format(traceback.format_exc()))
+                logger.error("reset(): Retry #: {}/{}".format(retry + 1, RETRIES_ON_ERROR))
                 self._clear_server_state()
                 raise e
             
@@ -656,7 +644,7 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
                     # `wait_for_tick` is no longer needed, see https://github.com/carla-simulator/carla/pull/1803
                     # self.world.wait_for_tick()
             if cam.image is None:
-                print("callback_count:", actor_id, ":", cam.callback_count)
+                logger.debug(f"callback_count:{actor_id}:{cam.callback_count}")
             # Actor correctly reset
             self._done_dict[actor_id] = False
             self._truncated_dict[actor_id] = Truncated.FALSE
@@ -702,7 +690,7 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
         """
         actor_type = self._actor_configs[actor_id].get("type", "vehicle_4W")
         if actor_type not in self._supported_active_actor_types:
-            print("Unsupported actor type:{}. Using vehicle_4W as the type")
+            logger.error(f"Unsupported actor type:{actor_type}. Using vehicle_4W as the type")
             actor_type = "vehicle_4W"
 
         if actor_type == "traffic_light":
@@ -795,7 +783,7 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
             # Wait to see if spawn area gets cleared before retrying
             # time.sleep(0.5)
             # self._clean_world()
-            print("spawn_actor: Retry#:{}/{}".format(retry + 1, RETRIES_ON_ERROR))
+            logger.error("spawn_actor: Retry#:{}/{}".format(retry + 1, RETRIES_ON_ERROR))
         if vehicle is None:
             # Request a spawn one last time possibly raising the error
             vehicle = self.world.spawn_actor(blueprint, transform)
@@ -960,7 +948,7 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
                     }
                 )
 
-                print(
+                logger.info(
                     "Actor: {} start_pos_xyz(coordID): {} ({}), "
                     "end_pos_xyz(coordID) {} ({})".format(
                         actor_id,
@@ -972,7 +960,7 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
                 )
         self._done_dict["__all__"] = False
         self._truncated_dict["__all__"] = Truncated.FALSE
-        print("New episode initialized with actors:{}".format(self._actors.keys()))
+        logger.info("New episode initialized with actors:{}".format(self._actors.keys()))
 
         self._state_getter = StateDAO({
             "scenario_config": self._scenario_config,
@@ -1215,10 +1203,10 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
                     Render.dummy_event_handler()
 
             if self._verbose:
-                print_measurements(self._cur_measurement)
+                print_measurements(logger, self._cur_measurement)
             return obs_dict, reward_dict, self._done_dict, self._truncated_dict, info_dict
         except Exception:
-            print("Error during step, terminating episode early.", traceback.format_exc())
+            logger.exception(f"Error during step, terminating episode early. {traceback.format_exc()}")
             self._clear_server_state()
 
     def _step_before_tick(self, actor_id, action):
@@ -1578,26 +1566,23 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
                             #action_index=4
                             self.current_action[actor_id]=Action.STOP
                             self.current_target_lane[actor_id]=self.current_lane[actor_id]
-                        print("initial: last_lane, current_lane, last_target_lane, current_target_lane, last action, current action: ",
-                                self.last_lane[actor_id], self.current_lane[actor_id], 
-                                self.last_target_lane[actor_id], self.current_target_lane[actor_id],
-                                self.last_action[actor_id].value,self.current_action[actor_id].value)          
+                        logger.debug(f"initial: last_lane:{self.last_lane[actor_id]}, current_lane:{self.current_lane[actor_id]}, "
+                                     f"last_target_lane:{self.last_target_lane[actor_id]}, current_target_lane:{self.current_target_lane[actor_id]}, "
+                                     f"last_action:{self.last_action[actor_id].value}, current_action:{self.current_action[actor_id].value}")          
                         control = cont
                     else:
                         # PID in control
-                        print("basic_lanechanging_agent before: last_lane, current_lane, last_target_lane, current_target_lane, last action, current action: ",
-                            self.last_lane[actor_id], self.current_lane[actor_id], 
-                            self.last_target_lane[actor_id], self.current_target_lane[actor_id], 
-                            self.last_action[actor_id].value,self.current_action[actor_id].value)
+                        logger.debug(f"basic_lanechanging_agent before: last_lane:{self.last_lane[actor_id]}, current_lane:{self.current_lane[actor_id]}, "
+                                     f"last_target_lane:{self.last_target_lane[actor_id]}, current_target_lane:{self.current_target_lane[actor_id]}, "
+                                     f"last_action:{self.last_action[actor_id].value}, current_action:{self.current_action[actor_id].value}") 
                         control, self.current_target_lane[actor_id], self.current_action[actor_id]= \
                             self._auto_controller[actor_id].run_step(self.current_lane[actor_id],
                                                                      self.last_target_lane[actor_id], 
                                                                      self.last_action[actor_id], 
                                                                      True)
-                        print("basic_lanechanging_agent after: last_lane, current_lane, last_target_lane, current_target_lane, last action, current action: ",
-                            self.last_lane[actor_id], self.current_lane[actor_id], 
-                            self.last_target_lane[actor_id], self.current_target_lane[actor_id], 
-                            self.last_action[actor_id].value,self.current_action[actor_id].value)
+                        logger.debug(f"basic_lanechanging_agent after: last_lane:{self.last_lane[actor_id]}, current_lane:{self.current_lane[actor_id]}, "
+                                     f"last_target_lane:{self.last_target_lane[actor_id]}, current_target_lane:{self.current_target_lane[actor_id]}, "
+                                     f"last_action:{self.last_action[actor_id].value}, current_action:{self.current_action[actor_id].value}")          
         elif self._speed_state[actor_id] == SpeedState.RUNNING:
             if self._state["wps"][actor_id].center_front_wps[2].road_id == self._scenario_map["dest_road_id"]:          
                 #Vehicle reaches destination, stop vehicle
@@ -1609,11 +1594,10 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
                 control = None
             elif not self._actor_configs[actor_id]["auto_control"]:
                 if self._rl_switch:
-                    # under Rl control, used to set the self.new_action.                        
-                    print("initial: last_lane, current_lane, last_target_lane, current_target_lane, last action, current action: ",
-                            self.last_lane[actor_id], self.current_lane[actor_id], 
-                            self.last_target_lane[actor_id], self.current_target_lane[actor_id],
-                            self.last_action[actor_id].value,self.current_action[actor_id].value)
+                    # under Rl control, used to set the self.new_action. 
+                    logger.debug(f"initial: last_lane:{self.last_lane[actor_id]}, current_lane:{self.current_lane[actor_id]}, "
+                                 f"last_target_lane:{self.last_target_lane[actor_id]}, current_target_lane:{self.current_target_lane[actor_id]}, "
+                                 f"last_action:{self.last_action[actor_id].value}, current_action:{self.current_action[actor_id].value}")                        
                     if action_index==0:
                         self.current_action[actor_id]=Action.LANE_CHANGE_LEFT
                         self.current_target_lane[actor_id]=self.current_lane[actor_id]+1
@@ -1629,26 +1613,23 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
                         self.current_target_lane[actor_id]=self.current_lane[actor_id]
                     # _, _, _, self.distance_to_front_vehicles, self.distance_to_rear_vehicles = \
                     #     self.autopilot_controller.run_step(self.last_lane, self.last_target_lane, self.last_action, True, action_index, self.modify_change_steer)
-                    print("initial: last_lane, current_lane, last_target_lane, current_target_lane, last action, current action: ",
-                            self.last_lane[actor_id], self.current_lane[actor_id], 
-                            self.last_target_lane[actor_id], self.current_target_lane[actor_id],
-                            self.last_action[actor_id].value,self.current_action[actor_id].value)
+                    logger.debug(f"initial: last_lane:{self.last_lane[actor_id]}, current_lane:{self.current_lane[actor_id]}, "
+                                 f"last_target_lane:{self.last_target_lane[actor_id]}, current_target_lane:{self.current_target_lane[actor_id]}, "
+                                 f"last_action:{self.last_action[actor_id].value}, current_action:{self.current_action[actor_id].value}") 
                     control = cont
                 else:
                     # PID in control
-                    print("basic_lanechanging_agent before: last_lane, current_lane, last_target_lane, current_target_lane, last action, current action: ",
-                        self.last_lane[actor_id], self.current_lane[actor_id], 
-                        self.last_target_lane[actor_id], self.current_target_lane[actor_id], 
-                        self.last_action[actor_id].value,self.current_action[actor_id].value)
+                    logger.debug(f"basic_lanechanging_agent before: last_lane:{self.last_lane[actor_id]}, current_lane:{self.current_lane[actor_id]}, "
+                                 f"last_target_lane:{self.last_target_lane[actor_id]}, current_target_lane:{self.current_target_lane[actor_id]}, "
+                                 f"last_action:{self.last_action[actor_id].value}, current_action:{self.current_action[actor_id].value}") 
                     control, self.current_target_lane[actor_id], self.current_action[actor_id]= \
                         self._auto_controller[actor_id].run_step(self.current_lane[actor_id],
                                                                     self.last_target_lane[actor_id], 
                                                                     self.last_action[actor_id], 
                                                                     True)
-                    print("basic_lanechanging_agent after: last_lane, current_lane, last_target_lane, current_target_lane, last action, current action: ",
-                        self.last_lane[actor_id], self.current_lane[actor_id], 
-                        self.last_target_lane[actor_id], self.current_target_lane[actor_id], 
-                        self.last_action[actor_id].value,self.current_action[actor_id].value)
+                    logger.debug(f"basic_lanechanging_agent after: last_lane:{self.last_lane[actor_id]}, current_lane:{self.current_lane[actor_id]}, "
+                                 f"last_target_lane:{self.last_target_lane[actor_id]}, current_target_lane:{self.current_target_lane[actor_id]}, "
+                                 f"last_action:{self.last_action[actor_id].value}, current_action:{self.current_action[actor_id].value}") 
         elif self._speed_state[actor_id] == SpeedState.STOP:
             #Hero vehicle reaches destination, properly stop hero vehicle
             control = None
@@ -1779,10 +1760,10 @@ if __name__ == "__main__":
             action_dict = get_next_actions(info, env._discrete_actions)
             for actor_id in total_reward_dict.keys():
                 total_reward_dict[actor_id] += reward[actor_id]
-            print(
+            logger.info(
                 ":{}\n\t".join(["Step#", "rew", "ep_rew", "done{}"]).format(
                     i, reward, total_reward_dict, done
                 )
             )
 
-        print("{} fps".format(i / (time.time() - start)))
+        logger.info("{} fps".format(i / (time.time() - start)))

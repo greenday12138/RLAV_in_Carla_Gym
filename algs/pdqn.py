@@ -5,6 +5,9 @@ from torch import nn
 import torch.nn.functional as F
 from torch.autograd import Variable
 from algs.util.replay_buffer import SumTree,SplitReplayBuffer
+from macad_gym.core.sensors.hud import Logger
+
+logger = Logger(__name__, "./out/multi_agent/multi_agent.log", logging.DEBUG, logging.ERROR)
 
 
 class PriReplayBuffer(object):  # stored as ( s, a, r, s_ ) in SumTree

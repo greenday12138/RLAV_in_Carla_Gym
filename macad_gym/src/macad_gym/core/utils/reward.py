@@ -1,10 +1,14 @@
 import math
 import carla
+import logging
 import numpy as np
+from macad_gym.core.utils.wrapper import LOG_FILE
+from macad_gym.core.sensors.hud import Logger
 from macad_gym.core.utils.misc import (get_speed, get_yaw_diff, get_sign, test_waypoint,
                                        get_lane_center, get_projection)
 from macad_gym.core.utils.wrapper import SemanticTags, Truncated, Action
 
+logger = Logger(__name__, LOG_FILE, logging.DEBUG, logging.ERROR)
 
 class Reward(object):
     def __init__(self, configs):
@@ -250,8 +254,8 @@ class PDQNReward(Reward):
         if not test_waypoint(lane_center, True):
             Lcen = 2.1
             fLcen = -2
-            print('lane_center.lane_id, lane_center.road_id, flcen, lane_wid/2: ', lane_center.lane_id,
-                  lane_center.road_id, fLcen, lane_center.lane_width / 2)
+            logger.debug(f"lane_center.lane_id:{lane_center.lane_id}, lane_center.road_id:{lane_center.road_id}, "
+                         f"flcen:{fLcen}, lane_wid/2:{lane_center.lane_width / 2}")
         else:
             Lcen = compute(lane_center, ego_location)
             fLcen = -abs(Lcen)/(lane_center.lane_width/2)
@@ -279,15 +283,14 @@ class PDQNReward(Reward):
             #     #lane follow and stop mode
             #     Lcen =compute(lane_center,ego_location)
             #     fLcen = -abs(Lcen)/(lane_center.lane_width/2)
-            # print('pdqn_lane_center: Lcen, fLcen: ', Lcen, fLcen)
+            # logger.debug('pdqn_lane_center: Lcen, fLcen: ', Lcen, fLcen)
         return Lcen, fLcen
 
     def _lane_change_reward(self):
         distance_to_front_vehicles, distance_to_rear_vehicles = \
             self.state["vehs"].distance_to_front_vehicles, self.state["vehs"].distance_to_rear_vehicles
         last_lane, current_lane = self.curr["last_lane"], self.curr["current_lane"]
-        print('distance_to_front_vehicles, distance_to_rear_vehicles: ', 
-              distance_to_front_vehicles, distance_to_rear_vehicles)
+        logger.debug(f"distance_to_front_vehicles:{distance_to_front_vehicles}, distance_to_rear_vehicles:{distance_to_rear_vehicles}")
         # still the distances of the last time step
         reward = 0
         if self.curr["current_action"] == str(Action.LANE_FOLLOW):
@@ -307,7 +310,7 @@ class PDQNReward(Reward):
                 # reward = 0
             ttc,rear_ttc_reward = self._ttc_reward(self.state["vehs"].center_rear_veh)
             # add rear_ttc_reward?
-            print('lane change reward and rear ttc reward: ', reward, rear_ttc_reward)
+            logger.debug(f"lane_change_reward:{reward}, rear_ttc_reward:{rear_ttc_reward}")
         elif current_lane - last_lane == 1:
             # change left
             self.calculate_impact = -1
@@ -321,6 +324,6 @@ class PDQNReward(Reward):
             #     reward = max((left_front_dis / center_front_dis - 1) * self.lane_change_reward, -self.lane_change_reward)
                 # reward = 0
             ttc,rear_ttc_reward = self._ttc_reward(self.state["vehs"].center_rear_veh)
-            print('lane change reward and rear ttc reward: ', reward, rear_ttc_reward)
+            logger.debug(f"lane_change_reward:{reward}, rear_ttc_reward:{rear_ttc_reward}")
 
         return reward

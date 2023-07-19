@@ -14,7 +14,7 @@ from tensorboardX import SummaryWriter
 from multiprocessing import Process, Queue, Lock
 sys.path.append(os.getcwd())
 from main.util.process import kill_process
-from macad_gym import LOG_DIR
+from macad_gym.core.sensors.hud import Logger
 from macad_gym.core.utils.wrapper import (fill_action_param, recover_steer, Action, 
     SpeedState, Truncated)
 from algs.pdqn import P_DQN
@@ -63,14 +63,7 @@ time=datetime.datetime.now().strftime('%Y-%m-%d_%H-%M')
 SAVE_PATH=f"./out/multi_agent/pdqn/{time}"
 if not os.path.exists(SAVE_PATH):
     os.makedirs(SAVE_PATH)
-
-logger = logging.getLogger(__name__)
-logger.setLevel(logging.DEBUG)
-fmt = logging.Formatter('%(asctime)s  [%(filename)s] [%(process)d %(thread)d] [%(levelname)s] %(message)s', '%Y-%m-%d %H:%M:%S')
-fh = logging.FileHandler("./out/multi_agent/multi_agent.log")
-fh.setFormatter(fmt)
-fh.setLevel(logging.DEBUG)
-logger.addHandler(fh)
+logger = Logger(__name__, "./out/multi_agent/multi_agent.log", logging.DEBUG, logging.ERROR)
 
 def main():
     env = gym.make("HomoNcomIndePoHiwaySAFR2CTWN5-v0")
@@ -187,12 +180,12 @@ def main():
                         if env.unwrapped._rl_switch:
                             episode_writer.add_scalars("Total_Reward", total_reward, i*(TOTAL_EPISODE // 10)+i_episode)
                             for actor_id in total_reward.keys():
-                                avg_reward[actor_id] = total_reward[actor_id] / env.unwrapped._time_steps[actor_id] + 1 
+                                avg_reward[actor_id] = total_reward[actor_id] / (env.unwrapped._time_steps[actor_id] + 1) 
                                 ttc[actor_id] /= env.unwrapped._time_steps[actor_id] + 1
-                                efficiency[actor_id] /= env.unwrapped._time_steps[actor_id]
-                                comfort[actor_id] /= env.unwrapped._time_steps[actor_id]
-                                lcen[actor_id] /= env.unwrapped._time_steps[actor_id]
-                                lane_change_reward[actor_id] /= env.unwrapped._time_steps[actor_id]
+                                efficiency[actor_id] /= env.unwrapped._time_steps[actor_id] + 1
+                                comfort[actor_id] /= env.unwrapped._time_steps[actor_id] + 1
+                                lcen[actor_id] /= env.unwrapped._time_steps[actor_id] + 1
+                                lane_change_reward[actor_id] /= env.unwrapped._time_steps[actor_id] + 1
                             episode_writer.add_scalars('Avg_Reward', avg_reward, i*(TOTAL_EPISODE // 10)+i_episode)
                             episode_writer.add_scalars('Time_Steps', env.unwrapped._time_steps, i*(TOTAL_EPISODE // 10)+i_episode)
                             episode_writer.add_scalars('TTC', ttc, i*(TOTAL_EPISODE // 10)+i_episode)
@@ -222,8 +215,9 @@ def main():
         except KeyboardInterrupt:
             logger.info("Premature Terminated")
         except BaseException as e:
-            logger.error(traceback.format_exc())
-            #logger.error(traceback.print_tb(sys.exc_info()[2]))
+            logger.exception(e.args)
+            logger.exception(traceback.format_exc())
+            #logger.exception(traceback.print_tb(sys.exc_info()[2]))
         finally:
             env.close()
             [p.join() for p in process]
@@ -261,7 +255,7 @@ def learner_mp(lock:Lock, traj_q: Queue, agent_q:Queue, agent_param:dict):
                 action=2
             saved_action_param = fill_action_param(action, info["control_info"]["steer"], throttle_brake,
                                                     all_action_param,modify_change_steer)
-            print(f"Control In Replay Buffer: {action}, {saved_action_param}")
+            logger.debug(f"Control In Replay Buffer: {action}, {saved_action_param}")
             learner.store_transition(state, action, saved_action_param, reward, next_state,
                                     truncated, done, info)       
         if TRAIN and learner.replay_buffer.size()>=param["minimal_size"]:
@@ -285,6 +279,7 @@ if __name__ == '__main__':
         mp.set_start_method(method='spawn',force=True)  # force all the multiprocessing to 'spawn' methods
         main()
     except BaseException as e:
-        logger.warning(e.args)
+        logger.exception(e.args)
+        logger.exception(traceback.format_exc())
     finally:
         kill_process()

@@ -8,17 +8,20 @@ This module implements an agent that roams around a track following random
 waypoints and avoiding other vehicles. The agent also responds to traffic lights.
 It can also make use of the global route planner to follow a specifed route
 """
-
+import logging
 import carla
 import random
 import numpy as np
 from enum import Enum
 from collections import deque
 from shapely.geometry import Polygon
-from macad_gym.core.utils.wrapper import Action,ControlInfo
+from macad_gym.core.sensors.hud import Logger
+from macad_gym.core.utils.wrapper import Action, ControlInfo, LOG_FILE
 from macad_gym.core.controllers.pid_controller import VehiclePIDController
 from macad_gym.core.utils.misc import (get_speed, draw_waypoints, is_within_distance, get_trafficlight_trigger_location,
     compute_distance, get_lane_center)
+
+logger = Logger(__name__, LOG_FILE, logging.DEBUG, logging.ERROR)
 
 class Basic_Agent(object):
     """
@@ -123,7 +126,7 @@ class Basic_Agent(object):
         if 'random_lane_change' in opt_dict:
             self.random_lane_change=opt_dict['random_lane_change']    
 
-        print('ignore_front_vehicle, ignore_change_gap: ', self._ignore_vehicle, self._ignore_change_gap)
+        logger.info(f"ignore_front_vehicle:{self._ignore_vehicle}, ignore_change_gap:{self._ignore_change_gap}")
 
         self.left_random_change = []
         self.center_random_change = []
@@ -184,8 +187,9 @@ class Basic_Agent(object):
         self.distance_to_right_rear=info_dict['vehs_info'].distance_to_rear_vehicles[2]
         self._vehicle_location = self._vehicle.get_location()
 
-        print('the length of six waypoint queues: ', len(self.left_wps), len(self.center_wps), len(self.right_wps), len(self.left_rear_wps),
-              len(self.center_rear_wps), len(self.right_rear_wps))
+        logger.debug(f"the length of six waypoint queues: "
+                     f"{len(self.left_wps)}, {len(self.center_wps)}, {len(self.right_wps)}, {len(self.left_rear_wps)}, "
+                     f"{len(self.center_rear_wps)}, {len(self.right_rear_wps)}")
         # For simplicity, we compute s for front vehicles, and compute Euler distance for rear vehicles.
         # set next waypoint that distance == 2m
         # if len(self.left_wps) != 0:
@@ -206,9 +210,9 @@ class Basic_Agent(object):
                 self.enable_left_change = True
             if len(self.right_wps)!=0:
                 self.enable_right_change = True
-        print("distance enable: ", self.distance_to_left_front, self.distance_to_center_front,
-              self.distance_to_right_front, self.distance_to_left_rear, self.distance_to_center_rear,
-              self.distance_to_right_rear, self.enable_left_change, self.enable_right_change)
+        logger.debug(f"distance enable: {self.distance_to_left_front}, {self.distance_to_center_front}"
+                     f"{self.distance_to_right_front}, {self.distance_to_left_rear}, {self.distance_to_center_rear}"
+                     f"{self.distance_to_right_rear}, {self.enable_left_change}, {self.enable_right_change}")
 
     def run_step(self, current_lane, last_target_lane, last_action, modify_change_steer):
         self.autopilot_step = self.autopilot_step + 1
