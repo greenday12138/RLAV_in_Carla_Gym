@@ -5,9 +5,9 @@ from torch import nn
 import torch.nn.functional as F
 from torch.autograd import Variable
 from algs.util.replay_buffer import SumTree,SplitReplayBuffer
-from macad_gym.core.sensors.hud import Logger
+from macad_gym.core.utils.wrapper import LOG
 
-logger = Logger(__name__, "./out/multi_agent/multi_agent.log", logging.DEBUG, logging.ERROR)
+logger = LOG.pdqn_logger
 
 
 class PriReplayBuffer(object):  # stored as ( s, a, r, s_ ) in SumTree
@@ -372,8 +372,8 @@ class P_DQN:
         action = np.argmax(q_a)
         action_param = all_action_param[:, self.action_parameter_offsets[action]:self.action_parameter_offsets[action+1]]
 
-        print(f'Network Output - Action: {action}, Steer: {action_param[0][0]}, Throttle_brake: {action_param[0][1]}')
-        print('q values: ', q_a)
+        logger.debug(f"Network Output - Action: {action}, Steer: {action_param[0][0]}, Throttle_brake: {action_param[0][1]}")
+        logger.debug(f"q values:{q_a}")
         if (action_param[0, 0].is_cuda):
             action_param = np.array([action_param[:, 0].detach().cpu().numpy(), action_param[:, 1].detach().cpu().numpy()]).reshape((-1, 2))
             all_action_param = np.array([all_action_param[:, 0].detach().cpu().numpy(), all_action_param[:, 1].detach().cpu().numpy(),
@@ -391,7 +391,7 @@ class P_DQN:
         # if self.train:
         #     action[:,0]=np.clip(action[:,0]+self.steer_noise(),-1,1)
         #     action[:,1]=np.clip(action[:,1]+self.tb_noise(),-1,1)
-        print(f'After noise - Steer: {action_param[0][0]}, Throttle_brake: {action_param[0][1]}')
+        logger.debug(f"After noise - Steer: {action_param[0][0]}, Throttle_brake: {action_param[0][1]}")
 
         return action, action_param, all_action_param
 
@@ -491,7 +491,7 @@ class P_DQN:
             q = q_values.gather(1, batch_a.view(-1, 1)).squeeze()
             loss_q = self.loss(q, q_values1) + self.loss(q, q_values2)
 
-        print("Loss_Q:", loss_q)
+        logger.debug(f"Loss_Q:{loss_q}")
 
         self.critic_optimizer.zero_grad()
         loss_q.backward()
@@ -540,7 +540,7 @@ class P_DQN:
     def _print_grad(self, model):
         '''Print the grad of each layer'''
         for name, parms in model.named_parameters():
-            print('-->name:', name, '-->grad_requirs:', parms.requires_grad, ' -->grad_value:', parms.grad)
+            logger.debug(f"-->name:{name}, -->grad_requires:{parms.requires_grad}, -->grad_value:{parms.grad}")
 
     def set_sigma(self, sigma_steer, sigma_acc):
         # self.sigma = sigma

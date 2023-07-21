@@ -2,13 +2,12 @@ import math
 import carla
 import logging
 import numpy as np
-from macad_gym.core.utils.wrapper import LOG_FILE
-from macad_gym.core.sensors.hud import Logger
+from macad_gym.core.utils.wrapper import LOG
 from macad_gym.core.utils.misc import (get_speed, get_yaw_diff, get_sign, test_waypoint,
                                        get_lane_center, get_projection)
 from macad_gym.core.utils.wrapper import SemanticTags, Truncated, Action
 
-logger = Logger(__name__, LOG_FILE, logging.DEBUG, logging.ERROR)
+logger = LOG.reward_logger
 
 class Reward(object):
     def __init__(self, configs):
@@ -242,10 +241,12 @@ class PDQNReward(Reward):
 
     def _lane_center_reward(self, lane_center):
         def compute(center, ego):
+            # compute the distance between ego location and lane center,
+            # Lcen < 0: ego location is on the left of lane center, Lcen > 0 on the contrary
             Lcen = ego.distance(center.transform.location)
-            center_yaw = lane_center.transform.get_forward_vector()
-            dis = carla.Vector3D(ego.x-lane_center.transform.location.x,
-                                 ego.y-lane_center.transform.location.y, 0)
+            center_yaw = center.transform.get_forward_vector()
+            dis = carla.Vector3D(ego.x - center.transform.location.x,
+                                 ego.y - center.transform.location.y, 0)
             Lcen *= get_sign(dis, center_yaw)
             return Lcen
 

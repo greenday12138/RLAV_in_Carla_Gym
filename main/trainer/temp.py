@@ -72,8 +72,8 @@ if __name__=='__main__':
     # # 画图
     # sns.lineplot(data=df, x="Step", y="Value")
     # plt.show()
-
-    bins=np.arange(-1,1,4,dtype=np.float32)
-    
-    df=pd.DataFrame(np.random.random_sample(10)*2-1)
-    print(df)
+    t = {
+        "1": 1,
+        "2": 2
+    }
+    print(list(t.keys())[0])

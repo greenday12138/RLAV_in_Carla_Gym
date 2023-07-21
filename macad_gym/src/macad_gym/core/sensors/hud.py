@@ -1,52 +1,11 @@
 import logging
 import pygame
 import datetime
-import math
-from macad_gym.core.utils.wrapper import LOG_FILE
+import math, os
+from macad_gym.core.utils.wrapper import LOG
 from macad_gym.core.utils.misc import get_actor_display_name
 
-class Logger:
-    def __init__(self, name, path = None, Flevel = None, Clevel = None):
-        self.logger = logging.getLogger(name)
-        self.logger.setLevel(logging.DEBUG)
-        fmt = logging.Formatter('[%(levelname)s] %(name)s [%(process)d %(thread)d] [%(asctime)s] %(message)s', '%Y-%m-%d %H:%M:%S')
-        # set command line logging
-        if Clevel is not None:
-            sh = logging.StreamHandler()
-            sh.setFormatter(fmt)
-            sh.setLevel(Clevel)
-            self.logger.addHandler(sh)
-        # set file logging
-        if path is not None:
-            fh = logging.FileHandler(path)
-            fh.setFormatter(fmt)
-            fh.setLevel(Flevel)
-            self.logger.addHandler(fh) 
- 
-    def debug(self, message, *args, **kwargs):
-        self.logger.debug(message, *args, **kwargs)
- 
-    def info(self, message, *args, **kwargs):
-        self.logger.info(message, *args, **kwargs)
- 
-    def warning(self, message, *args, **kwargs):
-        self.logger.warn(message, *args, **kwargs)
-
-    def warn(self, message, *args, **kwargs):
-        self.logger.warn(message, *args, **kwargs)
- 
-    def error(self, message, *args, **kwargs):
-        self.logger.error(message, *args, **kwargs)
- 
-    def critical(self, message, *args, **kwargs):
-        self.logger.critical(message, *args, **kwargs)
-
-    def exception(self, message, *args, **kwargs):
-        self.logger.exception(message, *args, **kwargs)
-
-
-
-logger = Logger(__name__, LOG_FILE, logging.DEBUG, logging.ERROR)
+logger = LOG.hud_logger
 
 class HUD(object):
     def __init__(self, width, height):

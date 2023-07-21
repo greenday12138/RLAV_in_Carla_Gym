@@ -79,7 +79,8 @@ class CameraManager(object):
         self.callback_count = 0
 
     def __del__(self):
-        if self.sensor is not None:
+        if self.sensor is not None and self.sensor.is_alive:
+            self.sensor.stop()
             self.sensor.destroy()
 
     def set_recording_option(self, option):

@@ -3,7 +3,7 @@ import math, random
 import numpy as np
 from macad_gym.core.controllers.local_planner import LocalPlanner
 from macad_gym.core.utils.misc import (get_speed, get_yaw_diff, draw_waypoints, get_lane_center,
-                                       get_projection)
+                                       get_projection, get_sign)
 
 class StateDAO:
     # class for gettting surrounding information
@@ -156,10 +156,28 @@ def process_lane_wp(wps_list, ego_vehicle_z, ego_forward_vector, my_sample_ratio
 
 
 def process_veh(ego_vehicle, vehs_info, left_wall, right_wall,vehicle_proximity):
+    def compute(center, ego):
+        # compute the distance between ego location and lane center,
+        # Lcen < 0: ego location is on the left of lane center, Lcen > 0 on the contrary
+        Lcen = ego.distance(center.transform.location)
+        center_yaw = center.transform.get_forward_vector()
+        dis = carla.Vector3D(ego.x - center.transform.location.x,
+                            ego.y - center.transform.location.y, 0)
+        Lcen *= get_sign(dis, center_yaw)
+        return Lcen
+    
+    def get_len_wid(vehicle):
+        proj_s, proj_t = get_projection(vehicle.bounding_box.extent, 
+                                    vehicle.bounding_box.rotation.get_forward_vector())
+        half_len, half_wid = abs(proj_s), abs(proj_t)
+        
+        return half_len, half_wid
+    
     vehicle_inlane=[vehs_info.left_front_veh,vehs_info.center_front_veh,vehs_info.right_front_veh,
             vehs_info.left_rear_veh,vehs_info.center_rear_veh,vehs_info.right_rear_veh]
     ego_speed = get_speed(ego_vehicle, False)
     ego_location = ego_vehicle.get_location()
+    ego_half_len, ego_half_wid = get_len_wid(ego_vehicle)
     ego_bounding_x = ego_vehicle.bounding_box.extent.x
     ego_bounding_y = ego_vehicle.bounding_box.extent.y
     all_v_info = []

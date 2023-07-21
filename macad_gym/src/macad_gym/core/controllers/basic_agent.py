@@ -15,13 +15,12 @@ import numpy as np
 from enum import Enum
 from collections import deque
 from shapely.geometry import Polygon
-from macad_gym.core.sensors.hud import Logger
-from macad_gym.core.utils.wrapper import Action, ControlInfo, LOG_FILE
+from macad_gym.core.utils.wrapper import Action, ControlInfo, LOG
 from macad_gym.core.controllers.pid_controller import VehiclePIDController
 from macad_gym.core.utils.misc import (get_speed, draw_waypoints, is_within_distance, get_trafficlight_trigger_location,
     compute_distance, get_lane_center)
 
-logger = Logger(__name__, LOG_FILE, logging.DEBUG, logging.ERROR)
+logger = LOG.basic_agent_logger
 
 class Basic_Agent(object):
     """

@@ -42,12 +42,12 @@ from macad_gym.core.utils.misc import (remove_unnecessary_objects, sigmoid, get_
 from macad_gym.core.utils.wrapper import (COMMANDS_ENUM, COMMAND_ORDINAL, ROAD_OPTION_TO_COMMANDS_MAPPING, 
     DISTANCE_TO_GOAL_THRESHOLD, ORIENTATION_TO_GOAL_THRESHOLD, RETRIES_ON_ERROR, GROUND_Z, DISCRETE_ACTIONS,
     WEATHERS, get_next_actions, DEFAULT_MULTIENV_CONFIG, print_measurements, SERVER_BINARY, 
-    IS_WINDOWS_PLATFORM, json_dumper, LOG_PATH, process_steer, LOG_FILE,
-    Truncated, Action, SpeedState, ControlInfo)
+    IS_WINDOWS_PLATFORM, json_dumper, LOG_PATH, process_steer,
+    Truncated, Action, SpeedState, ControlInfo, LOG)
 
 # from macad_gym.core.sensors.utils import get_transform_from_nearest_way_point
 from macad_gym.core.utils.reward import Reward, PDQNReward
-from macad_gym.core.sensors.hud import HUD, Logger
+from macad_gym.core.sensors.hud import HUD
 from macad_gym.viz.render import Render
 from macad_gym.core.scenarios import Scenarios
 
@@ -66,7 +66,7 @@ from macad_gym.core.maps.nav_utils import PathTracker  # noqa: E402
 from macad_gym.carla.PythonAPI.agents.navigation.global_route_planner import (  # noqa: E402, E501
     GlobalRoutePlanner)
 
-logger = Logger(__name__, LOG_FILE, logging.DEBUG, logging.ERROR)
+logger = LOG.multi_env_logger
 live_carla_processes = set()
 
 assert os.path.exists(SERVER_BINARY), (
@@ -392,7 +392,7 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
                         creationflags=subprocess.CREATE_NEW_PROCESS_GROUP
                         if IS_WINDOWS_PLATFORM
                         else 0,
-                        stdout=open(LOG_FILE, "a"),
+                        stdout=open(LOG.log_file, "a"),
                     )
 
                 # Else, run in headless mode
@@ -415,7 +415,7 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
                         creationflags=subprocess.CREATE_NEW_PROCESS_GROUP
                         if IS_WINDOWS_PLATFORM
                         else 0,
-                        stdout=open(LOG_FILE, "a"),
+                        stdout=open(LOG.log_file, "a"),
                     )
             # TODO: Make the try-except style handling work with Popen
             # exceptions after launching the server procs are not caught
@@ -423,7 +423,7 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
                 logger.exception(traceback.format_exc())
             # Temporary soln to check if CARLA server proc started and wrote
             # something to stdout which is the usual case during startup
-            if os.path.isfile(LOG_FILE):
+            if os.path.isfile(LOG.log_file):
                 multigpu_success = True
             else:
                 multigpu_success = False
@@ -458,7 +458,7 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
                     creationflags=subprocess.CREATE_NEW_PROCESS_GROUP
                     if IS_WINDOWS_PLATFORM
                     else 0,
-                    stdout=open(LOG_FILE, "a"),
+                    stdout=open(LOG.log_file, "a"),
                     #bufsize=131072
                 )
                 logger.info("Running simulation in single-GPU mode")
@@ -534,17 +534,13 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
         Returns:
             N/A
         """
-        for colli in self._collisions.values():
-            if colli.sensor.is_alive:
-                colli.sensor.destroy()
-        for lane in self._lane_invasions.values():
-            if lane.sensor.is_alive:
-                lane.sensor.destroy()
+        [colli.__del__() for colli in self._collisions.values()]
+        [lane.__del__() for lane in self._lane_invasions.values()]
+        [camera.__del__() for camera in self._cameras.values()]
+        [npc.destroy() for npc in self._npc_vehicles]
         for actor in self._actors.values():
             if actor.is_alive:
                 actor.destroy()
-        for npc in self._npc_vehicles:
-            npc.destroy()
         for npc in zip(*self._npc_pedestrians):
             npc[1].stop()  # stop controller
             npc[0].destroy()  # kill entity
@@ -558,8 +554,10 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
         self._path_trackers = {}
         self._collisions = {}
         self._lane_invasions = {}
-        self._speed_state = {}  
+        self._speed_state = {} 
+        del self._state_getter 
         self._state_getter = None
+        del self._auto_controller
         self._auto_controller = {} 
 
         logger.info("Cleaned-up the world...")
@@ -766,7 +764,7 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
         if len(self._start_pos[actor_id]) > 3:
             rot.yaw = self._start_pos[actor_id][3]
         transform = carla.Transform(loc, rot)
-        draw_waypoints(self.world, [self.map.get_waypoint(transform.location)], life_time=0)
+        #draw_waypoints(self.world, [self.map.get_waypoint(transform.location)], life_time=0)
         self._actor_configs[actor_id]["start_transform"] = transform
         vehicle = None
         for retry in range(RETRIES_ON_ERROR):
@@ -813,7 +811,9 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
         """
         if clean_world:
             self._clean_world()
-
+            # set new log file
+            LOG.set_log(LOG_PATH + f"/{self._num_episodes[list(self._num_episodes.keys())[0]]}")
+            
         weather_num = 0
         if "weather_distribution" in self._scenario_map:
             weather_num = random.choice(self._scenario_map["weather_distribution"])
@@ -1181,7 +1181,7 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
             if self._rl_switch:
                 self._rl_control_steps += 1
             for actor_id in self._measurements_file_dict:
-                if self._actor_configs[actor_id]["log_measurements"] and LOG_PATH and \
+                if self._actor_configs[actor_id]["log_measurements"] and LOG.log_dir and \
                                 self._truncated_dict["__all__"] == Truncated.TRUE and \
                                 self._measurements_file_dict[actor_id] is not None:
                     self._measurements_file_dict[actor_id].write("{}]\n")
@@ -1383,12 +1383,12 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
         self._prev_measurement[actor_id] = py_measurements
         self._time_steps[actor_id] += 1   
 
-        if config["log_measurements"] and LOG_PATH:
+        if config["log_measurements"] and LOG.log_dir:
             # Write out measurements to file
             if not self._measurements_file_dict[actor_id]:
                 self._measurements_file_dict[actor_id] = open(
                     os.path.join(
-                        LOG_PATH,
+                        LOG.log_dir,
                         "measurements_{}_{}.json".format(actor_id, self._num_episodes[actor_id]),
                     ),
                     "a",

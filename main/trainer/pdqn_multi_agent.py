@@ -14,9 +14,8 @@ from tensorboardX import SummaryWriter
 from multiprocessing import Process, Queue, Lock
 sys.path.append(os.getcwd())
 from main.util.process import kill_process
-from macad_gym.core.sensors.hud import Logger
 from macad_gym.core.utils.wrapper import (fill_action_param, recover_steer, Action, 
-    SpeedState, Truncated)
+    SpeedState, Truncated, LOG)
 from algs.pdqn import P_DQN
 
 # neural network hyper parameters
@@ -63,7 +62,7 @@ time=datetime.datetime.now().strftime('%Y-%m-%d_%H-%M')
 SAVE_PATH=f"./out/multi_agent/pdqn/{time}"
 if not os.path.exists(SAVE_PATH):
     os.makedirs(SAVE_PATH)
-logger = Logger(__name__, "./out/multi_agent/multi_agent.log", logging.DEBUG, logging.ERROR)
+logger = LOG.pdqn_multi_agent_logger
 
 def main():
     env = gym.make("HomoNcomIndePoHiwaySAFR2CTWN5-v0")
@@ -169,7 +168,7 @@ def main():
                                 param["sigma_steer"] *= param["sigma_decay"]
                                 param["sigma_acc"] *= param["sigma_decay"]
                                 worker.set_sigma(param["sigma_steer"], param["sigma_acc"])
-                                logger.info("Agent Sigma %f %f", param["sigma_steer"], param["sigma_acc"])
+                                logger.info(f"Agent Sigma {param['sigma_steer']} {param['sigma_acc']}")
                            
                         if done or truncated:
                             # restart the training
@@ -199,6 +198,7 @@ def main():
                             # score_comfort.append(comfort)
                             # rolling_score.append(np.mean(episode_score[max]))
                             # cum_collision_num.append(collision_train)
+                            logger.info(f"Total_steps:{env.unwrapped._total_steps} RL_control_steps:{env.unwrapped._rl_control_steps}")
 
                         """ if rolling_score[rolling_score.__len__-1]>max_rolling_score:
                             max_rolling_score=rolling_score[rolling_score.__len__-1]
@@ -211,6 +211,9 @@ def main():
                         # })
                         pbar.update(1)
                         worker.save_net(f"{SAVE_PATH}/pdqn_final.pth")
+
+                    # set new log file
+                    #globals()["logger"] = Logger(__name__, SAVE_PATH + f"/multi_agent_{i}.log", logging.DEBUG, logging.ERROR)
            
         except KeyboardInterrupt:
             logger.info("Premature Terminated")

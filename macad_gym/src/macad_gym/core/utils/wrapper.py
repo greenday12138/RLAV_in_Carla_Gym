@@ -1,3 +1,4 @@
+import logging
 import math, os, sys, carla, json
 import numpy as np
 from enum import Enum
@@ -11,7 +12,101 @@ LOG_PATH = os.path.join(LOG_DIR, f"{datetime.today().strftime('%Y-%m-%d_%H-%M')}
 #CARLA_OUT_PATH = os.environ.get("CARLA_OUT", os.path.expanduser("~/Git/RLAV_in_Carla_Gym/carla_out"))
 if not os.path.exists(LOG_PATH):
     os.makedirs(LOG_PATH)
-LOG_FILE = LOG_PATH + '/server.log'
+LOG_FILE = LOG_PATH + '/macad-gym.log'
+
+class Logger:
+    def __init__(self, name, path = None, Flevel = None, Clevel = None):
+        self.logger = logging.getLogger(name)
+        self.logger.setLevel(logging.DEBUG)
+        self.Flevel = Flevel
+        self.Clevel = Clevel
+        self.fmt = logging.Formatter('[%(levelname)s] %(name)s [%(process)d %(thread)d] [%(asctime)s] %(message)s', '%Y-%m-%d %H:%M:%S')
+        # set command line logging
+        if Clevel is not None:
+            self.sh = logging.StreamHandler()
+            self.sh.setFormatter(self.fmt)
+            self.sh.setLevel(Clevel)
+            self.logger.addHandler(self.sh)
+        # set file logging
+        if path is not None:
+            self.fh = logging.FileHandler(path)
+            self.fh.setFormatter(self.fmt)
+            self.fh.setLevel(Flevel)
+            self.logger.addHandler(self.fh) 
+    
+    def reset_file(self, path):
+        assert path is not None
+        self.logger.removeHandler(self.fh)
+        self.fh = logging.FileHandler(path)
+        self.fh.setFormatter(self.fmt)
+        self.fh.setLevel(self.Flevel)
+        self.logger.addHandler(self.fh) 
+ 
+    def debug(self, message, *args, **kwargs):
+        self.logger.debug(message, *args, **kwargs)
+ 
+    def info(self, message, *args, **kwargs):
+        self.logger.info(message, *args, **kwargs)
+ 
+    def warning(self, message, *args, **kwargs):
+        self.logger.warn(message, *args, **kwargs)
+
+    def warn(self, message, *args, **kwargs):
+        self.logger.warn(message, *args, **kwargs)
+ 
+    def error(self, message, *args, **kwargs):
+        self.logger.error(message, *args, **kwargs)
+ 
+    def critical(self, message, *args, **kwargs):
+        self.logger.critical(message, *args, **kwargs)
+
+    def exception(self, message, *args, **kwargs):
+        self.logger.exception(message, *args, **kwargs)
+
+class LOG:
+    log_dir = None
+    log_file = None
+
+    reward_logger = None
+    multi_env_logger = None
+    pdqn_logger = None
+    hud_logger = None
+    basic_agent_logger = None
+    pdqn_multi_agent_logger = None
+
+    @staticmethod 
+    def set_log(path, file_name = None):
+        LOG.log_dir = path
+        if not os.path.exists(LOG.log_dir):
+            os.makedirs(LOG.log_dir)
+        if file_name is None:
+            LOG.log_file = LOG.log_dir + '/macad-gym.log'
+        else:
+            LOG.log_file = LOG.log_dir + file_name
+
+        # set each logger
+        if LOG.reward_logger is not None:
+            del LOG.reward_logger
+        if LOG.multi_env_logger is not None:
+            del LOG.multi_env_logger
+        if LOG.pdqn_logger is not None:
+            del LOG.pdqn_logger
+        if LOG.hud_logger is not None:
+            del LOG.hud_logger
+        if LOG.basic_agent_logger is not None:
+            del LOG.basic_agent_logger
+        if LOG.pdqn_multi_agent_logger is not None:
+            del LOG.pdqn_multi_agent_logger
+        
+        LOG.reward_logger = Logger('reward.py', LOG.log_file, logging.DEBUG, logging.ERROR)
+        LOG.multi_env_logger = Logger('multi_env.py', LOG.log_file, logging.DEBUG, logging.ERROR)
+        LOG.pdqn_logger = Logger('pdqn.py', LOG.log_file, logging.DEBUG, logging.ERROR)
+        LOG.hud_logger = Logger('hud.py', LOG.log_file, logging.DEBUG, logging.ERROR)
+        LOG.basic_agent_logger = Logger('basic_agent.py', LOG.log_file, logging.DEBUG, logging.ERROR)
+        LOG.pdqn_multi_agent_logger = Logger('pdqn_multi_agent.py', LOG.log_file, logging.DEBUG, logging.ERROR)
+
+if LOG.log_dir is None:
+    LOG.set_log(LOG_PATH + '/0')
 
 # Set this to the path of your Carla binary
 SERVER_BINARY = os.environ.get(

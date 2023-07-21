@@ -25,15 +25,17 @@ class LaneInvasionSensor(object):
         weak_self = weakref.ref(self)
         self.sensor.listen(
             lambda event: LaneInvasionSensor._on_invasion(weak_self, event))
+        
+    def __del__(self):
+        if self.sensor is not None and self.sensor.is_alive:
+            self.sensor.stop()
+            self.sensor.destroy()
 
     def get_invasion_history(self):
         history = collections.defaultdict(int)
         for frame, text in self._history:
             history[frame] = text
         return history
-
-    def stop(self):
-        self.sensor.stop()
 
     @staticmethod
     def _on_invasion(weak_self, event):
@@ -96,6 +98,11 @@ class CollisionSensor(object):
         weak_self = weakref.ref(self)
         self.sensor.listen(
             lambda event: CollisionSensor._on_collision(weak_self, event))
+        
+    def __del__(self):
+        if self.sensor is not None and self.sensor.is_alive:
+            self.sensor.stop()
+            self.sensor.destroy()
 
     def get_collision_history(self):
         history = collections.defaultdict(int)
@@ -113,9 +120,6 @@ class CollisionSensor(object):
         
     def clear_history(self):
         self.history.clear()
-
-    def stop(self):
-        self.sensor.stop()
 
     @staticmethod
     def _on_collision(weak_self, event):
