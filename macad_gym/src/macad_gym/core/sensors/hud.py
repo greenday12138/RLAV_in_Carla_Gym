@@ -1,8 +1,7 @@
-import logging
 import pygame
 import datetime
 import math, os
-from macad_gym.core.utils.wrapper import LOG
+from macad_gym.core.sensors.logger import LOG
 from macad_gym.core.utils.misc import get_actor_display_name
 
 logger = LOG.hud_logger

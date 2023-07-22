@@ -1,6 +1,6 @@
 import os
 import sys
-import logging
+from datetime import datetime
 from gym.envs.registration import register
 
 os.environ["PYGAME_HIDE_SUPPORT_PROMPT"] = "yes please"
@@ -10,11 +10,30 @@ if not os.path.isdir(LOG_DIR):
 
 # Init and setup the root logger
 #logging.basicConfig(filename=LOG_DIR + '/macad-gym.log', filemode='w', level=logging.DEBUG)
+# Set this where you want to save image outputs (or empty string to disable)
+LOG_PATH = os.path.join(LOG_DIR, f"{datetime.today().strftime('%Y-%m-%d_%H-%M')}")
+#CARLA_OUT_PATH = os.environ.get("CARLA_OUT", os.path.expanduser("~/Git/RLAV_in_Carla_Gym/carla_out"))
+if not os.path.exists(LOG_PATH):
+    os.makedirs(LOG_PATH)
 
 # Fix path issues with included CARLA API
 sys.path.append(
     os.path.join(
         os.path.dirname(os.path.abspath(__file__)), "carla/PythonAPI"))
+
+# Set this to the path of your Carla binary
+SERVER_BINARY = os.environ.get(
+    "CARLA_SERVER", os.path.expanduser("~/ProgramFiles/Carla/CarlaUE4.sh")
+)
+assert os.path.exists(SERVER_BINARY), (
+    "Make sure CARLA_SERVER environment"
+    " variable is set & is pointing to the"
+    " CARLA server startup script (Carla"
+    "UE4.sh). Refer to the README file/docs."
+)
+
+# Check if is using on Windows
+IS_WINDOWS_PLATFORM = "win" in sys.platform
 
 # Declare available environments with a brief description
 _AVAILABLE_ENVS = {

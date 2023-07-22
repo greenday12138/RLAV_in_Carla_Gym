@@ -5,7 +5,7 @@ from torch import nn
 import torch.nn.functional as F
 from torch.autograd import Variable
 from algs.util.replay_buffer import SumTree,SplitReplayBuffer
-from macad_gym.core.utils.wrapper import LOG
+from macad_gym.core.sensors.logger import LOG
 
 logger = LOG.pdqn_logger
 
@@ -453,13 +453,13 @@ class P_DQN:
             self.ISWeights=torch.tensor(b_ISWeights,dtype=torch.float32).view((self.batch_size,-1)).to(self.device)
 
         # 此处得到的batch是否是pytorch.tensor?
-        batch_s = torch.tensor(b_s, dtype=torch.float32).view((self.batch_size, -1)).to(self.device)
-        batch_ns = torch.tensor(b_ns, dtype=torch.float32).view((self.batch_size, -1)).to(self.device)
-        batch_a = torch.tensor(b_a, dtype=torch.int64).view((self.batch_size, -1)).to(self.device)
-        batch_a_param = torch.tensor(b_a_param, dtype=torch.float32).view((self.batch_size, -1)).to(self.device)
-        batch_r = torch.tensor(b_r, dtype=torch.float32).view((self.batch_size, -1)).to(self.device).squeeze()
-        batch_d = torch.tensor(b_d, dtype=torch.float32).view((self.batch_size, -1)).to(self.device).squeeze()
-        batch_t = torch.tensor(b_t, dtype=torch.float32).view((self.batch_size, -1)).to(self.device).squeeze()
+        batch_s = torch.tensor(np.array(b_s), dtype=torch.float32).view((self.batch_size, -1)).to(self.device)
+        batch_ns = torch.tensor(np.array(b_ns), dtype=torch.float32).view((self.batch_size, -1)).to(self.device)
+        batch_a = torch.tensor(np.array(b_a), dtype=torch.int64).view((self.batch_size, -1)).to(self.device)
+        batch_a_param = torch.tensor(np.array(b_a_param), dtype=torch.float32).view((self.batch_size, -1)).to(self.device)
+        batch_r = torch.tensor(np.array(b_r), dtype=torch.float32).view((self.batch_size, -1)).to(self.device).squeeze()
+        batch_d = torch.tensor(np.array(b_d), dtype=torch.float32).view((self.batch_size, -1)).to(self.device).squeeze()
+        batch_t = torch.tensor(np.array(b_t), dtype=torch.float32).view((self.batch_size, -1)).to(self.device).squeeze()
 
         with torch.no_grad():
             action_param_target = self.actor_target(batch_ns)
@@ -490,8 +490,6 @@ class P_DQN:
             q_values = torch.min(q_values1, q_values2)
             q = q_values.gather(1, batch_a.view(-1, 1)).squeeze()
             loss_q = self.loss(q, q_values1) + self.loss(q, q_values2)
-
-        logger.debug(f"Loss_Q:{loss_q}")
 
         self.critic_optimizer.zero_grad()
         loss_q.backward()

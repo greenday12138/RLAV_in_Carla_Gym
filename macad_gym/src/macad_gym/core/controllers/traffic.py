@@ -1,10 +1,10 @@
 ﻿import random
-import logging
 import carla
+from macad_gym.core.sensors.logger import LOG
 
 # TODO make the seed user configurable
 random.seed(10)
-logger = logging.getLogger(__name__)
+logger = LOG.traffic_logger
 
 def hero_autopilot(actor, traffic_manager, actor_config, env_config,setting=True):
     # Use traffic manager to control hero vehicle
@@ -70,8 +70,8 @@ def apply_traffic(world, traffic_manager, env_config, num_vehicles, num_pedestri
     if num_vehicles <= number_of_spawn_points:
         spawn_points = random.sample(spawn_points, num_vehicles)
     else:
-        msg = 'requested %d vehicles, but could only find %d spawn points'
-        logger.warning(msg, num_vehicles, number_of_spawn_points)
+        msg = ''
+        logger.warning(f"requested {num_vehicles} vehicles, but could only find {number_of_spawn_points} spawn points")
         num_vehicles = number_of_spawn_points
 
     vehicles_list = []

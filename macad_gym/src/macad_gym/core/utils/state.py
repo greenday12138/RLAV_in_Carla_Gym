@@ -65,7 +65,7 @@ class StateDAO:
         right_wall = False
         if len(right_wps) == 0:
             right_wall = True
-        vehicle_inlane_processed = process_veh(self._actors[actor_id
+        vehicle_inlane_processed = self._process_veh(self._actors[actor_id
                     ],vehs_info, left_wall, right_wall, self._env_config["vehicle_proximity"])
 
         yaw_diff_ego = math.degrees(get_yaw_diff(lane_center.transform.get_forward_vector(),
@@ -133,6 +133,89 @@ class StateDAO:
                 "light":light
             }
         ) 
+    
+    def _process_veh(self, ego_vehicle, vehs_info, left_wall, right_wall,vehicle_proximity):
+        def compute(center, ego):
+            # compute the distance between ego location and lane center,
+            # Lcen < 0: ego location is on the left of lane center, Lcen > 0 on the contrary
+            Lcen = ego.distance(center.transform.location)
+            center_yaw = center.transform.get_forward_vector()
+            dis = carla.Vector3D(ego.x - center.transform.location.x,
+                                ego.y - center.transform.location.y, 0)
+            Lcen *= get_sign(dis, center_yaw)
+            return Lcen
+        
+        def get_len_wid(vehicle):
+            proj_s, proj_t = get_projection(vehicle.bounding_box.extent, 
+                                        vehicle.bounding_box.rotation.get_forward_vector())
+            
+            return abs(proj_s), abs(proj_t)
+        
+        vehicle_inlane=[vehs_info.left_front_veh,vehs_info.center_front_veh,vehs_info.right_front_veh,
+                vehs_info.left_rear_veh,vehs_info.center_rear_veh,vehs_info.right_rear_veh]
+        ego_speed = get_speed(ego_vehicle, False)
+        ego_location = ego_vehicle.get_location()
+        ego_half_len, ego_half_wid = get_len_wid(ego_vehicle)
+        ego_bounding_x = ego_vehicle.bounding_box.extent.x
+        ego_bounding_y = ego_vehicle.bounding_box.extent.y
+        all_v_info = []
+        #print('vehicle_inlane: ', vehicle_inlane)
+        for i in range(6):
+            if i == 0 or i == 3:
+                lane = -1
+            elif i == 1 or i == 4:
+                lane = 0
+            else:
+                lane = 1
+            veh = vehicle_inlane[i]
+            wall = False
+            if left_wall and (i == 0 or i == 3):
+                wall = True
+            if right_wall and (i == 2 or i == 5):
+                wall = True
+            if wall:
+                if i < 3:
+                    v_info = [0.001, 0, lane]
+                    #v_info = [0.001, 0.001, 0, lane]
+                else:
+                    v_info = [-0.001, 0, lane]
+                    #v_info = [-0.001, 0.001, 0, lane]
+            else:
+                if veh is None:
+                    if i < 3:
+                        v_info = [1, 0, lane]
+                        #v_info = [1, 1, 0, lane]
+                    else:
+                        v_info = [-1, 0, lane]
+                        #v_info = [-1, 1, 0, lane]
+                else:
+                    veh_speed = get_speed(veh, False)
+                    rel_speed = ego_speed - veh_speed
+
+                    distance = ego_location.distance(veh.get_location())
+                    veh_half_len, veh_half_wid = get_len_wid(veh)
+                    vehicle_len = max(abs(ego_bounding_x), abs(ego_bounding_y)) + \
+                        max(abs(veh.bounding_box.extent.x), abs(veh.bounding_box.extent.y))
+                    #distance -= veh_half_len + ego_half_len
+                    distance -= vehicle_len
+
+                    if distance < 0:
+                        if i < 3:
+                            v_info = [0.001, rel_speed, lane]
+                            #v_info = [0, 0, rel_speed, lane]
+                        else:
+                            v_info = [-0.001, -rel_speed, lane]
+                            #v_info = [0, 0, -rel_speed, lane]
+                    else:
+                        if i < 3:
+                            v_info = [distance / vehicle_proximity, rel_speed, lane]
+                        else:
+                            v_info = [-distance / vehicle_proximity, -rel_speed, lane]
+                            
+            all_v_info.append(v_info)
+        # print(all_v_info)
+        return np.array(all_v_info)
+
 
 def process_lane_wp(wps_list, ego_vehicle_z, ego_forward_vector, my_sample_ratio, lane_offset):
     wps = []
@@ -153,78 +236,3 @@ def process_lane_wp(wps_list, ego_vehicle_z, ego_forward_vector, my_sample_ratio
         yaw_diff = yaw_diff / 90
         wps.append([delta_z/3, yaw_diff, lane_offset])
     return np.array(wps)
-
-
-def process_veh(ego_vehicle, vehs_info, left_wall, right_wall,vehicle_proximity):
-    def compute(center, ego):
-        # compute the distance between ego location and lane center,
-        # Lcen < 0: ego location is on the left of lane center, Lcen > 0 on the contrary
-        Lcen = ego.distance(center.transform.location)
-        center_yaw = center.transform.get_forward_vector()
-        dis = carla.Vector3D(ego.x - center.transform.location.x,
-                            ego.y - center.transform.location.y, 0)
-        Lcen *= get_sign(dis, center_yaw)
-        return Lcen
-    
-    def get_len_wid(vehicle):
-        proj_s, proj_t = get_projection(vehicle.bounding_box.extent, 
-                                    vehicle.bounding_box.rotation.get_forward_vector())
-        half_len, half_wid = abs(proj_s), abs(proj_t)
-        
-        return half_len, half_wid
-    
-    vehicle_inlane=[vehs_info.left_front_veh,vehs_info.center_front_veh,vehs_info.right_front_veh,
-            vehs_info.left_rear_veh,vehs_info.center_rear_veh,vehs_info.right_rear_veh]
-    ego_speed = get_speed(ego_vehicle, False)
-    ego_location = ego_vehicle.get_location()
-    ego_half_len, ego_half_wid = get_len_wid(ego_vehicle)
-    ego_bounding_x = ego_vehicle.bounding_box.extent.x
-    ego_bounding_y = ego_vehicle.bounding_box.extent.y
-    all_v_info = []
-    #print('vehicle_inlane: ', vehicle_inlane)
-    for i in range(6):
-        if i == 0 or i == 3:
-            lane = -1
-        elif i == 1 or i == 4:
-            lane = 0
-        else:
-            lane = 1
-        veh = vehicle_inlane[i]
-        wall = False
-        if left_wall and (i == 0 or i == 3):
-            wall = True
-        if right_wall and (i == 2 or i == 5):
-            wall = True
-        if wall:
-            if i < 3:
-                v_info = [0.001, 0, lane]
-            else:
-                v_info = [-0.001, 0, lane]
-        else:
-            if veh is None:
-                if i < 3:
-                    v_info = [1, 0, lane]
-                else:
-                    v_info = [-1, 0, lane]
-            else:
-                veh_speed = get_speed(veh, False)
-                rel_speed = ego_speed - veh_speed
-
-                distance = ego_location.distance(veh.get_location())
-                vehicle_len = max(abs(ego_bounding_x), abs(ego_bounding_y)) + \
-                    max(abs(veh.bounding_box.extent.x), abs(veh.bounding_box.extent.y))
-                distance -= vehicle_len
-
-                if distance < 0:
-                    if i < 3:
-                        v_info = [0.001, rel_speed, lane]
-                    else:
-                        v_info = [-0.001, -rel_speed, lane]
-                else:
-                    if i < 3:
-                        v_info = [distance / vehicle_proximity, rel_speed, lane]
-                    else:
-                        v_info = [-distance / vehicle_proximity, -rel_speed, lane]
-        all_v_info.append(v_info)
-    # print(all_v_info)
-    return np.array(all_v_info)

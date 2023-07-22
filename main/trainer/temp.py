@@ -2,12 +2,13 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
-import random,logging
+import random
 import carla
 import torch
 import datetime,os
 from collections import deque
 from multiprocessing import Process,Queue
+from macad_gym import LOG_PATH
 
 DEVICE = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
 
@@ -72,8 +73,4 @@ if __name__=='__main__':
     # # 画图
     # sns.lineplot(data=df, x="Step", y="Value")
     # plt.show()
-    t = {
-        "1": 1,
-        "2": 2
-    }
-    print(list(t.keys())[0])
+    print(os.path.split(LOG_PATH)[-1])

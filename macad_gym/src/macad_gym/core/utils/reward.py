@@ -1,8 +1,7 @@
 import math
 import carla
-import logging
 import numpy as np
-from macad_gym.core.utils.wrapper import LOG
+from macad_gym.core.sensors.logger import LOG
 from macad_gym.core.utils.misc import (get_speed, get_yaw_diff, get_sign, test_waypoint,
                                        get_lane_center, get_projection)
 from macad_gym.core.utils.wrapper import SemanticTags, Truncated, Action

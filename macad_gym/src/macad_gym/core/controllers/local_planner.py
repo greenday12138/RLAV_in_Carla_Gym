@@ -1,6 +1,5 @@
 import carla
 import copy
-import logging
 from collections import deque
 from shapely.geometry import Polygon
 from macad_gym.core.scenarios import ROADS

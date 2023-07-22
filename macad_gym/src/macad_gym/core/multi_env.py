@@ -11,7 +11,6 @@ from __future__ import print_function
 import argparse
 import atexit
 import shutil
-import logging
 import json
 import os
 import random
@@ -30,20 +29,19 @@ import numpy as np  # linalg.norm is used
 from collections import deque
 from gym.spaces import Box, Discrete, Tuple, Dict
 
-from macad_gym import LOG_DIR
+from macad_gym import LOG_PATH, SERVER_BINARY, IS_WINDOWS_PLATFORM
+from macad_gym.core.sensors.logger import LOG
 from macad_gym.core.utils.state import StateDAO
 from macad_gym.core.controllers.traffic import apply_traffic, hero_autopilot
 from macad_gym.multi_actor_env import MultiActorEnv
-from macad_gym.core.sensors.utils import preprocess_image
 from macad_gym.core.maps.nodeid_coord_map import MAP_TO_COORDS_MAPPING
 from macad_gym.core.utils.misc import (remove_unnecessary_objects, sigmoid, get_lane_center, 
     get_yaw_diff, test_waypoint, is_within_distance_ahead, get_projection, draw_waypoints,
-    get_speed)
+    get_speed, preprocess_image)
 from macad_gym.core.utils.wrapper import (COMMANDS_ENUM, COMMAND_ORDINAL, ROAD_OPTION_TO_COMMANDS_MAPPING, 
     DISTANCE_TO_GOAL_THRESHOLD, ORIENTATION_TO_GOAL_THRESHOLD, RETRIES_ON_ERROR, GROUND_Z, DISCRETE_ACTIONS,
-    WEATHERS, get_next_actions, DEFAULT_MULTIENV_CONFIG, print_measurements, SERVER_BINARY, 
-    IS_WINDOWS_PLATFORM, json_dumper, LOG_PATH, process_steer,
-    Truncated, Action, SpeedState, ControlInfo, LOG)
+    WEATHERS, get_next_actions, DEFAULT_MULTIENV_CONFIG, print_measurements,  json_dumper, process_steer,
+    Truncated, Action, SpeedState, ControlInfo)
 
 # from macad_gym.core.sensors.utils import get_transform_from_nearest_way_point
 from macad_gym.core.utils.reward import Reward, PDQNReward
@@ -68,13 +66,6 @@ from macad_gym.carla.PythonAPI.agents.navigation.global_route_planner import (  
 
 logger = LOG.multi_env_logger
 live_carla_processes = set()
-
-assert os.path.exists(SERVER_BINARY), (
-    "Make sure CARLA_SERVER environment"
-    " variable is set & is pointing to the"
-    " CARLA server startup script (Carla"
-    "UE4.sh). Refer to the README file/docs."
-)
 
 def cleanup():
     logger.info(f"Killing live carla processes:{live_carla_processes}")
@@ -442,6 +433,7 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
                         "-windowed",
                         #"-prefernvidia",
                         "-quality-level=Low",
+                        "-RenderOffScreen" if not self._env_configs["render"] else "",
                         "-ResX=",
                         str(self._env_config["render_x_res"]),
                         "-ResY=",
@@ -496,7 +488,6 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
         if self._env_config["hybrid"]:
             world_settings.actor_active_distance = 2000 
         world_settings.synchronous_mode = self._sync_server
-        world_settings.no_rendering_mode = not self._render
         if self._sync_server:
             # Synchronous mode
             # try:

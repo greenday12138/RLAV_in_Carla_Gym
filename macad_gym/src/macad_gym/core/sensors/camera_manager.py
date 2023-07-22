@@ -5,7 +5,7 @@ import weakref
 import carla
 import numpy as np
 from enum import Enum
-from macad_gym.core.utils.wrapper import LOG_PATH
+from macad_gym.core.sensors.logger import LOG
 
 
 CAMERA_TYPES = Enum('CameraType', ['rgb',
@@ -82,6 +82,8 @@ class CameraManager(object):
         if self.sensor is not None and self.sensor.is_alive:
             self.sensor.stop()
             self.sensor.destroy()
+            self._index = None
+            self.sensor = None
 
     def set_recording_option(self, option):
         """Set class vars to select recording method.
@@ -114,6 +116,7 @@ class CameraManager(object):
             else list(CAMERA_TYPES)[index] != list(CAMERA_TYPES)[self._index]
         if needs_respawn:
             if self.sensor is not None:
+                self.sensor.stop()
                 self.sensor.destroy()
                 self._surface = None
             self._transform_index = pos % len(self._camera_transforms)
@@ -172,7 +175,7 @@ class CameraManager(object):
             self._surface = pygame.surfarray.make_surface(array.swapaxes(0, 1))
         if self._recording:
             image_dir = os.path.join(
-                LOG_PATH, 'images/{}/%04d.png'.format(self._parent.id) %
+                LOG.log_dir, 'images/{}/%04d.png'.format(self._parent.id) %
                 image.frame_number)
             image.save_to_disk(image_dir)  # , env.cc
             # image.save_to_disk('_out/%08d' % image.frame_number)

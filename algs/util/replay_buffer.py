@@ -1,4 +1,3 @@
-import logging
 import random, collections
 import numpy as np
 

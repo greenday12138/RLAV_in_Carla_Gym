@@ -8,14 +8,14 @@ This module implements an agent that roams around a track following random
 waypoints and avoiding other vehicles. The agent also responds to traffic lights.
 It can also make use of the global route planner to follow a specifed route
 """
-import logging
 import carla
 import random
 import numpy as np
 from enum import Enum
 from collections import deque
 from shapely.geometry import Polygon
-from macad_gym.core.utils.wrapper import Action, ControlInfo, LOG
+from macad_gym.core.sensors.logger import LOG
+from macad_gym.core.utils.wrapper import Action, ControlInfo
 from macad_gym.core.controllers.pid_controller import VehiclePIDController
 from macad_gym.core.utils.misc import (get_speed, draw_waypoints, is_within_distance, get_trafficlight_trigger_location,
     compute_distance, get_lane_center)

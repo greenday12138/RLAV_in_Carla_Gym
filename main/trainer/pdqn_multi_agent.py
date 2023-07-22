@@ -1,4 +1,3 @@
-import logging
 import torch
 import datetime,time, os
 import gym, macad_gym
@@ -14,8 +13,9 @@ from tensorboardX import SummaryWriter
 from multiprocessing import Process, Queue, Lock
 sys.path.append(os.getcwd())
 from main.util.process import kill_process
+from macad_gym.core.sensors.logger import LOG
 from macad_gym.core.utils.wrapper import (fill_action_param, recover_steer, Action, 
-    SpeedState, Truncated, LOG)
+    SpeedState, Truncated)
 from algs.pdqn import P_DQN
 
 # neural network hyper parameters
@@ -58,7 +58,7 @@ TRAIN = True
 UPDATE_FREQ = 100
 modify_change_steer=False
 base_name = f'origin_NOCA'
-time=datetime.datetime.now().strftime('%Y-%m-%d_%H-%M')
+time=datetime.datetime.today().strftime('%Y-%m-%d_%H-%M')
 SAVE_PATH=f"./out/multi_agent/pdqn/{time}"
 if not os.path.exists(SAVE_PATH):
     os.makedirs(SAVE_PATH)
@@ -150,10 +150,25 @@ def main():
                                         lcen[actor_id] += info["lane_center_reward"]
                                         lane_change_reward[actor_id] += info["lane_change_reward"]
 
-                                    traj_q.put((deepcopy(states[actor_id][1]), deepcopy(next_states[actor_id][1]),
-                                                deepcopy(all_action_params[actor_id]), deepcopy(rewards[actor_id]),
-                                                deepcopy(dones[actor_id]), deepcopy(truncateds[actor_id]!=Truncated.FALSE),
-                                                deepcopy(infos[actor_id])),block=True,timeout=None)
+                                    #process action params
+                                    state, next_state, reward, done, truncated, info = \
+                                        deepcopy(states[actor_id][1]), deepcopy(next_states[actor_id][1]), \
+                                        deepcopy(rewards[actor_id]), deepcopy(dones[actor_id]),\
+                                        deepcopy(truncateds[actor_id]!=Truncated.FALSE), deepcopy(infos[actor_id])
+                                        
+                                    throttle_brake = -info["control_info"]["brake"] if info["control_info"]["brake"] > 0 else info["control_info"]["throttle"]
+                                    if info['current_action']==str(Action.LANE_FOLLOW):
+                                        action=1
+                                    elif info['current_action']==str(Action.LANE_CHANGE_LEFT):
+                                        action=0
+                                    elif info['current_action']==str(Action.LANE_CHANGE_RIGHT):
+                                        action=2
+                                    saved_action_param = fill_action_param(action, info["control_info"]["steer"], throttle_brake,
+                                                                        all_action_params[actor_id], modify_change_steer)
+                                    logger.debug(f"Control In Replay Buffer: {action}, {saved_action_param}")
+
+                                    traj_q.put((state, next_state, action, saved_action_param,
+                                        reward, done, truncated, info ), block=True, timeout=None)
         
                             done = dones["__all__"]
                             truncated = truncateds["__all__"]!=Truncated.FALSE
@@ -247,18 +262,10 @@ def learner_mp(lock:Lock, traj_q: Queue, agent_q:Queue, agent_param:dict):
         learner.batch_size = k * param["batch_size"]
         for _ in range(k):
             trajectory=traj_q.get(block=True,timeout=None)
-            state, next_state, all_action_param, reward, done, truncated, info = trajectory[0], \
-                trajectory[1], trajectory[2], trajectory[3], trajectory[4], trajectory[5], trajectory[6]
-            throttle_brake = -info["control_info"]["brake"] if info["control_info"]["brake"] > 0 else info["control_info"]["throttle"]
-            if info['current_action']==str(Action.LANE_FOLLOW):
-                action=1
-            elif info['current_action']==str(Action.LANE_CHANGE_LEFT):
-                action=0
-            elif info['current_action']==str(Action.LANE_CHANGE_RIGHT):
-                action=2
-            saved_action_param = fill_action_param(action, info["control_info"]["steer"], throttle_brake,
-                                                    all_action_param,modify_change_steer)
-            logger.debug(f"Control In Replay Buffer: {action}, {saved_action_param}")
+            state, next_state, action, saved_action_param, reward, done, truncated, info = \
+                trajectory[0], trajectory[1], trajectory[2], trajectory[3], trajectory[4], trajectory[5], \
+                trajectory[6], trajectory[7]
+
             learner.store_transition(state, action, saved_action_param, reward, next_state,
                                     truncated, done, info)       
         if TRAIN and learner.replay_buffer.size()>=param["minimal_size"]:

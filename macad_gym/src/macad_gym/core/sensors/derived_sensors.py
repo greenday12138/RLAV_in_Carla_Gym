@@ -30,6 +30,7 @@ class LaneInvasionSensor(object):
         if self.sensor is not None and self.sensor.is_alive:
             self.sensor.stop()
             self.sensor.destroy()
+            self.sensor = None
 
     def get_invasion_history(self):
         history = collections.defaultdict(int)
@@ -103,6 +104,7 @@ class CollisionSensor(object):
         if self.sensor is not None and self.sensor.is_alive:
             self.sensor.stop()
             self.sensor.destroy()
+            self.sensor = None
 
     def get_collision_history(self):
         history = collections.defaultdict(int)
