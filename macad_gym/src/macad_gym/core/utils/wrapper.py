@@ -1,7 +1,15 @@
+import socket
+import GPUtil
+import random
+import shutil
+import subprocess
+import traceback
 import math, os, sys, carla, json
 import numpy as np
 from copy import deepcopy
 from enum import Enum
+from macad_gym import IS_WINDOWS_PLATFORM, SERVER_BINARY
+from macad_gym.viz.logger import LOG
 from macad_gym.core.controllers.route_planner import RoadOption
 from macad_gym.core.utils.misc import get_speed,get_yaw_diff,test_waypoint,get_sign
 
@@ -87,9 +95,6 @@ DISTANCE_TO_GOAL_THRESHOLD = 0.5
 # Threshold to determine that the goal has been reached based on orientation
 ORIENTATION_TO_GOAL_THRESHOLD = math.pi / 4.0
 
-# Number of retries if the server doesn't respond
-RETRIES_ON_ERROR = 2
-
 # Dummy Z coordinate to use when we only care about (x, y)
 GROUND_Z = 22
 
@@ -132,7 +137,138 @@ WEATHERS = {
 }
 
 
-class WaypointWrapper:
+class CarlaConnector(object):
+    @staticmethod
+    def clear_server(process):
+        pass
+
+    @staticmethod
+    def get_tcp_port(port=0):
+        """
+        Get a free tcp port number
+        :param port: (default 0) port number. When `0` it will be assigned a free port dynamically
+        :return: a port number requested if free otherwise an unhandled exception would be thrown
+        """
+        s = socket.socket()
+        s.bind(("", port))
+        server_port = s.getsockname()[1]
+        s.close()
+        return server_port
+
+    @staticmethod
+    def connect(logger, env_config):
+        # First find a port that is free and then use it in order to avoid
+        # crashes due to:"...bind:Address already in use"
+        server_port = CarlaConnector.get_tcp_port()
+        logger.info(
+            f"1. Port: {server_port}\n"
+            f"2. Map: {env_config['server_map']}\n"
+            f"3. Binary: {SERVER_BINARY}"
+        )
+        multigpu_success = False
+        gpus = GPUtil.getGPUs()
+        if not env_config["render"] and (gpus is not None and len(gpus)) > 0:
+            try:
+                min_index = random.randint(0, len(gpus) - 1)
+                for i, gpu in enumerate(gpus):
+                    if gpu.load < gpus[min_index].load:
+                        min_index = i
+                # Check if vglrun is setup to launch sim on multipl GPUs
+                if shutil.which("vglrun") is not None:
+                    server_process = subprocess.Popen(
+                        (
+                            "DISPLAY=:8 vglrun -d :7.{} {} -benchmark -fps={}"
+                            " -carla-server -world-port={}"
+                            " -carla-streaming-port=0".format(
+                                min_index,
+                                SERVER_BINARY,
+                                1/env_config["fixed_delta_seconds"],
+                                server_port,
+                            )
+                        ),
+                        shell=True,
+                        # for Linux
+                        preexec_fn=None if IS_WINDOWS_PLATFORM else os.setsid,
+                        # for Windows (not necessary)
+                        creationflags=subprocess.CREATE_NEW_PROCESS_GROUP
+                        if IS_WINDOWS_PLATFORM
+                        else 0,
+                        stdout=open(LOG.log_file, "a"),
+                    )
+
+                # Else, run in headless mode
+                else:
+                    # Since carla 0.9.12+ use -RenderOffScreen to start headlessly
+                    # https://carla.readthedocs.io/en/latest/adv_rendering_options/
+                    server_process = subprocess.Popen(
+                        (  # 'SDL_VIDEODRIVER=offscreen SDL_HINT_CUDA_DEVICE={} DISPLAY='
+                            '"{}" -RenderOffScreen -benchmark -fps={} -carla-server'
+                            " -world-port={} -carla-streaming-port=0".format(
+                                SERVER_BINARY,
+                                1/env_config["fixed_delta_seconds"],
+                                server_port,
+                            )
+                        ),
+                        shell=True,
+                        # for Linux
+                        preexec_fn=None if IS_WINDOWS_PLATFORM else os.setsid,
+                        # for Windows (not necessary)
+                        creationflags=subprocess.CREATE_NEW_PROCESS_GROUP
+                        if IS_WINDOWS_PLATFORM
+                        else 0,
+                        stdout=open(LOG.log_file, "a"),
+                    )
+            # TODO: Make the try-except style handling work with Popen
+            # exceptions after launching the server procs are not caught
+            except Exception as e:
+                logger.exception(traceback.format_exc())
+            # Temporary soln to check if CARLA server proc started and wrote
+            # something to stdout which is the usual case during startup
+            if os.path.isfile(LOG.log_file):
+                multigpu_success = True
+            else:
+                multigpu_success = False
+
+            if multigpu_success:
+                logger.info("Running sim servers in headless/multi-GPU mode")
+
+        # Rendering mode and also a fallback if headless/multi-GPU doesn't work
+        if multigpu_success is False:
+            try:
+                logger.info("Using single gpu to initialize carla server")
+                parameters = [SERVER_BINARY, 
+                              "-windowed", 
+                              #"-prefernvidia",
+                              "-quality-level=Low"
+                              f"-ResX={str(env_config['render_x_res'])}",
+                              f"-ResY={str(env_config['render_y_res'])}",
+                              "-benchmark",
+                              "-fps={}".format(1/env_config["fixed_delta_seconds"]),
+                              "-carla-server",
+                              "-carla-rpc-port={}".format(server_port),
+                              "-carla-streaming-port=0"]
+                if not env_config["render"]:
+                    parameters.append("-RenderOffScreen")
+
+                server_process = subprocess.Popen(
+                    parameters,
+                    # for Linux
+                    preexec_fn=None if IS_WINDOWS_PLATFORM else os.setsid,
+                    # for Windows (not necessary)
+                    creationflags=subprocess.CREATE_NEW_PROCESS_GROUP
+                    if IS_WINDOWS_PLATFORM
+                    else 0,
+                    stdout=open(LOG.log_file, "a"),
+                    #bufsize=131072
+                )
+                logger.info("Running simulation in single-GPU mode")
+            except Exception as e:
+                logger.error(f"FATAL ERROR while launching server:{sys.exc_info()[0]}")
+            
+        return server_port, server_process
+
+
+class WaypointWrapper(object):
     """The location left, right, center is allocated according to the lane of ego vehicle"""
     def __init__(self,opt=None) -> None:
         self.left_front_wps=None
@@ -157,7 +293,7 @@ class WaypointWrapper:
                 self.right_rear_wps=opt['right_rear_wps']
 
 
-class VehicleWrapper:
+class VehicleWrapper(object):
     """The location left, right, center is allocated according to the lane of ego vehicle"""
     def __init__(self,opt=None) -> None:
         self.left_front_veh=None
@@ -260,7 +396,7 @@ class Action(Enum):
     LANE_CHANGE_RIGHT = 1
     STOP = 2
 
-class ControlInfo:
+class ControlInfo(object):
     """Wrapper for vehicle(model3) control info"""
     def __init__(self,throttle=0.0,brake=0.0,steer=0.0,gear=1, reverse=False, 
                  hand_brake=False, manual_gear_shift=False) -> None:

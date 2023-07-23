@@ -13,7 +13,8 @@ from tensorboardX import SummaryWriter
 from multiprocessing import Process, Queue, Lock
 sys.path.append(os.getcwd())
 from main.util.process import kill_process
-from macad_gym.core.sensors.logger import LOG
+from macad_gym import LOG_PATH
+from macad_gym.viz.logger import LOG
 from macad_gym.core.utils.wrapper import (fill_action_param, recover_steer, Action, 
     SpeedState, Truncated)
 from algs.pdqn import P_DQN
@@ -23,7 +24,7 @@ AGENT_PARAM = {
     "s_dim": {
         'waypoints': 10, 
         'hero_vehicle': 6, 
-        'companion_vehicle': 3, 
+        'companion_vehicle': 4, 
         'light':3
     },
     "a_dim": 2,
@@ -55,11 +56,11 @@ AGENT_PARAM = {
 }
 TOTAL_EPISODE = 50000
 TRAIN = True
-UPDATE_FREQ = 100
+UPDATE_FREQ = 300
 modify_change_steer=False
 base_name = f'origin_NOCA'
-time=datetime.datetime.today().strftime('%Y-%m-%d_%H-%M')
-SAVE_PATH=f"./out/multi_agent/pdqn/{time}"
+#time=datetime.datetime.today().strftime('%Y-%m-%d_%H-%M')
+SAVE_PATH=f"./out/multi_agent/pdqn/{os.path.split(LOG_PATH)[-1]}"
 if not os.path.exists(SAVE_PATH):
     os.makedirs(SAVE_PATH)
 logger = LOG.pdqn_multi_agent_logger
@@ -115,7 +116,8 @@ def main():
                         worker.reset_noise()
                         for actor_id in states.keys():
                             ttc[actor_id], efficiency[actor_id], comfort[actor_id], lcen[actor_id],\
-                                lane_change_reward[actor_id], total_reward[actor_id], avg_reward[actor_id] = 0, 0, 0, 0, 0, 0, 0
+                                lane_change_reward[actor_id], total_reward[actor_id], avg_reward[actor_id] = \
+                                -1, -1, -1, -1, 0, -4, -4
                        
                         while not done and not truncated:
                             action_dict, actions, action_params, all_action_params={}, {}, {}, {}
@@ -169,6 +171,24 @@ def main():
 
                                     traj_q.put((state, next_state, action, saved_action_param,
                                         reward, done, truncated, info ), block=True, timeout=None)
+                                    
+                                    logger.debug(
+                                        f"actor_id:{actor_id} time_steps:{info['step']}\n"
+                                        f"state -- vehicle_info:{state['vehicle_info']}\n"
+                                        #f"waypoints:{state['left_waypoints']}, \n"
+                                        #f"waypoints:{state['center_waypoints']}, \n"
+                                        #f"waypoints:{state['right_waypoints']}, \n"
+                                        f"hero_vehicle:{state['hero_vehicle']}, \n"
+                                        f"light info: {state['light']}\n"
+                                        f"next_state -- vehicle_info:{next_state['vehicle_info']}\n"
+                                        #f"waypoints:{next_state['left_waypoints']}, \n"
+                                        #f"waypoints:{next_state['center_waypoints']}, \n"
+                                        #f"waypoints:{next_state['right_waypoints']}, \n"
+                                        f"hero_vehicle:{next_state['hero_vehicle']}\n"
+                                        f"light info: {next_state['light']}\n"
+                                        f"action:{actions[actor_id]}, action_param:{action_params[actor_id]} \n"
+                                        f"all_action_param:{all_action_params[actor_id]}, saved_action_param:{saved_action_param}\n"
+                                        f"reward:{reward}, truncated:{truncated}, done:{done}, ")
         
                             done = dones["__all__"]
                             truncated = truncateds["__all__"]!=Truncated.FALSE
@@ -213,7 +233,8 @@ def main():
                             # score_comfort.append(comfort)
                             # rolling_score.append(np.mean(episode_score[max]))
                             # cum_collision_num.append(collision_train)
-                            logger.info(f"Total_steps:{env.unwrapped._total_steps} RL_control_steps:{env.unwrapped._rl_control_steps}")
+
+                        logger.info(f"Total_steps:{env.unwrapped._total_steps} RL_control_steps:{env.unwrapped._rl_control_steps}")
 
                         """ if rolling_score[rolling_score.__len__-1]>max_rolling_score:
                             max_rolling_score=rolling_score[rolling_score.__len__-1]
@@ -288,6 +309,10 @@ if __name__ == '__main__':
     try:
         mp.set_start_method(method='spawn',force=True)  # force all the multiprocessing to 'spawn' methods
         main()
+    except OSError as e:
+        if "win" in sys.platform:
+            logger.error(f"{e.winerror}")
+        logger.error(f"errno:{e.errno} strerror:{e.strerror} filename:{e.filename} filename2:{e.filename2}")
     except BaseException as e:
         logger.exception(e.args)
         logger.exception(traceback.format_exc())

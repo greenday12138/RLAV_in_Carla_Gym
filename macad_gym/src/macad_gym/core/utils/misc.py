@@ -4,7 +4,7 @@ import carla
 import random, cv2
 import numpy as np
 from enum import Enum
-from macad_gym.core.sensors.logger import LOG
+from macad_gym.viz.logger import LOG
 from macad_gym.core.scenarios import ROADS, DISTURB_ROADS
 
 logger = LOG.misc_logger

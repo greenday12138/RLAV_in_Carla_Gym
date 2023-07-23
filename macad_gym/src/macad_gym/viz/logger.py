@@ -1,40 +1,33 @@
 import sys, os
 import logging
-from macad_gym import LOG_PATH
+import weakref
+from macad_gym import LOG_PATH, RETRIES_ON_ERROR
 
-class Logger:
+class Logger(object):
     def __init__(self, name, path = None, Flevel = None, Clevel = None):
         self.logger = logging.getLogger(name)
         self.logger.setLevel(logging.DEBUG)
         self.Flevel = Flevel
         self.Clevel = Clevel
-        self.fmt = logging.Formatter('[%(levelname)s] %(name)s [%(asctime)s] %(message)s', '%Y-%m-%d %H:%M:%S')
-        #self.fmt = logging.Formatter('[%(levelname)s] %(name)s [%(process)d %(thread)d] [%(asctime)s] %(message)s', '%Y-%m-%d %H:%M:%S')
-        # set command line logging
-        if Clevel is not None:
-            self.sh = logging.StreamHandler(sys.stdout)
-            self.sh.setFormatter(self.fmt)
-            self.sh.setLevel(Clevel)
-            self.logger.addHandler(self.sh)
-        # set file logging
-        if path is not None:
-            self.fh = logging.FileHandler(path)
-            self.fh.setFormatter(self.fmt)
-            self.fh.setLevel(Flevel)
-            self.logger.addHandler(self.fh) 
-    
+        self.path = path
+        
+        weak_self = weakref.ref(self)
+        for i in range(RETRIES_ON_ERROR):
+            out = Logger.add_handlers(weak_self)
+            if out:
+                break
+            else:
+                raise UserWarning(f"Logger Add Handlers Failed, Path:{path}, Retry Times:{i}")
+
     def reset_file(self, path):
         assert path is not None
-        self.fh.flush()
-        self.sh.flush()
-        fh = self.fh
-        self.logger.removeHandler(self.fh)
-        self.fh = logging.FileHandler(path)
-        self.fh.setFormatter(self.fmt)
-        self.fh.setLevel(self.Flevel)
-        self.logger.addHandler(self.fh)
+        while self.logger.hasHandlers():
+            self.logger.handlers[0].flush()
+            self.logger.removeHandler(self.logger.handlers[0])
 
-        return fh
+        self.path = path
+        weak_self = weakref.ref(self)
+        Logger.add_handlers(weak_self)
  
     def debug(self, message, *args, **kwargs):
         self.logger.debug(message, *args, **kwargs)
@@ -47,7 +40,7 @@ class Logger:
 
     def warn(self, message, *args, **kwargs):
         self.logger.warn(message, *args, **kwargs)
- 
+  
     def error(self, message, *args, **kwargs):
         self.logger.error(message, *args, **kwargs)
  
@@ -57,7 +50,30 @@ class Logger:
     def exception(self, message, *args, **kwargs):
         self.logger.exception(message, *args, **kwargs)
 
-class LOG:
+    @staticmethod
+    def add_handlers(weak_ref):
+        self = weak_ref()
+        if self is None:
+            return False
+        
+        fmt = logging.Formatter('[%(levelname)s] %(name)s [%(asctime)s] %(message)s', '%Y-%m-%d %H:%M:%S')
+        #self.fmt = logging.Formatter('[%(levelname)s] %(name)s [%(process)d %(thread)d] [%(asctime)s] %(message)s', '%Y-%m-%d %H:%M:%S')
+        # set command line logging
+        if self.Clevel is not None:
+            sh = logging.StreamHandler(sys.stdout)
+            sh.setFormatter(fmt)
+            sh.setLevel(self.Clevel)
+            self.logger.addHandler(sh)
+        # set file logging
+        if self.path is not None:
+            fh = logging.FileHandler(self.path)
+            fh.setFormatter(fmt)
+            fh.setLevel(self.Flevel)
+            self.logger.addHandler(fh) 
+
+        return True
+
+class LOG(object):
     log_dir = None
     log_file = None
 
@@ -70,6 +86,8 @@ class LOG:
     route_planner_logger = None
     misc_logger = None
     traffic_logger = None
+    camera_manager_logger = None
+    derived_sensors_logger = None
 
     @staticmethod 
     def set_log(path, file_name = None):
@@ -82,6 +100,14 @@ class LOG:
             LOG.log_file = LOG.log_dir + file_name
 
         # set each logger
+        if LOG.derived_sensors_logger is None:
+            LOG.derived_sensors_logger = Logger('derived_sensors.py', LOG.log_file, logging.DEBUG, logging.ERROR)
+        else:
+            LOG.derived_sensors_logger.reset_file(LOG.log_file)
+        if LOG.camera_manager_logger is None:
+            LOG.camera_manager_logger = Logger('camera_manager.py', LOG.log_file, logging.DEBUG, logging.ERROR)
+        else:
+            LOG.camera_manager_logger.reset_file(LOG.log_file)
         if LOG.traffic_logger is None:
             LOG.traffic_logger = Logger('traffic.py', LOG.log_file, logging.DEBUG, logging.ERROR)
         else:
@@ -117,8 +143,7 @@ class LOG:
         if LOG.pdqn_multi_agent_logger is None:
             LOG.pdqn_multi_agent_logger = Logger('pdqn_multi_agent.py', LOG.log_file, logging.DEBUG, logging.ERROR)
         else:
-            fh = LOG.pdqn_multi_agent_logger.reset_file(LOG.log_file)
-            fh.close()
+            LOG.pdqn_multi_agent_logger.reset_file(LOG.log_file)
             
 
 if LOG.log_dir is None:

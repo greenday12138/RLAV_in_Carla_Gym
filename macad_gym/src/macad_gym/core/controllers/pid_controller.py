@@ -5,7 +5,7 @@ import carla
 from collections import deque
 from macad_gym.core.utils.misc import get_speed
 
-class VehiclePIDController():
+class VehiclePIDController(object):
     """
     VehiclePIDController is the combination of two PID controllers
     (lateral and longitudinal) to perform the
@@ -94,7 +94,7 @@ class VehiclePIDController():
         self._lon_controller.change_parameters(**args_lateral)
 
 
-class PIDLongitudinalController():
+class PIDLongitudinalController(object):
     """
     PIDLongitudinalController implements longitudinal control using a PID.
     """
@@ -160,7 +160,7 @@ class PIDLongitudinalController():
         self._dt = dt
 
 
-class PIDLateralController():
+class PIDLateralController(object):
     """
     PIDLateralController implements lateral control using a PID.
     """

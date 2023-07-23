@@ -35,6 +35,9 @@ assert os.path.exists(SERVER_BINARY), (
 # Check if is using on Windows
 IS_WINDOWS_PLATFORM = "win" in sys.platform
 
+# Number of retries if the server doesn't respond
+RETRIES_ON_ERROR = 2
+
 # Declare available environments with a brief description
 _AVAILABLE_ENVS = {
     'HomoNcomIndePOIntrxMASS3CTWN3-v0': {

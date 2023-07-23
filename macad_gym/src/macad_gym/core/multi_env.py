@@ -10,7 +10,6 @@ from __future__ import division
 from __future__ import print_function
 import argparse
 import atexit
-import shutil
 import json
 import os
 import random
@@ -19,18 +18,16 @@ import subprocess
 import sys
 import time
 import traceback
-import socket
 import math
 import pygame
 import carla
-import GPUtil
 import numpy as np  # linalg.norm is used
 
 from collections import deque
 from gym.spaces import Box, Discrete, Tuple, Dict
 
-from macad_gym import LOG_PATH, SERVER_BINARY, IS_WINDOWS_PLATFORM
-from macad_gym.core.sensors.logger import LOG
+from macad_gym import LOG_PATH, IS_WINDOWS_PLATFORM, RETRIES_ON_ERROR
+from macad_gym.viz.logger import LOG
 from macad_gym.core.utils.state import StateDAO
 from macad_gym.core.controllers.traffic import apply_traffic, hero_autopilot
 from macad_gym.multi_actor_env import MultiActorEnv
@@ -39,9 +36,9 @@ from macad_gym.core.utils.misc import (remove_unnecessary_objects, sigmoid, get_
     get_yaw_diff, test_waypoint, is_within_distance_ahead, get_projection, draw_waypoints,
     get_speed, preprocess_image)
 from macad_gym.core.utils.wrapper import (COMMANDS_ENUM, COMMAND_ORDINAL, ROAD_OPTION_TO_COMMANDS_MAPPING, 
-    DISTANCE_TO_GOAL_THRESHOLD, ORIENTATION_TO_GOAL_THRESHOLD, RETRIES_ON_ERROR, GROUND_Z, DISCRETE_ACTIONS,
+    DISTANCE_TO_GOAL_THRESHOLD, ORIENTATION_TO_GOAL_THRESHOLD, GROUND_Z, DISCRETE_ACTIONS,
     WEATHERS, get_next_actions, DEFAULT_MULTIENV_CONFIG, print_measurements,  json_dumper, process_steer,
-    Truncated, Action, SpeedState, ControlInfo)
+    Truncated, Action, SpeedState, ControlInfo, CarlaConnector)
 
 # from macad_gym.core.sensors.utils import get_transform_from_nearest_way_point
 from macad_gym.core.utils.reward import Reward, PDQNReward
@@ -247,7 +244,7 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
                                 "left_waypoints": Box(-2.0, 2.0, shape=(10, 3), dtype=np.float32), 
                                 "center_waypoints": Box(-2.0, 2.0, shape=(10, 3), dtype=np.float32),
                                 "right_waypoints": Box(-2.0, 2.0, shape=(10, 3), dtype=np.float32), 
-                                "vehicle_info": Box(-np.inf, np.inf,shape=(6, 3), dtype=np.float32),
+                                "vehicle_info": Box(-np.inf, np.inf,shape=(6, 4), dtype=np.float32),
                                 "hero_vehicle": Box(-2.0, 2.0, shape=(1, 6), dtype=np.float32),
                                 "light":Box(-np.inf, np.inf, shape=(1, 3), dtype=np.float32),
                             })
@@ -270,7 +267,10 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
         self._server_process = None
         self._client = None
         self.SWITCH_THRESHOLD = self._rl_configs["switch_threshold"]
-        self.pre_train_steps = self._rl_configs["pre_train_steps"]
+        if self._rl_configs["train"]:
+            self.pre_train_steps = self._rl_configs["pre_train_steps"]
+        else:
+            self.pre_train_steps = 0
         self._debug = self._rl_configs["debug"]
         self._npc_vehicles_spawn_points = []
         self._agents = {}  # Dictionary of macad_agents with agent_id as key
@@ -325,19 +325,6 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
         self.last_acc = {}  # hero vehicle acceration along s in last step
         self.last_yaw = {}
 
-    @staticmethod
-    def _get_tcp_port(port=0):
-        """
-        Get a free tcp port number
-        :param port: (default 0) port number. When `0` it will be assigned a free port dynamically
-        :return: a port number requested if free otherwise an unhandled exception would be thrown
-        """
-        s = socket.socket()
-        s.bind(("", port))
-        server_port = s.getsockname()[1]
-        s.close()
-        return server_port
-
     def _init_server(self):
         """Initialize carla server and client
 
@@ -346,116 +333,7 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
         """
         logger.info("Initializing new Carla server...")
         # Create a new server process and start the client.
-        # First find a port that is free and then use it in order to avoid
-        # crashes due to:"...bind:Address already in use"
-        self._server_port = self._get_tcp_port()
-        multigpu_success = False
-        gpus = GPUtil.getGPUs()
-        logger.info(
-            f"1. Port: {self._server_port}\n"
-            f"2. Map: {self._server_map}\n"
-            f"3. Binary: {SERVER_BINARY}"
-        )
-
-        if not self._render and (gpus is not None and len(gpus)) > 0:
-            try:
-                min_index = random.randint(0, len(gpus) - 1)
-                for i, gpu in enumerate(gpus):
-                    if gpu.load < gpus[min_index].load:
-                        min_index = i
-                # Check if vglrun is setup to launch sim on multipl GPUs
-                if shutil.which("vglrun") is not None:
-                    self._server_process = subprocess.Popen(
-                        (
-                            "DISPLAY=:8 vglrun -d :7.{} {} -benchmark -fps={}"
-                            " -carla-server -world-port={}"
-                            " -carla-streaming-port=0".format(
-                                min_index,
-                                SERVER_BINARY,
-                                1/self._fixed_delta_seconds,
-                                self._server_port,
-                            )
-                        ),
-                        shell=True,
-                        # for Linux
-                        preexec_fn=None if IS_WINDOWS_PLATFORM else os.setsid,
-                        # for Windows (not necessary)
-                        creationflags=subprocess.CREATE_NEW_PROCESS_GROUP
-                        if IS_WINDOWS_PLATFORM
-                        else 0,
-                        stdout=open(LOG.log_file, "a"),
-                    )
-
-                # Else, run in headless mode
-                else:
-                    # Since carla 0.9.12+ use -RenderOffScreen to start headlessly
-                    # https://carla.readthedocs.io/en/latest/adv_rendering_options/
-                    self._server_process = subprocess.Popen(
-                        (  # 'SDL_VIDEODRIVER=offscreen SDL_HINT_CUDA_DEVICE={} DISPLAY='
-                            '"{}" -RenderOffScreen -benchmark -fps={} -carla-server'
-                            " -world-port={} -carla-streaming-port=0".format(
-                                SERVER_BINARY,
-                                1/self._fixed_delta_seconds,
-                                self._server_port,
-                            )
-                        ),
-                        shell=True,
-                        # for Linux
-                        preexec_fn=None if IS_WINDOWS_PLATFORM else os.setsid,
-                        # for Windows (not necessary)
-                        creationflags=subprocess.CREATE_NEW_PROCESS_GROUP
-                        if IS_WINDOWS_PLATFORM
-                        else 0,
-                        stdout=open(LOG.log_file, "a"),
-                    )
-            # TODO: Make the try-except style handling work with Popen
-            # exceptions after launching the server procs are not caught
-            except Exception as e:
-                logger.exception(traceback.format_exc())
-            # Temporary soln to check if CARLA server proc started and wrote
-            # something to stdout which is the usual case during startup
-            if os.path.isfile(LOG.log_file):
-                multigpu_success = True
-            else:
-                multigpu_success = False
-
-            if multigpu_success:
-                logger.info("Running sim servers in headless/multi-GPU mode")
-
-        # Rendering mode and also a fallback if headless/multi-GPU doesn't work
-        if multigpu_success is False:
-            try:
-                logger.info("Using single gpu to initialize carla server")
-
-                self._server_process = subprocess.Popen(
-                    [
-                        SERVER_BINARY,
-                        "-windowed",
-                        #"-prefernvidia",
-                        "-quality-level=Low",
-                        "-RenderOffScreen" if not self._env_configs["render"] else "",
-                        "-ResX=",
-                        str(self._env_config["render_x_res"]),
-                        "-ResY=",
-                        str(self._env_config["render_y_res"]),
-                        "-benchmark",
-                        "-fps={}".format(1/self._fixed_delta_seconds),
-                        "-carla-server",
-                        "-carla-rpc-port={}".format(self._server_port),
-                        "-carla-streaming-port=0",
-                    ],
-                    # for Linux
-                    preexec_fn=None if IS_WINDOWS_PLATFORM else os.setsid,
-                    # for Windows (not necessary)
-                    creationflags=subprocess.CREATE_NEW_PROCESS_GROUP
-                    if IS_WINDOWS_PLATFORM
-                    else 0,
-                    stdout=open(LOG.log_file, "a"),
-                    #bufsize=131072
-                )
-                logger.info("Running simulation in single-GPU mode")
-            except Exception as e:
-                logger.error(f"FATAL ERROR while launching server:{sys.exc_info()[0]}")
+        self._server_port, self._server_process =  CarlaConnector.connect(logger, self._env_config)
 
         if IS_WINDOWS_PLATFORM:
             live_carla_processes.add(self._server_process.pid)
@@ -497,7 +375,6 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
         self.world.apply_settings(world_settings)
         # Sign on traffic manager
         self._traffic_manager = self._client.get_trafficmanager()
-        self._traffic_manager.set_synchronous_mode(self._sync_server)
         # Set the spectator/server view if rendering is enabled
         if self._render and self._env_config.get("spectator_loc"):
             spectator = self.world.get_spectator()
@@ -525,9 +402,9 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
         Returns:
             N/A
         """
-        [colli.__del__() for colli in self._collisions.values()]
-        [lane.__del__() for lane in self._lane_invasions.values()]
-        [camera.__del__() for camera in self._cameras.values()]
+        [colli.destroy() for colli in self._collisions.values()]
+        [lane.destroy() for lane in self._lane_invasions.values()]
+        [camera.destroy() for camera in self._cameras.values()]
         [npc.destroy() for npc in self._npc_vehicles]
         for actor in self._actors.values():
             if actor.is_alive:
@@ -1028,7 +905,6 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
             obs (dict): properly encoded observation data for each actor
         """
         assert self._framestack in [1, 2]
-        py_measurements = self._cur_measurement[actor_id]
         # Apply preprocessing
         config = self._actor_configs[actor_id]
         image = preprocess_image(image, config)
@@ -1147,30 +1023,18 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
                 reward_dict[actor_id] = reward
                 self._done_dict[actor_id] = done
                 self._truncated_dict[actor_id] = truncated
-                if self._speed_state[actor_id] == SpeedState.RUNNING:
-                    self._vel_buffer[actor_id].append(self._cur_measurement[actor_id]["velocity"])
                 info_dict[actor_id] = info
-
-                #update last step info
-                lane_center=get_lane_center(self.map, self._actors[actor_id].get_location())
-                yaw_forward = lane_center.transform.get_forward_vector().make_unit_vector()
-                a_3d=self._actors[actor_id].get_acceleration()
-                self.last_acc[actor_id],a_t=get_projection(a_3d,yaw_forward)
-                self.last_yaw[actor_id] = self._actors[actor_id].get_transform().get_forward_vector()
-                self.last_action[actor_id]=self.current_action[actor_id]
-                self.last_lane[actor_id]=self.current_lane[actor_id]=lane_center.lane_id
-                self.last_target_lane[actor_id]=self.current_target_lane[actor_id]
-                if self._state["lights"][actor_id]:
-                    self.last_light_state[actor_id]=self._state["lights"][actor_id].state
-                else:
-                    self.last_light_state[actor_id]=None
+                if self._speed_state[actor_id] == SpeedState.RUNNING:
+                    self._time_steps[actor_id] += 1
+                    self._vel_buffer[actor_id].append(self._cur_measurement[actor_id]["velocity"])
+                    self._total_steps += 1
+                    if self._rl_switch:
+                        self._rl_control_steps += 1
 
             self._done_dict["__all__"] = sum(self._done_dict.values()) >= len(self._actors)
             if len(list(filter(lambda x:  x!=Truncated.FALSE, self._truncated_dict.values()))) > 0:
                 self._truncated_dict["__all__"] = Truncated.TRUE
-            self._total_steps += 1
-            if self._rl_switch:
-                self._rl_control_steps += 1
+
             for actor_id in self._measurements_file_dict:
                 if self._actor_configs[actor_id]["log_measurements"] and LOG.log_dir and \
                                 self._truncated_dict["__all__"] == Truncated.TRUE and \
@@ -1178,6 +1042,7 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
                     self._measurements_file_dict[actor_id].write("{}]\n")
                     self._measurements_file_dict[actor_id].close()
                     self._measurements_file_dict[actor_id] = None
+
             # Find if any actor's config has render=True & render only for
             # that actor. NOTE: with async server stepping, enabling rendering
             # affects the step time & therefore MAX_STEPS needs adjustments
@@ -1196,9 +1061,11 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
             if self._verbose:
                 print_measurements(logger, self._cur_measurement)
             return obs_dict, reward_dict, self._done_dict, self._truncated_dict, info_dict
-        except Exception:
-            logger.exception(f"Error during step, terminating episode early. {traceback.format_exc()}")
+        except Exception as e:
+            logger.exception(f"Error during step, terminating episode early."
+                             f"{traceback.format_exc()}")
             self._clear_server_state()
+            raise e
 
     def _step_before_tick(self, actor_id, action):
         """Perform the actual step in the CARLA environment
@@ -1324,10 +1191,14 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
         self.control_info[actor_id] = ControlInfo(
             throttle=control.throttle, brake=control.brake, steer=control.steer, gear=control.gear, 
             reverse=control.reverse, hand_brake=control.hand_brake, manual_gear_shift=control.manual_gear_shift)
-        self._time_steps[actor_id] += 1
         config = self._actor_configs[actor_id]
         state = self._read_observation(actor_id)
         py_measurements = self._cur_measurement[actor_id]
+        if self.last_light_state.get(actor_id, None) == carla.TrafficLightState.Red and \
+                self._state["lights"][actor_id] is not None and self.last_light_state[
+                actor_id] != self._state["lights"][actor_id].state:
+            #light state change during steps, from red to green 
+            self._vel_buffer[actor_id].clear()
 
         # Compute truncated
         truncated = self._truncated(actor_id)
@@ -1358,8 +1229,6 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
         reward = self._reward_policy.compute_reward(
             actor_id, self._prev_measurement[actor_id], py_measurements, flag
         )
-
-        self._previous_rewards[actor_id] = reward
         if self._total_reward[actor_id] is None:
             self._total_reward[actor_id] = reward
         else:
@@ -1368,22 +1237,38 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
         py_measurements["reward"] = reward
         py_measurements["total_reward"] = self._total_reward[actor_id]
         py_measurements["reward_info"] = self._reward_policy.info()
-        py_measurements["step"]=self._time_steps[actor_id]
+        py_measurements["step"]=self._time_steps[actor_id] 
 
-        # End iteration updating parameters and logging
-        self._prev_measurement[actor_id] = py_measurements
-        self._time_steps[actor_id] += 1   
+        #update last step info
+        lane_center=get_lane_center(self.map, self._actors[actor_id].get_location())
+        yaw_forward = lane_center.transform.get_forward_vector().make_unit_vector()
+        a_3d=self._actors[actor_id].get_acceleration()
+        self.last_acc[actor_id],a_t=get_projection(a_3d,yaw_forward)
+        self.last_yaw[actor_id] = self._actors[actor_id].get_transform().get_forward_vector()
+        self.last_action[actor_id]=self.current_action[actor_id]
+        self.last_lane[actor_id]=self.current_lane[actor_id]=lane_center.lane_id
+        self.last_target_lane[actor_id]=self.current_target_lane[actor_id]
+        self._prev_measurement[actor_id] = self._cur_measurement[actor_id]
+        self._previous_rewards[actor_id] = reward
+        if self._state["lights"][actor_id]:
+            self.last_light_state[actor_id]=self._state["lights"][actor_id].state
+        else:
+            self.last_light_state[actor_id]=None
 
         if config["log_measurements"] and LOG.log_dir:
             # Write out measurements to file
             if not self._measurements_file_dict[actor_id]:
-                self._measurements_file_dict[actor_id] = open(
-                    os.path.join(
-                        LOG.log_dir,
-                        "measurements_{}_{}.json".format(actor_id, self._num_episodes[actor_id]),
-                    ),
-                    "a",
-                )
+                try:
+                    self._measurements_file_dict[actor_id] = open(
+                        os.path.join(
+                            LOG.log_dir,
+                            "measurements_{}_{}.json".format(actor_id, self._num_episodes[actor_id]),
+                        ),
+                        "a",
+                    )
+                except Exception as e:
+                    logger.error(f"File Open Error: {os.path.join(LOG.log_dir,'measurements_{}_{}.json'.format(actor_id, self._num_episodes[actor_id]))}")
+                    raise e
                 self._measurements_file_dict[actor_id].write("[\n")
             self._measurements_file_dict[actor_id].write(json.dumps(py_measurements, indent=4))
             self._measurements_file_dict[actor_id].write(",\n")
@@ -1578,8 +1463,8 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
             if self._state["wps"][actor_id].center_front_wps[2].road_id == self._scenario_map["dest_road_id"]:          
                 #Vehicle reaches destination, stop vehicle
                 self._speed_state[actor_id] = SpeedState.STOP
-                self._collisions[actor_id].stop()
-                self._lane_invasions[actor_id].stop()
+                self._collisions[actor_id].sensor.stop()
+                self._lane_invasions[actor_id].sensor.stop()
                 hero_autopilot(self._actors[actor_id], self._traffic_manager, self._actor_configs[actor_id],
                            self._env_config, False)
                 control = None

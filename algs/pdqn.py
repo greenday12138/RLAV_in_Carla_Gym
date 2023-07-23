@@ -5,7 +5,7 @@ from torch import nn
 import torch.nn.functional as F
 from torch.autograd import Variable
 from algs.util.replay_buffer import SumTree,SplitReplayBuffer
-from macad_gym.core.sensors.logger import LOG
+from macad_gym.viz.logger import LOG
 
 logger = LOG.pdqn_logger
 

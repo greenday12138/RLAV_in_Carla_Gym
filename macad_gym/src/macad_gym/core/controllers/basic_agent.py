@@ -14,7 +14,7 @@ import numpy as np
 from enum import Enum
 from collections import deque
 from shapely.geometry import Polygon
-from macad_gym.core.sensors.logger import LOG
+from macad_gym.viz.logger import LOG
 from macad_gym.core.utils.wrapper import Action, ControlInfo
 from macad_gym.core.controllers.pid_controller import VehiclePIDController
 from macad_gym.core.utils.misc import (get_speed, draw_waypoints, is_within_distance, get_trafficlight_trigger_location,

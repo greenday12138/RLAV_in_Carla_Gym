@@ -4,7 +4,7 @@ import numpy as np
 import networkx as nx
 import matplotlib.pyplot as plt
 from enum import Enum
-from macad_gym.core.sensors.logger import LOG
+from macad_gym.viz.logger import LOG
 from macad_gym.core.utils.misc import vector
 from macad_gym.core.scenarios import STRAIGHT, CURVE, JUNCTION
 
@@ -23,7 +23,7 @@ class RoadOption(Enum):
     CHANGELANELEFT = 5
     CHANGELANERIGHT = 6
 
-class RoutePlanner:
+class RoutePlanner(object):
     """
     class for generating chosen circuit's road topology,topology is saved with waypoints list
     vehicle always runs on the outer ring of chosen route

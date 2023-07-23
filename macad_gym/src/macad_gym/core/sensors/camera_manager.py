@@ -5,8 +5,10 @@ import weakref
 import carla
 import numpy as np
 from enum import Enum
-from macad_gym.core.sensors.logger import LOG
+from macad_gym import RETRIES_ON_ERROR
+from macad_gym.viz.logger import LOG
 
+logger = LOG.camera_manager_logger
 
 CAMERA_TYPES = Enum('CameraType', ['rgb',
                                    'depth_raw',
@@ -78,12 +80,13 @@ class CameraManager(object):
         self._index = None
         self.callback_count = 0
 
-    def __del__(self):
+    def destroy(self):
         if self.sensor is not None and self.sensor.is_alive:
             self.sensor.stop()
             self.sensor.destroy()
             self._index = None
             self.sensor = None
+            self.callback_count = 0
 
     def set_recording_option(self, option):
         """Set class vars to select recording method.
@@ -120,11 +123,18 @@ class CameraManager(object):
                 self.sensor.destroy()
                 self._surface = None
             self._transform_index = pos % len(self._camera_transforms)
-            self.sensor = self._parent.get_world().spawn_actor(
-                self._sensors[index][-1],
-                self._camera_transforms[self._transform_index],
-                attach_to=self._parent,
-                attachment_type=carla.AttachmentType.Rigid if pos != 2 else carla.AttachmentType.SpringArm)
+            for i in range(RETRIES_ON_ERROR):
+                self.sensor = self._parent.get_world().try_spawn_actor(
+                    self._sensors[index][-1],
+                    self._camera_transforms[self._transform_index],
+                    attach_to=self._parent,
+                    attachment_type=carla.AttachmentType.Rigid if pos != 2 else carla.AttachmentType.SpringArm)
+                if self.sensor is None:
+                    logger.error(f"Spawn RGBCamera faild, "
+                                f"parent actor:{self._parent.type_id} {self._parent.id} "
+                                f"retry times:{i}")
+                else:
+                    break
             # We need to pass the lambda a weak reference to self to avoid
             # circular reference.
             weak_self = weakref.ref(self)
@@ -149,10 +159,11 @@ class CameraManager(object):
     @staticmethod
     def _parse_image(weak_self, image):
         self = weak_self()
-        self.image = image
-        self.callback_count += 1
         if not self:
             return
+        self.image = image
+        self.callback_count += 1
+
         if self._sensors[self._index][0].startswith('sensor.lidar'):
             points = np.frombuffer(image.raw_data, dtype=np.dtype('f4'))
             points = np.reshape(points, (int(points.shape[0] / 3), 3))

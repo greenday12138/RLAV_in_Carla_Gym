@@ -5,7 +5,7 @@ pygame.init()
 pygame.display.set_caption("MACAD-Gym")
 
 
-class Render:
+class Render(object):
     """Handle rendering of pygame window."""
 
     _screen = None

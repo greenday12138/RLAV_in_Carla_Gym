@@ -1,6 +1,6 @@
 ﻿import random
 import carla
-from macad_gym.core.sensors.logger import LOG
+from macad_gym.viz.logger import LOG
 
 # TODO make the seed user configurable
 random.seed(10)
@@ -37,6 +37,7 @@ def apply_traffic(world, traffic_manager, env_config, num_vehicles, num_pedestri
     # set traffic manager
     #traffic_manager.global_percentage_speed_difference(30.0)
     traffic_manager.set_global_distance_to_leading_vehicle(env_config["min_distance"])
+    traffic_manager.set_synchronous_mode(env_config["sync_server"])
     if env_config["hybrid"] is True:
         traffic_manager.set_hybrid_physics_mode(True)
         traffic_manager.set_hybrid_physics_radius(200)
@@ -170,5 +171,14 @@ def apply_traffic(world, traffic_manager, env_config, num_vehicles, num_pedestri
         controller.start()  # start walker
         controller.go_to_location(world.get_random_location_from_navigation())  # set walk to random point
         controller.set_max_speed(float(pedestrians_speed[int(i / 2)]))  # max speed
+
+    # -------------
+    # Set Traffic Lights
+    # -------------
+    lights_list=world.get_actors().filter("*traffic_light*")
+    for light in lights_list:
+        light.set_green_time(15)
+        light.set_red_time(0)
+        light.set_yellow_time(0)
 
     return vehicles_list, (pedestrians_list, controllers_list)

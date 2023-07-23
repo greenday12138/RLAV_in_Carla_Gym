@@ -9,7 +9,7 @@ from macad_gym.core.utils.misc import get_lane_center, get_speed, vector, comput
     is_within_distance_ahead, is_within_distance_rear, draw_waypoints, compute_distance, is_within_distance, test_waypoint,\
     get_trafficlight_trigger_location
 
-class LocalPlanner:
+class LocalPlanner(object):
     def __init__(self, vehicle, 
             opt_dict = {'sampling_resolution': 4.0,
                         'buffer_size': 10,
