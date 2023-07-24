@@ -83,8 +83,8 @@ class CameraManager(object):
         if self.sensor is not None and self.sensor.is_alive:
             self.sensor.stop()
             self.sensor.destroy()
-            self._index = None
             self.sensor = None
+            self._surface = None
             self.callback_count = 0
 
     def set_recording_option(self, option):
@@ -107,15 +107,13 @@ class CameraManager(object):
             self._memory_record = True
 
     def toggle_camera(self):
-        self._transform_index = (self._transform_index + 1) % len(
-            self._camera_transforms)
-        self.sensor.set_transform(
-            self._camera_transforms[self._transform_index])
+        self._transform_index = (self._transform_index + 1) % len(self._camera_transforms)
+        self.set_sensor(self.index, self._transform_index, notify=False, force_respawn=True)
 
-    def set_sensor(self, index, pos=0, notify=True):
+    def set_sensor(self, index, pos=0, notify=True, force_respawn=False):
         index = index % len(self._sensors)
-        needs_respawn = True if self._index is None \
-            else list(CAMERA_TYPES)[index] != list(CAMERA_TYPES)[self._index]
+        needs_respawn = True if self._index is None else (
+            force_respawn or list(CAMERA_TYPES)[index] != list(CAMERA_TYPES)[self._index])
         if needs_respawn:
             if self.sensor is not None:
                 self.sensor.stop()

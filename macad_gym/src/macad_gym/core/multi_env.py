@@ -776,7 +776,8 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
                     camera_type, camera_types
                 )
                 camera_manager.set_sensor(
-                    CAMERA_TYPES[camera_type].value - 1, int(camera_pos), notify=False
+                    CAMERA_TYPES[camera_type].value - 1, int(camera_pos), 
+                    notify=False, force_respawn=True
                 )
                 assert camera_manager.sensor.is_listening
                 self._cameras.update({actor_id: camera_manager})

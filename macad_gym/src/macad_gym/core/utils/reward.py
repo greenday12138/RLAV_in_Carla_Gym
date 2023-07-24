@@ -3,7 +3,7 @@ import carla
 import numpy as np
 from macad_gym.viz.logger import LOG
 from macad_gym.core.utils.misc import (get_speed, get_yaw_diff, get_sign, test_waypoint,
-                                       get_lane_center, get_projection)
+                                       get_lane_center, get_projection, compute_signed_distance)
 from macad_gym.core.utils.wrapper import SemanticTags, Truncated, Action
 
 
@@ -238,25 +238,15 @@ class PDQNReward(Reward):
         return TTC, fTTC
 
     def _lane_center_reward(self, lane_center):
-        def compute(center, ego):
-            # compute the distance between ego location and lane center,
-            # Lcen < 0: ego location is on the left of lane center, Lcen > 0 on the contrary
-            Lcen = ego.distance(center.transform.location)
-            center_yaw = center.transform.get_forward_vector()
-            dis = carla.Vector3D(ego.x - center.transform.location.x,
-                                 ego.y - center.transform.location.y, 0)
-            Lcen *= get_sign(dis, center_yaw)
-            return Lcen
-
-        ego_location = self.vehicle.get_location()
-
         if not test_waypoint(lane_center, True):
             Lcen = 2.1
             fLcen = -2
             LOG.reward_logger.debug(f"lane_center.lane_id:{lane_center.lane_id}, lane_center.road_id:{lane_center.road_id}, "
                          f"flcen:{fLcen}, lane_wid/2:{lane_center.lane_width / 2}")
         else:
-            Lcen = compute(lane_center, ego_location)
+            Lcen = compute_signed_distance(lane_center.transform.location, 
+                                           self.vehicle.get_location(),
+                                           lane_center.transform.get_forward_vector())
             fLcen = -abs(Lcen)/(lane_center.lane_width/2)
             # if self.current_action == Action.LANE_CHANGE_LEFT and self.current_lane == self.last_lane:
             #     # change left
@@ -266,7 +256,9 @@ class PDQNReward(Reward):
             #         Lcen = 7
             #         fLcen = -2
             #     else:
-            #         Lcen =compute(lane_center,ego_location)
+            #         Lcen =compute_signed_distance(lane_center.transform.location,
+            #                                       self.vehicle.get_location(),
+            #                                       lane_center.transform.get_forward_vector())
             #         fLcen = -abs(Lcen) / (lane_center.lane_width/2+center_width)
             # elif self.current_action == Action.LANE_CHANGE_RIGHT and self.current_lane == self.last_lane:
             #     #change right
@@ -276,11 +268,15 @@ class PDQNReward(Reward):
             #         Lcen = 7
             #         fLcen = -2
             #     else:
-            #         Lcen =compute(lane_center,ego_location)
+            #         Lcen =compute_signed_distance(lane_center.transform.location,
+            #                                       self.vehicle.get_location(),
+            #                                       lane_center.transform.get_forward_vector())
             #         fLcen=-abs(Lcen)/(lane_center.lane_width/2+center_width)
             # else:
             #     #lane follow and stop mode
-            #     Lcen =compute(lane_center,ego_location)
+            #     Lcen =compute_signed_distance(lane_center.transform.location,
+            #                                   ego_location,
+            #                                   lane_center.transform.get_forward_vector())
             #     fLcen = -abs(Lcen)/(lane_center.lane_width/2)
             # LOG.reward_logger.debug('pdqn_lane_center: Lcen, fLcen: ', Lcen, fLcen)
         return Lcen, fLcen

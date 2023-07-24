@@ -10,7 +10,7 @@ class FixedRoute2CarTown05(MultiCarlaEnv):
             "scenarios": "FR2C_TOWN5",
             "rl_parameters":{
                 #Let the RL controller and PID controller alternatively take control every 20 episodes
-                "switch_threshold": 20,
+                "switch_threshold": 10,
                 #During pre-train steps, agent is only under PID control.
                 "pre_train_steps": 320000,
                 "train": True,

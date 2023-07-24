@@ -3,7 +3,7 @@ import math, random
 import numpy as np
 from macad_gym.core.controllers.local_planner import LocalPlanner
 from macad_gym.core.utils.misc import (get_speed, get_yaw_diff, draw_waypoints, get_lane_center,
-                                       get_projection, get_sign)
+                                       get_projection, compute_signed_distance)
 
 class StateDAO(object):
     # class for gettting surrounding information
@@ -38,9 +38,12 @@ class StateDAO(object):
         right_wps=wps_info.right_front_wps
 
         lane_center = get_lane_center(self.map, self._actors[actor_id].get_location())
-        right_lane_dis = lane_center.get_right_lane(
-            ).transform.location.distance(self._actors[actor_id].get_location())
-        ego_t= lane_center.lane_width / 2 + lane_center.get_right_lane().lane_width / 2 - right_lane_dis
+        ego_t = compute_signed_distance(lane_center.transform.location,
+                                        self._actors[actor_id].get_location(),
+                                        lane_center.transform.get_forward_vector())
+        # right_lane_dis = lane_center.get_right_lane(
+        #     ).transform.location.distance(self._actors[actor_id].get_location())
+        # ego_t= lane_center.lane_width / 2 + lane_center.get_right_lane().lane_width / 2 - right_lane_dis
 
         hero_vehicle_z = lane_center.transform.location.z
         ego_forward_vector = self._actors[actor_id].get_transform().get_forward_vector()
@@ -188,11 +191,15 @@ class StateDAO(object):
                     distance -= veh_half_len + ego_half_len
                     
                     # compute lateral distance -- distance_t
-                    veh_lcen = compute(get_lane_center(self.map, vehicle_inlane[i].get_location()),
-                                       vehicle_inlane[i].get_location())
+                    veh_lane_center = get_lane_center(self.map, vehicle_inlane[i].get_location())
+                    veh_lcen = compute_signed_distance(veh_lane_center.transform.location,
+                                                       vehicle_inlane[i].get_location(),
+                                                       veh_lane_center.transform.get_forward_vector())
                     ego_lane_center = get_lane_center(self.map, ego_vehicle.get_location())
                     lane_wid = ego_lane_center.lane_width
-                    ego_lcen = compute(ego_lane_center, ego_vehicle.get_location())
+                    ego_lcen = compute_signed_distance(ego_lane_center.transform.location, 
+                                                       ego_vehicle.get_location(),
+                                                       ego_lane_center.transform.get_forward_vector())
                     if i == 0 or i == 3:
                         distance_t = (lane_wid - (veh_lcen + veh_half_wid - ego_lcen + ego_half_wid)) / lane_wid
                     elif i == 2 or i == 5:
@@ -238,18 +245,6 @@ def process_lane_wp(wps_list, ego_vehicle_z, ego_forward_vector, my_sample_ratio
         yaw_diff = yaw_diff / 90
         wps.append([delta_z/3, yaw_diff, lane_offset])
     return np.array(wps)
-
-
-def compute(center, veh):
-    # compute the distance between ego location and lane center,
-    # Lcen < 0: ego location is on the left of lane center, Lcen > 0 on the contrary
-    Lcen = veh.distance(center.transform.location)
-    center_yaw = center.transform.get_forward_vector()
-    dis = carla.Vector3D(veh.x - center.transform.location.x,
-                        veh.y - center.transform.location.y, 0)
-    Lcen *= get_sign(dis, center_yaw)
-    return Lcen
-
 
 def get_len_wid(vehicle):
     proj_s, proj_t = get_projection(vehicle.bounding_box.extent, 

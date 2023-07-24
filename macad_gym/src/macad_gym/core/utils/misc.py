@@ -1,4 +1,5 @@
 """ Module with auxiliary functions. All following functions are related with carla environment"""
+import sys
 import math,re
 import carla
 import random, cv2
@@ -372,6 +373,18 @@ def is_within_distance_rear(target_location, current_location, current_transform
 
     return 90.0 < d_angle < 180.0
 
+def vector(location_1, location_2):
+    """
+    Returns the unit vector from location_1 to location_2
+
+        :param location_1, location_2: carla.Location objects
+    """
+    x = location_2.x - location_1.x
+    y = location_2.y - location_1.y
+    z = location_2.z - location_1.z
+    norm = np.linalg.norm([x, y, z]) + np.finfo(float).eps
+
+    return [x / norm, y / norm, z / norm]
 
 def compute_magnitude_angle(target_location, current_location, orientation):
     """
@@ -390,20 +403,31 @@ def compute_magnitude_angle(target_location, current_location, orientation):
 
     return (norm_target, d_angle)
 
+# def compute(center, veh):
+#     # compute the distance between ego location and lane center,
+#     # Lcen < 0: ego location is on the left of lane center, Lcen > 0 on the contrary
+#     Lcen = veh.distance(center.transform.location)
+#     center_yaw = center.transform.get_forward_vector()
+#     dis = carla.Vector3D(veh.x - center.transform.location.x,
+#                         veh.y - center.transform.location.y, 0)
+#     Lcen *= get_sign(dis, center_yaw)
+#     return Lcen
 
-def vector(location_1, location_2):
+def compute_signed_distance(current_location, target_location, orientation):
     """
-    Returns the unit vector from location_1 to location_2
+    Compute signed distance between a target_location and a current_location
 
-        :param location_1, location_2: carla.Location objects
+        :param target_location: location of the target object
+        :param current_location: location of the reference object
+        :param orientation: orientation of the reference object (carla.Vector3D)
+        :return: sdis < 0: target_location is on the left of current_location, 
+                 sdis > 0: target_location is on the right of current_location.
     """
-    x = location_2.x - location_1.x
-    y = location_2.y - location_1.y
-    z = location_2.z - location_1.z
-    norm = np.linalg.norm([x, y, z]) + np.finfo(float).eps
-
-    return [x / norm, y / norm, z / norm]
-
+    sdis = target_location.distance(current_location)
+    dis = carla.Vector3D(target_location.x - current_location.x,
+                        target_location.y - current_location.y, 0)
+    sdis *= get_sign(dis, orientation)
+    return sdis
 
 def compute_distance(location_1, location_2):
     """

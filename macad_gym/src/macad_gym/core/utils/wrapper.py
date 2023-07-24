@@ -195,7 +195,7 @@ class CarlaConnector(object):
                         creationflags=subprocess.CREATE_NEW_PROCESS_GROUP
                         if IS_WINDOWS_PLATFORM
                         else 0,
-                        stdout=open(LOG.log_file, "a"),
+                        stdout=open(LOG.server_log, 'w'),
                     )
 
                 # Else, run in headless mode
@@ -218,7 +218,7 @@ class CarlaConnector(object):
                         creationflags=subprocess.CREATE_NEW_PROCESS_GROUP
                         if IS_WINDOWS_PLATFORM
                         else 0,
-                        stdout=open(LOG.log_file, "a"),
+                        stdout=open(LOG.server_log, 'w'),
                     )
             # TODO: Make the try-except style handling work with Popen
             # exceptions after launching the server procs are not caught
@@ -226,7 +226,7 @@ class CarlaConnector(object):
                 logger.exception(traceback.format_exc())
             # Temporary soln to check if CARLA server proc started and wrote
             # something to stdout which is the usual case during startup
-            if os.path.isfile(LOG.log_file):
+            if os.path.isfile(LOG.server_log):
                 multigpu_success = True
             else:
                 multigpu_success = False
@@ -260,7 +260,7 @@ class CarlaConnector(object):
                     creationflags=subprocess.CREATE_NEW_PROCESS_GROUP
                     if IS_WINDOWS_PLATFORM
                     else 0,
-                    stdout=open(LOG.log_file, "a"),
+                    stdout=open(LOG.server_log, 'w'),
                     #bufsize=131072
                 )
                 logger.info("Running simulation in single-GPU mode")

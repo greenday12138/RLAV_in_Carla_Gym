@@ -76,6 +76,7 @@ class Logger(object):
 class LOG(object):
     log_dir = None
     log_file = None
+    server_log = None
 
     reward_logger = None
     multi_env_logger = None
@@ -142,4 +143,5 @@ class LOG(object):
 
 
 if LOG.log_dir is None:
+    LOG.server_log = LOG_PATH + '/carla_server.log'
     LOG.set_log(LOG_PATH + '/0')
