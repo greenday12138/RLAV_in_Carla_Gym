@@ -20,7 +20,6 @@ from macad_gym.core.controllers.pid_controller import VehiclePIDController
 from macad_gym.core.utils.misc import (get_speed, draw_waypoints, is_within_distance, get_trafficlight_trigger_location,
     compute_distance, get_lane_center)
 
-logger = LOG.basic_agent_logger
 
 class Basic_Agent(object):
     """
@@ -125,7 +124,7 @@ class Basic_Agent(object):
         if 'random_lane_change' in opt_dict:
             self.random_lane_change=opt_dict['random_lane_change']    
 
-        logger.info(f"ignore_front_vehicle:{self._ignore_vehicle}, ignore_change_gap:{self._ignore_change_gap}")
+        LOG.basic_agent_logger.info(f"ignore_front_vehicle:{self._ignore_vehicle}, ignore_change_gap:{self._ignore_change_gap}")
 
         self.left_random_change = []
         self.center_random_change = []
@@ -186,7 +185,7 @@ class Basic_Agent(object):
         self.distance_to_right_rear=info_dict['vehs_info'].distance_to_rear_vehicles[2]
         self._vehicle_location = self._vehicle.get_location()
 
-        logger.debug(f"the length of six waypoint queues: "
+        LOG.basic_agent_logger.debug(f"the length of six waypoint queues: "
                      f"{len(self.left_wps)}, {len(self.center_wps)}, {len(self.right_wps)}, {len(self.left_rear_wps)}, "
                      f"{len(self.center_rear_wps)}, {len(self.right_rear_wps)}")
         # For simplicity, we compute s for front vehicles, and compute Euler distance for rear vehicles.
@@ -209,7 +208,7 @@ class Basic_Agent(object):
                 self.enable_left_change = True
             if len(self.right_wps)!=0:
                 self.enable_right_change = True
-        logger.debug(f"distance enable: {self.distance_to_left_front}, {self.distance_to_center_front}"
+        LOG.basic_agent_logger.debug(f"distance enable: {self.distance_to_left_front}, {self.distance_to_center_front}"
                      f"{self.distance_to_right_front}, {self.distance_to_left_rear}, {self.distance_to_center_rear}"
                      f"{self.distance_to_right_rear}, {self.enable_left_change}, {self.enable_right_change}")
 

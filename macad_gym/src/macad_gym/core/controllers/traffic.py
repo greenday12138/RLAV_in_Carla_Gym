@@ -2,9 +2,9 @@
 import carla
 from macad_gym.viz.logger import LOG
 
+
 # TODO make the seed user configurable
 random.seed(10)
-logger = LOG.traffic_logger
 
 def hero_autopilot(actor, traffic_manager, actor_config, env_config,setting=True):
     # Use traffic manager to control hero vehicle
@@ -72,7 +72,7 @@ def apply_traffic(world, traffic_manager, env_config, num_vehicles, num_pedestri
         spawn_points = random.sample(spawn_points, num_vehicles)
     else:
         msg = ''
-        logger.warning(f"requested {num_vehicles} vehicles, but could only find {number_of_spawn_points} spawn points")
+        LOG.traffic_logger.warning(f"requested {num_vehicles} vehicles, but could only find {number_of_spawn_points} spawn points")
         num_vehicles = number_of_spawn_points
 
     vehicles_list = []
@@ -107,7 +107,7 @@ def apply_traffic(world, traffic_manager, env_config, num_vehicles, num_pedestri
         else:
             failed_v += 1
 
-    logger.info("{}/{} vehicles correctly spawned.".format(num_vehicles-failed_v, num_vehicles))
+    LOG.traffic_logger.info("{}/{} vehicles correctly spawned.".format(num_vehicles-failed_v, num_vehicles))
 
     # Set automatic vehicle lights update if specified
     # if args.car_lights_on:
@@ -162,7 +162,7 @@ def apply_traffic(world, traffic_manager, env_config, num_vehicles, num_pedestri
         else:
             failed_p += 1
 
-    logger.info("{}/{} pedestrians correctly spawned.".format(num_pedestrians-failed_p, num_pedestrians))
+    LOG.traffic_logger.info("{}/{} pedestrians correctly spawned.".format(num_pedestrians-failed_p, num_pedestrians))
     world.tick()
 
     # Initialize each controller and set target to walk

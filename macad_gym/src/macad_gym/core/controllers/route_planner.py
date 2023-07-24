@@ -8,7 +8,6 @@ from macad_gym.viz.logger import LOG
 from macad_gym.core.utils.misc import vector
 from macad_gym.core.scenarios import STRAIGHT, CURVE, JUNCTION
 
-logger = LOG.route_planner_logger
 
 class RoadOption(Enum):
     """
@@ -122,7 +121,7 @@ class RoutePlanner(object):
                 # can't find the exact waypoint, get an approximation
                 iter = i
         if iter is None:
-            logger.error("Current waypoint on route not found!")
+            LOG.route_planner_logger.error("Current waypoint on route not found!")
         if iter + k < len(self._route):
             for i in range(k):
                 next_wps.append(self._route[iter + i + 1])

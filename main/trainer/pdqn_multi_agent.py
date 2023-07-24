@@ -1,8 +1,10 @@
 import torch
+import logging
 import datetime,time, os
 import gym, macad_gym
 import random, sys
 import traceback
+import tensorboard
 import numpy as np
 import matplotlib.pyplot as plt
 import multiprocessing as mp
@@ -63,7 +65,6 @@ base_name = f'origin_NOCA'
 SAVE_PATH=f"./out/multi_agent/pdqn/{os.path.split(LOG_PATH)[-1]}"
 if not os.path.exists(SAVE_PATH):
     os.makedirs(SAVE_PATH)
-logger = LOG.pdqn_multi_agent_logger
 
 def main():
     env = gym.make("HomoNcomIndePoHiwaySAFR2CTWN5-v0")
@@ -132,7 +133,7 @@ def main():
                                 lock.release()
                                 worker.learn_time=learn_time
                                 if q_loss is not None:
-                                    logger.info(f"LEARN TIME:{learn_time}, Q_loss:{q_loss}")
+                                    LOG.pdqn_multi_agent_logger.info(f"LEARN TIME:{learn_time}, Q_loss:{q_loss}")
                                     losses_episode.append(q_loss)
 
                             for actor_id in states.keys():
@@ -167,12 +168,12 @@ def main():
                                         action=2
                                     saved_action_param = fill_action_param(action, info["control_info"]["steer"], throttle_brake,
                                                                         all_action_params[actor_id], modify_change_steer)
-                                    logger.debug(f"Control In Replay Buffer: {action}, {saved_action_param}")
+                                    LOG.pdqn_multi_agent_logger.debug(f"Control In Replay Buffer: {action}, {saved_action_param}")
 
                                     traj_q.put((state, next_state, action, saved_action_param,
                                         reward, done, truncated, info ), block=True, timeout=None)
                                     
-                                    logger.debug(
+                                    LOG.pdqn_multi_agent_logger.debug(
                                         f"actor_id:{actor_id} time_steps:{info['step']}\n"
                                         f"state -- vehicle_info:{state['vehicle_info']}\n"
                                         #f"waypoints:{state['left_waypoints']}, \n"
@@ -203,7 +204,7 @@ def main():
                                 param["sigma_steer"] *= param["sigma_decay"]
                                 param["sigma_acc"] *= param["sigma_decay"]
                                 worker.set_sigma(param["sigma_steer"], param["sigma_acc"])
-                                logger.info(f"Agent Sigma {param['sigma_steer']} {param['sigma_acc']}")
+                                LOG.pdqn_multi_agent_logger.info(f"Agent Sigma {param['sigma_steer']} {param['sigma_acc']}")
                            
                         if done or truncated:
                             # restart the training
@@ -234,7 +235,7 @@ def main():
                             # rolling_score.append(np.mean(episode_score[max]))
                             # cum_collision_num.append(collision_train)
 
-                        logger.info(f"Total_steps:{env.unwrapped._total_steps} RL_control_steps:{env.unwrapped._rl_control_steps}")
+                        LOG.pdqn_multi_agent_logger.info(f"Total_steps:{env.unwrapped._total_steps} RL_control_steps:{env.unwrapped._rl_control_steps}")
 
                         """ if rolling_score[rolling_score.__len__-1]>max_rolling_score:
                             max_rolling_score=rolling_score[rolling_score.__len__-1]
@@ -249,20 +250,16 @@ def main():
                         worker.save_net(f"{SAVE_PATH}/pdqn_final.pth")
 
                     # set new log file
-                    #globals()["logger"] = Logger(__name__, SAVE_PATH + f"/multi_agent_{i}.log", logging.DEBUG, logging.ERROR)
+                    #globals()["LOG.pdqn_multi_agent_logger"] = LOG.pdqn_multi_agent_logger(__name__, SAVE_PATH + f"/multi_agent_{i}.log", logging.DEBUG, logging.ERROR)
            
         except KeyboardInterrupt:
-            logger.info("Premature Terminated")
-        except BaseException as e:
-            logger.exception(e.args)
-            logger.exception(traceback.format_exc())
-            #logger.exception(traceback.print_tb(sys.exc_info()[2]))
+            logging.info("Premature Terminated")
         finally:
             env.close()
             [p.join() for p in process]
             episode_writer.close()
             worker.save_net(f"{SAVE_PATH}/pdqn_final.pth")
-            logger.info('\nDone.')
+            logging.info('\nDone.')
 
 #Queue vesion multiprocess
 def learner_mp(lock:Lock, traj_q: Queue, agent_q:Queue, agent_param:dict):
@@ -311,10 +308,12 @@ if __name__ == '__main__':
         main()
     except OSError as e:
         if "win" in sys.platform:
-            logger.error(f"{e.winerror}")
-        logger.error(f"errno:{e.errno} strerror:{e.strerror} filename:{e.filename} filename2:{e.filename2}")
+            logging.error(f"{e.winerror}")
+        logging.error(f"errno:{e.errno} strerror:{e.strerror} filename:{e.filename} filename2:{e.filename2}")
     except BaseException as e:
-        logger.exception(e.args)
-        logger.exception(traceback.format_exc())
+        logging.exception(e.args)
+        logging.exception(traceback.format_exc())
+        #LOG.pdqn_multi_agent_logger.exception(traceback.print_tb(sys.exc_info()[2]))
     finally:
+        tensorboard.close()
         kill_process()

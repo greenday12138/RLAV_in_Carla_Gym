@@ -61,11 +61,11 @@ from macad_gym.core.maps.nav_utils import PathTracker  # noqa: E402
 from macad_gym.carla.PythonAPI.agents.navigation.global_route_planner import (  # noqa: E402, E501
     GlobalRoutePlanner)
 
-logger = LOG.multi_env_logger
+
 live_carla_processes = set()
 
 def cleanup():
-    logger.info(f"Killing live carla processes:{live_carla_processes}")
+    LOG.multi_env_logger.info(f"Killing live carla processes:{live_carla_processes}")
     for pgid in live_carla_processes:
         if IS_WINDOWS_PLATFORM:
             # for Windows
@@ -90,7 +90,7 @@ try:
 
     MultiAgentEnvBases.append(MultiAgentEnv)
 except ImportError:
-    logger.warning("\n Disabling RLlib support.", exc_info=True)
+    LOG.multi_env_logger.warning("\n Disabling RLlib support.", exc_info=True)
 
 
 
@@ -331,9 +331,9 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
         Returns:
             N/A
         """
-        logger.info("Initializing new Carla server...")
+        LOG.multi_env_logger.info("Initializing new Carla server...")
         # Create a new server process and start the client.
-        self._server_port, self._server_process =  CarlaConnector.connect(logger, self._env_config)
+        self._server_port, self._server_process =  CarlaConnector.connect(LOG.multi_env_logger, self._env_config)
 
         if IS_WINDOWS_PLATFORM:
             live_carla_processes.add(self._server_process.pid)
@@ -348,11 +348,11 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
                 # The socket establishment could takes some time
                 time.sleep(2)
                 self._client.set_timeout(2.0)
-                logger.info(
+                LOG.multi_env_logger.info(
                     f"Client successfully connected to server, Carla-Server version: {self._client.get_server_version()}",)
             except RuntimeError as re:
                 if "timeout" not in str(re) and "time-out" not in str(re):
-                    logger.error(f"Could not connect to Carla server because:{re}")
+                    LOG.multi_env_logger.error(f"Could not connect to Carla server because:{re}")
                 self._client = None
 
         self._client.set_timeout(60.0)
@@ -428,16 +428,16 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
         del self._auto_controller
         self._auto_controller = {} 
 
-        logger.info("Cleaned-up the world...")
+        LOG.multi_env_logger.info("Cleaned-up the world...")
 
     def _clear_server_state(self):
         """Clear server process"""
-        logger.info("Clearing Carla server state")
+        LOG.multi_env_logger.info("Clearing Carla server state")
         try:
             if self._client:
                 self._client = None
         except Exception as e:
-            logger.exception("Error disconnecting client: {}".format(e))
+            LOG.multi_env_logger.exception("Error disconnecting client: {}".format(e))
         if self._server_process:
             if IS_WINDOWS_PLATFORM:
                 subprocess.call(
@@ -470,8 +470,8 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
                     self._reset()
                 break
             except Exception as e:
-                logger.exception("Error during reset: {}".format(traceback.format_exc()))
-                logger.error("reset(): Retry #: {}/{}".format(retry + 1, RETRIES_ON_ERROR))
+                LOG.multi_env_logger.exception("Error during reset: {}".format(traceback.format_exc()))
+                LOG.multi_env_logger.error("reset(): Retry #: {}/{}".format(retry + 1, RETRIES_ON_ERROR))
                 self._clear_server_state()
                 raise e
             
@@ -510,7 +510,7 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
                     # `wait_for_tick` is no longer needed, see https://github.com/carla-simulator/carla/pull/1803
                     # self.world.wait_for_tick()
             if cam.image is None:
-                logger.debug(f"callback_count:{actor_id}:{cam.callback_count}")
+                LOG.multi_env_logger.debug(f"callback_count:{actor_id}:{cam.callback_count}")
             # Actor correctly reset
             self._done_dict[actor_id] = False
             self._truncated_dict[actor_id] = Truncated.FALSE
@@ -556,7 +556,7 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
         """
         actor_type = self._actor_configs[actor_id].get("type", "vehicle_4W")
         if actor_type not in self._supported_active_actor_types:
-            logger.error(f"Unsupported actor type:{actor_type}. Using vehicle_4W as the type")
+            LOG.multi_env_logger.error(f"Unsupported actor type:{actor_type}. Using vehicle_4W as the type")
             actor_type = "vehicle_4W"
 
         if actor_type == "traffic_light":
@@ -649,7 +649,7 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
             # Wait to see if spawn area gets cleared before retrying
             # time.sleep(0.5)
             # self._clean_world()
-            logger.error("spawn_actor: Retry#:{}/{}".format(retry + 1, RETRIES_ON_ERROR))
+            LOG.multi_env_logger.error("spawn_actor: Retry#:{}/{}".format(retry + 1, RETRIES_ON_ERROR))
         if vehicle is None:
             # Request a spawn one last time possibly raising the error
             vehicle = self.world.spawn_actor(blueprint, transform)
@@ -816,7 +816,7 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
                     }
                 )
 
-                logger.info(
+                LOG.multi_env_logger.info(
                     "Actor: {} start_pos_xyz(coordID): {} ({}), "
                     "end_pos_xyz(coordID) {} ({})".format(
                         actor_id,
@@ -828,7 +828,7 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
                 )
         self._done_dict["__all__"] = False
         self._truncated_dict["__all__"] = Truncated.FALSE
-        logger.info("New episode initialized with actors:{}".format(self._actors.keys()))
+        LOG.multi_env_logger.info("New episode initialized with actors:{}".format(self._actors.keys()))
 
         self._state_getter = StateDAO({
             "scenario_config": self._scenario_config,
@@ -1059,10 +1059,10 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
                     Render.dummy_event_handler()
 
             if self._verbose:
-                print_measurements(logger, self._cur_measurement)
+                print_measurements(LOG.multi_env_logger, self._cur_measurement)
             return obs_dict, reward_dict, self._done_dict, self._truncated_dict, info_dict
         except Exception as e:
-            logger.exception(f"Error during step, terminating episode early."
+            LOG.multi_env_logger.exception(f"Error during step, terminating episode early."
                              f"{traceback.format_exc()}")
             self._clear_server_state()
             raise e
@@ -1267,7 +1267,7 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
                         "a",
                     )
                 except Exception as e:
-                    logger.error(f"File Open Error: {os.path.join(LOG.log_dir,'measurements_{}_{}.json'.format(actor_id, self._num_episodes[actor_id]))}")
+                    LOG.multi_env_logger.error(f"File Open Error: {os.path.join(LOG.log_dir,'measurements_{}_{}.json'.format(actor_id, self._num_episodes[actor_id]))}")
                     raise e
                 self._measurements_file_dict[actor_id].write("[\n")
             self._measurements_file_dict[actor_id].write(json.dumps(py_measurements, indent=4))
@@ -1442,13 +1442,13 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
                             #action_index=4
                             self.current_action[actor_id]=Action.STOP
                             self.current_target_lane[actor_id]=self.current_lane[actor_id]
-                        logger.debug(f"initial: last_lane:{self.last_lane[actor_id]}, current_lane:{self.current_lane[actor_id]}, "
+                        LOG.multi_env_logger.debug(f"initial: last_lane:{self.last_lane[actor_id]}, current_lane:{self.current_lane[actor_id]}, "
                                      f"last_target_lane:{self.last_target_lane[actor_id]}, current_target_lane:{self.current_target_lane[actor_id]}, "
                                      f"last_action:{self.last_action[actor_id].value}, current_action:{self.current_action[actor_id].value}")          
                         control = cont
                     else:
                         # PID in control
-                        logger.debug(f"basic_lanechanging_agent before: last_lane:{self.last_lane[actor_id]}, current_lane:{self.current_lane[actor_id]}, "
+                        LOG.multi_env_logger.debug(f"basic_lanechanging_agent before: last_lane:{self.last_lane[actor_id]}, current_lane:{self.current_lane[actor_id]}, "
                                      f"last_target_lane:{self.last_target_lane[actor_id]}, current_target_lane:{self.current_target_lane[actor_id]}, "
                                      f"last_action:{self.last_action[actor_id].value}, current_action:{self.current_action[actor_id].value}") 
                         control, self.current_target_lane[actor_id], self.current_action[actor_id]= \
@@ -1456,7 +1456,7 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
                                                                      self.last_target_lane[actor_id], 
                                                                      self.last_action[actor_id], 
                                                                      True)
-                        logger.debug(f"basic_lanechanging_agent after: last_lane:{self.last_lane[actor_id]}, current_lane:{self.current_lane[actor_id]}, "
+                        LOG.multi_env_logger.debug(f"basic_lanechanging_agent after: last_lane:{self.last_lane[actor_id]}, current_lane:{self.current_lane[actor_id]}, "
                                      f"last_target_lane:{self.last_target_lane[actor_id]}, current_target_lane:{self.current_target_lane[actor_id]}, "
                                      f"last_action:{self.last_action[actor_id].value}, current_action:{self.current_action[actor_id].value}")          
         elif self._speed_state[actor_id] == SpeedState.RUNNING:
@@ -1471,7 +1471,7 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
             elif not self._actor_configs[actor_id]["auto_control"]:
                 if self._rl_switch:
                     # under Rl control, used to set the self.new_action. 
-                    logger.debug(f"initial: last_lane:{self.last_lane[actor_id]}, current_lane:{self.current_lane[actor_id]}, "
+                    LOG.multi_env_logger.debug(f"initial: last_lane:{self.last_lane[actor_id]}, current_lane:{self.current_lane[actor_id]}, "
                                  f"last_target_lane:{self.last_target_lane[actor_id]}, current_target_lane:{self.current_target_lane[actor_id]}, "
                                  f"last_action:{self.last_action[actor_id].value}, current_action:{self.current_action[actor_id].value}")                        
                     if action_index==0:
@@ -1489,13 +1489,13 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
                         self.current_target_lane[actor_id]=self.current_lane[actor_id]
                     # _, _, _, self.distance_to_front_vehicles, self.distance_to_rear_vehicles = \
                     #     self.autopilot_controller.run_step(self.last_lane, self.last_target_lane, self.last_action, True, action_index, self.modify_change_steer)
-                    logger.debug(f"initial: last_lane:{self.last_lane[actor_id]}, current_lane:{self.current_lane[actor_id]}, "
+                    LOG.multi_env_logger.debug(f"initial: last_lane:{self.last_lane[actor_id]}, current_lane:{self.current_lane[actor_id]}, "
                                  f"last_target_lane:{self.last_target_lane[actor_id]}, current_target_lane:{self.current_target_lane[actor_id]}, "
                                  f"last_action:{self.last_action[actor_id].value}, current_action:{self.current_action[actor_id].value}") 
                     control = cont
                 else:
                     # PID in control
-                    logger.debug(f"basic_lanechanging_agent before: last_lane:{self.last_lane[actor_id]}, current_lane:{self.current_lane[actor_id]}, "
+                    LOG.multi_env_logger.debug(f"basic_lanechanging_agent before: last_lane:{self.last_lane[actor_id]}, current_lane:{self.current_lane[actor_id]}, "
                                  f"last_target_lane:{self.last_target_lane[actor_id]}, current_target_lane:{self.current_target_lane[actor_id]}, "
                                  f"last_action:{self.last_action[actor_id].value}, current_action:{self.current_action[actor_id].value}") 
                     control, self.current_target_lane[actor_id], self.current_action[actor_id]= \
@@ -1503,14 +1503,14 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
                                                                     self.last_target_lane[actor_id], 
                                                                     self.last_action[actor_id], 
                                                                     True)
-                    logger.debug(f"basic_lanechanging_agent after: last_lane:{self.last_lane[actor_id]}, current_lane:{self.current_lane[actor_id]}, "
+                    LOG.multi_env_logger.debug(f"basic_lanechanging_agent after: last_lane:{self.last_lane[actor_id]}, current_lane:{self.current_lane[actor_id]}, "
                                  f"last_target_lane:{self.last_target_lane[actor_id]}, current_target_lane:{self.current_target_lane[actor_id]}, "
                                  f"last_action:{self.last_action[actor_id].value}, current_action:{self.current_action[actor_id].value}") 
         elif self._speed_state[actor_id] == SpeedState.STOP:
             #Hero vehicle reaches destination, properly stop hero vehicle
             control = None
         else:
-            logger.error('CODE LOGIC ERROR')
+            LOG.multi_env_logger.error('CODE LOGIC ERROR')
 
         return control
 
@@ -1522,27 +1522,27 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
                         self._actors[actor_id].get_transform().get_forward_vector()))
         
         if self._speed_state[actor_id] == SpeedState.STOP:
-            logger.info(actor_id + " vehicle reach destination, stop truncation")
+            LOG.multi_env_logger.info(actor_id + " vehicle reach destination, stop truncation")
             return Truncated.FALSE
         if (m["collision_vehicles"] > 0 or m["collision_pedestrians"]>0 or m["collision_other"] > 0) \
                 and self._actor_configs[actor_id].get("early_terminate_on_collision", True):
             # Here we judge speed state because there might be collision event when spawning vehicles
-            logger.warn(actor_id + ' collison happend')
+            LOG.multi_env_logger.warn(actor_id + ' collison happend')
             return Truncated.COLLISION
         if not test_waypoint(lane_center,False):
-            logger.warn(actor_id + ' vehicle drive out of road')
+            LOG.multi_env_logger.warn(actor_id + ' vehicle drive out of road')
             return Truncated.OUT_OF_ROAD
         if self.current_action[actor_id] == Action.LANE_FOLLOW and \
                 self.current_lane[actor_id] != self.last_lane[actor_id]:
-            logger.warn(actor_id + ' change lane in lane following mode')
+            LOG.multi_env_logger.warn(actor_id + ' change lane in lane following mode')
             return Truncated.CHANGE_LANE_IN_LANE_FOLLOW
         if self.current_action[actor_id] == Action.LANE_CHANGE_LEFT and \
                 self.current_lane[actor_id] - self.last_lane[actor_id] < 0:
-            logger.warn(actor_id + ' vehicle change to wrong lane')
+            LOG.multi_env_logger.warn(actor_id + ' vehicle change to wrong lane')
             return Truncated.CHANGE_TO_WRONG_LANE
         if self.current_action[actor_id] == Action.LANE_CHANGE_RIGHT and \
                 self.current_lane[actor_id] - self.last_lane[actor_id] > 0:
-            logger.warn(actor_id + ' vehicle change to wrong lane')
+            LOG.multi_env_logger.warn(actor_id + ' vehicle change to wrong lane')
             return Truncated.CHANGE_TO_WRONG_LANE
         if self._speed_state[actor_id] not in [SpeedState.START, SpeedState.STOP] \
                     and not self._state["vehs"][actor_id].center_front_veh:
@@ -1552,14 +1552,14 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
                     for vel in self._vel_buffer[actor_id]:
                         avg_vel+=vel/self._vel_buffer[actor_id].maxlen
                     if avg_vel*3.6<self._actor_configs[actor_id]["speed_min"]:
-                        logger.warn(actor_id + ' vehicle speed too low')
+                        LOG.multi_env_logger.warn(actor_id + ' vehicle speed too low')
                         return Truncated.SPEED_LOW
             
         # if self.lane_invasion_sensor.get_invasion_count()!=0:
-        #     logger.warn('lane invasion occur')
+        #     LOG.multi_env_logger.warn('lane invasion occur')
         #     return True
         if abs(yaw_diff)>90:
-            logger.warn(actor_id + ' moving in opposite direction')
+            LOG.multi_env_logger.warn(actor_id + ' moving in opposite direction')
             return Truncated.OPPOSITE_DIRECTION
         if self._state["lights"][actor_id] and self._state["lights"][actor_id].state!=carla.TrafficLightState.Green:
             self.world.debug.draw_point(self._state["lights"][actor_id].get_location(),size=0.3,life_time=0)
@@ -1568,7 +1568,7 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
                 self.world.debug.draw_point(wp.transform.location,size=0.1,life_time=0)
                 if is_within_distance_ahead(self._actors[actor_id].get_location(),
                         wp.transform.location, wp.transform, self._env_config["min_distance"]):
-                    logger.warn(actor_id + ' break traffic light rule')
+                    LOG.multi_env_logger.warn(actor_id + ' break traffic light rule')
                     return Truncated.TRAFFIC_LIGHT_BREAK
 
         return Truncated.FALSE
@@ -1577,12 +1577,12 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
         if truncated!=Truncated.FALSE:
             return False
         if self._speed_state[actor_id] == SpeedState.STOP:
-            logger.info('vehicle reach destination, stop '+str(actor_id))                              
+            LOG.multi_env_logger.info('vehicle reach destination, stop '+str(actor_id))                              
             return True
         if not self._rl_switch:
             if self._time_steps[actor_id] > self._scenario_config["max_steps"]:
                 # Let the traffic manager only execute 5000 steps. or it can fill the replay buffer
-                logger.info(f"{self._scenario_config['max_steps']} "
+                LOG.multi_env_logger.info(f"{self._scenario_config['max_steps']} "
                              f"steps passed under traffic manager control, stop "+actor_id)
                 return True
 
@@ -1636,10 +1636,10 @@ if __name__ == "__main__":
             action_dict = get_next_actions(info, env._discrete_actions)
             for actor_id in total_reward_dict.keys():
                 total_reward_dict[actor_id] += reward[actor_id]
-            logger.info(
+            LOG.multi_env_logger.info(
                 ":{}\n\t".join(["Step#", "rew", "ep_rew", "done{}"]).format(
                     i, reward, total_reward_dict, done
                 )
             )
 
-        logger.info("{} fps".format(i / (time.time() - start)))
+        LOG.multi_env_logger.info("{} fps".format(i / (time.time() - start)))

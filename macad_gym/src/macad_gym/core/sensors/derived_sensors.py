@@ -7,7 +7,6 @@ from macad_gym.viz.logger import LOG
 from macad_gym.core.utils.wrapper import SemanticTags
 from macad_gym.core.utils.misc import get_actor_display_name
 
-logger = LOG.derived_sensors_logger
 
 class LaneInvasionSensor(object):
     """Lane Invasion class from carla manual_control.py
@@ -26,7 +25,7 @@ class LaneInvasionSensor(object):
             self.sensor = world.try_spawn_actor(
                 bp, carla.Transform(), attach_to=self._parent)
             if self.sensor is None:
-                logger.error(f"Spawn LaneInvasionSensor failed, "
+                LOG.derived_sensors_logger.error(f"Spawn LaneInvasionSensor failed, "
                              f"parent actor:{self._parent.type_id} {self._parent.id} "
                              f"retry times:{i}")
             else:
@@ -108,7 +107,7 @@ class CollisionSensor(object):
             self.sensor = world.try_spawn_actor(
                 bp, carla.Transform(), attach_to=self._parent)
             if self.sensor is None:
-                logger.error(f"Spawn CollisionSensor failed, "
+                LOG.derived_sensors_logger.error(f"Spawn CollisionSensor failed, "
                              f"parent actor:{self._parent.type_id} {self._parent.id} "
                              f"retry times:{i}")
             else:

@@ -4,7 +4,6 @@ import math, os
 from macad_gym.viz.logger import LOG
 from macad_gym.core.utils.misc import get_actor_display_name
 
-logger = LOG.hud_logger
 
 class HUD(object):
     def __init__(self, width, height):
@@ -92,11 +91,11 @@ class HUD(object):
         self._show_info = not self._show_info
 
     def notification(self, text, seconds=2.0):
-        logger.info("Notification disabled: "+text)
+        LOG.hud_logger.info("Notification disabled: "+text)
         # self._notifications.set_text(text, seconds=seconds)
 
     def error(self, text):
-        logger.info("Notification error disabled: "+text)
+        LOG.hud_logger.info("Notification error disabled: "+text)
         # self._notifications.set_text('Error: %s' % text, (255, 0, 0))
 
     def render(self, display, render_pose=(0,0)):

@@ -8,7 +8,6 @@ from enum import Enum
 from macad_gym import RETRIES_ON_ERROR
 from macad_gym.viz.logger import LOG
 
-logger = LOG.camera_manager_logger
 
 CAMERA_TYPES = Enum('CameraType', ['rgb',
                                    'depth_raw',
@@ -130,7 +129,7 @@ class CameraManager(object):
                     attach_to=self._parent,
                     attachment_type=carla.AttachmentType.Rigid if pos != 2 else carla.AttachmentType.SpringArm)
                 if self.sensor is None:
-                    logger.error(f"Spawn RGBCamera faild, "
+                    LOG.camera_manager_logger.error(f"Spawn RGBCamera faild, "
                                 f"parent actor:{self._parent.type_id} {self._parent.id} "
                                 f"retry times:{i}")
                 else:
@@ -161,6 +160,7 @@ class CameraManager(object):
         self = weak_self()
         if not self:
             return
+        
         self.image = image
         self.callback_count += 1
 

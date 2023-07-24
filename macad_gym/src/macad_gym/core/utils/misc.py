@@ -7,7 +7,6 @@ from enum import Enum
 from macad_gym.viz.logger import LOG
 from macad_gym.core.scenarios import ROADS, DISTURB_ROADS
 
-logger = LOG.misc_logger
 
 def sigmoid(x):
     x = float(x)
@@ -123,7 +122,7 @@ def get_lane_center(map, location):
             # else:
             #     print('left is None')
             if (lane_center_right is None or lane_center_right.lane_id != -1) and (lane_center_left is None or lane_center_left.lane_id != -1):
-                logger.error('get lane error!!')
+                LOG.misc_logger.error('get lane error!!')
                 lane_Sidewalk = map.get_waypoint(location, project_to_road=True, lane_type=carla.LaneType.Sidewalk)
                 if lane_Sidewalk.lane_id == -5:
                     # print('lane_shoulder.lane_id == -5')
