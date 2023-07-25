@@ -12,22 +12,23 @@ class Logger(object):
         self.Clevel = Clevel
         self.path = path
         
-        weak_self = weakref.ref(self)
-        for i in range(RETRIES_ON_ERROR):
-            out = Logger.add_handlers(weak_self)
-            if out:
-                break
-            else:
-                raise UserWarning(f"Logger Add Handlers Failed, Path:{path}, Retry Times:{i}")
+        self.add_handlers(path)
+        # weak_self = weakref.ref(self)
+        # for i in range(RETRIES_ON_ERROR):
+        #     out = Logger.add_handlers(weak_self)
+        #     if out:
+        #         break
+        #     else:
+        #         raise UserWarning(f"Logger Add Handlers Failed, Path:{path}, Retry Times:{i}")
 
     def reset_file(self, path):
         assert path is not None
         while self.logger.hasHandlers():
+            if isinstance(self.logger.handlers[0], logging.FileHandler):
+                self.logger.handlers[0].close()
             self.logger.removeHandler(self.logger.handlers[0])
 
-        self.path = path
-        weak_self = weakref.ref(self)
-        Logger.add_handlers(weak_self)
+        self.add_handlers(path)
  
     def debug(self, message, *args, **kwargs):
         self.logger.debug(message, *args, **kwargs)
@@ -50,12 +51,7 @@ class Logger(object):
     def exception(self, message, *args, **kwargs):
         self.logger.exception(message, *args, **kwargs)
 
-    @staticmethod
-    def add_handlers(weak_ref):
-        self = weak_ref()
-        if self is None:
-            return False
-        
+    def add_handlers(self, path):        
         fmt = logging.Formatter('[%(levelname)s] %(name)s [%(asctime)s] %(message)s', '%Y-%m-%d %H:%M:%S')
         #self.fmt = logging.Formatter('[%(levelname)s] %(name)s [%(process)d %(thread)d] [%(asctime)s] %(message)s', '%Y-%m-%d %H:%M:%S')
         # set command line logging
@@ -65,8 +61,8 @@ class Logger(object):
             sh.setLevel(self.Clevel)
             self.logger.addHandler(sh)
         # set file logging
-        if self.path is not None:
-            fh = logging.FileHandler(self.path)
+        if path is not None:
+            fh = logging.FileHandler(path)
             fh.setFormatter(fmt)
             fh.setLevel(self.Flevel)
             self.logger.addHandler(fh) 
@@ -91,34 +87,15 @@ class LOG(object):
     derived_sensors_logger = None
 
     @staticmethod 
-    def set_log(path, file_name = None):
+    def set_log(path, file_name:str = None):
         LOG.log_dir = path
         if not os.path.exists(LOG.log_dir):
             os.makedirs(LOG.log_dir)
         if file_name is None:
-            LOG.log_file = LOG.log_dir + '/macad-gym.log'
+            LOG.log_file = os.path.join(LOG.log_dir, 'macad-gym.log')
         else:
-            LOG.log_file = LOG.log_dir + file_name
+            LOG.log_file = os.path.join(LOG.log_dir, file_name)
 
-        # set each logger
-        # attrs = vars(LOG)
-        # for attr, value in attrs.items():
-        #     if isinstance(value, Logger):
-        #         [handler.flush() for handler in value.logger.handlers]
-        # for attr, value in attrs.items():
-        #     while value.hasHandlers():
-        #         value.removeHandler(value.handlers[0])
-        # LOG.derived_sensors_logger = Logger('derived_sensors.py', LOG.log_file, logging.DEBUG, logging.ERROR)
-        # LOG.camera_manager_logger = Logger('camera_manager.py', LOG.log_file, logging.DEBUG, logging.ERROR)
-        # LOG.traffic_logger = Logger('traffic.py', LOG.log_file, logging.DEBUG, logging.ERROR)
-        # LOG.misc_logger = Logger('misc.py', LOG.log_file, logging.DEBUG, logging.ERROR)
-        # LOG.route_planner_logger = Logger('route_planner.py', LOG.log_file, logging.DEBUG, logging.ERROR)
-        # LOG.reward_logger = Logger('reward.py', LOG.log_file, logging.DEBUG, logging.ERROR)
-        # LOG.multi_env_logger = Logger('multi_env.py', LOG.log_file, logging.DEBUG, logging.ERROR)
-        # LOG.pdqn_logger = Logger('pdqn.py', LOG.log_file, logging.DEBUG, logging.ERROR)
-        # LOG.hud_logger = Logger('hud.py', LOG.log_file, logging.DEBUG, logging.ERROR)
-        # LOG.basic_agent_logger = Logger('basic_agent.py', LOG.log_file, logging.DEBUG, logging.ERROR)
-        # LOG.pdqn_multi_agent_logger = Logger('pdqn_multi_agent.py', LOG.log_file, logging.DEBUG, logging.ERROR)
         if LOG.derived_sensors_logger is None:
             LOG.derived_sensors_logger = Logger('derived_sensors.py', LOG.log_file, logging.DEBUG, logging.ERROR)
             LOG.camera_manager_logger = Logger('camera_manager.py', LOG.log_file, logging.DEBUG, logging.ERROR)
@@ -143,5 +120,5 @@ class LOG(object):
 
 
 if LOG.log_dir is None:
-    LOG.server_log = LOG_PATH + '/carla_server.log'
-    LOG.set_log(LOG_PATH + '/0')
+    LOG.server_log = os.path.join(LOG_PATH, 'carla_server.log')
+    LOG.set_log(os.path.join(LOG_PATH, '0'))

@@ -5,10 +5,12 @@ import seaborn as sns
 import random
 import carla
 import torch
-import datetime,os
+import os, sys
+from datetime import datetime
 from collections import deque
 from multiprocessing import Process,Queue
-from macad_gym import LOG_PATH
+#from macad_gym import LOG_PATH
+sys.path.append(os.getcwd())
 
 DEVICE = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
 
@@ -73,4 +75,6 @@ if __name__=='__main__':
     # # 画图
     # sns.lineplot(data=df, x="Step", y="Value")
     # plt.show()
-    print(os.path.split(LOG_PATH)[-1])
+    print(os.path.join(os.getcwd(), 1))
+    LOG_PATH = os.path.join(os.getcwd(), "logs", f"{datetime.today().strftime('%Y-%m-%d_%H-%M')}")
+    print(LOG_PATH)

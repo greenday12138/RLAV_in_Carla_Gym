@@ -404,7 +404,7 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
         """
         [colli.destroy() for colli in self._collisions.values()]
         [lane.destroy() for lane in self._lane_invasions.values()]
-        [camera.destroy() for camera in self._cameras.values()]
+        #[camera.destroy() for camera in self._cameras.values()]
         [npc.destroy() for npc in self._npc_vehicles]
         for actor in self._actors.values():
             if actor.is_alive:
@@ -680,7 +680,9 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
         if clean_world:
             self._clean_world()
             # set new log file
-            LOG.set_log(LOG_PATH + f"/{self._num_episodes[list(self._num_episodes.keys())[0]]}")
+            LOG.set_log(os.path.join(LOG_PATH, str(self._num_episodes[
+                list(self._num_episodes.keys())[0]
+            ])))
             
         weather_num = 0
         if "weather_distribution" in self._scenario_map:
@@ -1038,7 +1040,8 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
 
             for actor_id in self._measurements_file_dict:
                 if self._actor_configs[actor_id]["log_measurements"] and LOG.log_dir and \
-                                self._truncated_dict["__all__"] == Truncated.TRUE and \
+                                (self._truncated_dict["__all__"] == Truncated.TRUE or 
+                                self._done_dict["__all__"] == True) and \
                                 self._measurements_file_dict[actor_id] is not None:
                     self._measurements_file_dict[actor_id].write("{}]\n")
                     self._measurements_file_dict[actor_id].close()
@@ -1258,7 +1261,7 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
 
         if config["log_measurements"] and LOG.log_dir:
             # Write out measurements to file
-            if not self._measurements_file_dict[actor_id]:
+            if self._measurements_file_dict.get(actor_id, None) is None:
                 try:
                     self._measurements_file_dict[actor_id] = open(
                         os.path.join(

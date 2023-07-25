@@ -1,3 +1,4 @@
+import os
 import random, collections
 import numpy as np
 import torch,logging
@@ -595,7 +596,7 @@ class P_DQN:
 
         return
 
-    def save_net(self,file='./out/ddpg_final.pth'):
+    def save_net(self,file = None):
         state = {
             'actor': self.actor.state_dict(),
             'actor_target':self.actor_target.state_dict(),
@@ -606,8 +607,9 @@ class P_DQN:
         }
         torch.save(state, file)
 
-    def load_net(self, state):
-        if state is not None:
+    def load_net(self, file = None, map_location = torch.device('cpu')):
+        if file is not None:
+            state = torch.load(file, map_location=map_location)
             if 'critic' in state:
                 self.critic.load_state_dict(state['critic'])
             if 'critic_target' in state:

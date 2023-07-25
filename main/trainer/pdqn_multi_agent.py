@@ -58,11 +58,12 @@ AGENT_PARAM = {
 }
 TOTAL_EPISODE = 50000
 TRAIN = True
-UPDATE_FREQ = 300
+UPDATE_FREQ = 100
 modify_change_steer=False
 base_name = f'origin_NOCA'
-#time=datetime.datetime.today().strftime('%Y-%m-%d_%H-%M')
-SAVE_PATH=f"./out/multi_agent/pdqn/{os.path.split(LOG_PATH)[-1]}"
+MODEL_PATH = os.path.join(os.getcwd(), 'out', 'model_params', 'pdqn_ma_net_params.pth')
+SAVE_PATH = os.path.join(os.getcwd(), 'out', 'multi_agent', 'pdqn', 
+                         datetime.datetime.today().strftime('%Y-%m-%d_%H-%M'))
 if not os.path.exists(SAVE_PATH):
     os.makedirs(SAVE_PATH)
 
@@ -85,12 +86,14 @@ def main():
                             param["theta"], param["epsilon"], param["buffer_size"], param["batch_size"], 
                             param["lr_actor"], param["lr_critic"], param["clip_grad"], param["zero_index_gradients"],
                             param["inverting_gradients"], param["per_flag"], param["device"])
+        if TRAIN and os.path.exists(MODEL_PATH):
+            worker.load_net(MODEL_PATH, map_location=param["device"])
 
         #multi-process training
         process=list()
         lock=Lock()
         #traj_q=Queue(maxsize=10)
-        traj_q=Queue(maxsize=param["buffer_size"])
+        traj_q=Queue(maxsize=param["minimal_size"])
         agent_q=Queue(maxsize=1)
         process.append(mp.Process(target=learner_mp,args=(lock, traj_q, agent_q, AGENT_PARAM)))
         [p.start() for p in process]
@@ -124,11 +127,7 @@ def main():
                             action_dict, actions, action_params, all_action_params={}, {}, {}, {}
                             if TRAIN and not agent_q.empty():
                                 lock.acquire()
-                                model_dict=torch.load(f"{SAVE_PATH}/learner.pth", map_location=param["device"])
-                                worker.actor.load_state_dict(model_dict["actor"])
-                                worker.actor_target.load_state_dict(model_dict["actor_target"])
-                                worker.critic.load_state_dict(model_dict["critic"])
-                                worker.critic_target.load_state_dict(model_dict["critic_target"])
+                                worker.load_net(os.path.join(SAVE_PATH, 'learner.pth'), map_location=param["device"])
                                 learn_time, q_loss = agent_q.get()
                                 lock.release()
                                 worker.learn_time=learn_time
@@ -168,28 +167,29 @@ def main():
                                         action=2
                                     saved_action_param = fill_action_param(action, info["control_info"]["steer"], throttle_brake,
                                                                         all_action_params[actor_id], modify_change_steer)
-                                    LOG.pdqn_multi_agent_logger.debug(f"Control In Replay Buffer: {action}, {saved_action_param}")
+                                    LOG.pdqn_multi_agent_logger.debug(f"\nControl In Replay Buffer: {action}, {saved_action_param}")
 
                                     traj_q.put((state, next_state, action, saved_action_param,
                                         reward, done, truncated, info ), block=True, timeout=None)
                                     
                                     LOG.pdqn_multi_agent_logger.debug(
-                                        f"actor_id:{actor_id} time_steps:{info['step']}\n"
-                                        f"state -- vehicle_info:{state['vehicle_info']}\n"
+                                        f"actor_id: {actor_id} time_steps: {info['step']}\n"
+                                        f"state -- vehicle_info: {state['vehicle_info']}\n"
                                         #f"waypoints:{state['left_waypoints']}, \n"
                                         #f"waypoints:{state['center_waypoints']}, \n"
                                         #f"waypoints:{state['right_waypoints']}, \n"
-                                        f"hero_vehicle:{state['hero_vehicle']}, \n"
+                                        f"hero_vehicle: {state['hero_vehicle']}, \n"
                                         f"light info: {state['light']}\n"
                                         f"next_state -- vehicle_info:{next_state['vehicle_info']}\n"
                                         #f"waypoints:{next_state['left_waypoints']}, \n"
                                         #f"waypoints:{next_state['center_waypoints']}, \n"
                                         #f"waypoints:{next_state['right_waypoints']}, \n"
-                                        f"hero_vehicle:{next_state['hero_vehicle']}\n"
+                                        f"hero_vehicle: {next_state['hero_vehicle']}\n"
                                         f"light info: {next_state['light']}\n"
-                                        f"action:{actions[actor_id]}, action_param:{action_params[actor_id]} \n"
-                                        f"all_action_param:{all_action_params[actor_id]}, saved_action_param:{saved_action_param}\n"
-                                        f"reward:{reward}, truncated:{truncated}, done:{done}, ")
+                                        f"action: {actions[actor_id]}, action_param: {action_params[actor_id]} \n"
+                                        f"all_action_param: {all_action_params[actor_id]},\n"
+                                        f"saved_action_param: {saved_action_param}\n"
+                                        f"reward: {reward}, truncated: {truncated}, done: {done}, ")
         
                             done = dones["__all__"]
                             truncated = truncateds["__all__"]!=Truncated.FALSE
@@ -197,7 +197,7 @@ def main():
                             
                             #only record the first vehicle reward
                             if env.unwrapped._total_steps == env.unwrapped.pre_train_steps:
-                                worker.save_net(f"{SAVE_PATH}/pdqn_pre_trained.pth")
+                                worker.save_net(os.path.join(SAVE_PATH, 'pdqn_pre_trained.pth'))
  
                             if env.unwrapped._rl_control_steps > 10000 and param["sigma_acc"] > 0.01:
                                 param["sigma"] *= param["sigma_decay"]
@@ -247,7 +247,7 @@ def main():
                         #     'score': '%.2f' % total_reward
                         # })
                         pbar.update(1)
-                        worker.save_net(f"{SAVE_PATH}/pdqn_final.pth")
+                        worker.save_net(os.path.join(SAVE_PATH, 'pdqn_final.pth'))
 
                     # set new log file
                     #globals()["LOG.pdqn_multi_agent_logger"] = LOG.pdqn_multi_agent_logger(__name__, SAVE_PATH + f"/multi_agent_{i}.log", logging.DEBUG, logging.ERROR)
@@ -258,7 +258,7 @@ def main():
             env.close()
             [p.join() for p in process]
             episode_writer.close()
-            worker.save_net(f"{SAVE_PATH}/pdqn_final.pth")
+            worker.save_net(os.path.join(SAVE_PATH, 'pdqn_final.pth'))
             logging.info('\nDone.')
 
 #Queue vesion multiprocess
@@ -269,15 +269,18 @@ def learner_mp(lock:Lock, traj_q: Queue, agent_q:Queue, agent_param:dict):
                         param["theta"], param["epsilon"], param["buffer_size"], param["batch_size"], 
                         param["lr_actor"], param["lr_critic"], param["clip_grad"], param["zero_index_gradients"],
                         param["inverting_gradients"], param["per_flag"], param["device"])
-    if TRAIN and os.path.exists(f"./model_params/{SAVE_PATH}_net_params.pth"):
-        learner.load_state_dict(torch.load(f"./model_params/{SAVE_PATH}_net_params.pth", map_location=param["device"]))
-    update_count=0
+    #load pre-trained model
+    if TRAIN and os.path.exists(MODEL_PATH):
+        learner.load_net(MODEL_PATH, map_location=param["device"])
+    update_freq = UPDATE_FREQ
+    update_count = 0
 
     while(True):
         #alter the batch_size and update times according to the replay buffer size:
         #reference: https://zhuanlan.zhihu.com/p/345353294, https://arxiv.org/abs/1711.00489
         k = max(learner.replay_buffer.size()// param["minimal_size"], 1)
         learner.batch_size = k * param["batch_size"]
+        update_freq = min(k * UPDATE_FREQ, 1000)
         for _ in range(k):
             trajectory=traj_q.get(block=True,timeout=None)
             state, next_state, action, saved_action_param, reward, done, truncated, info = \
@@ -287,20 +290,14 @@ def learner_mp(lock:Lock, traj_q: Queue, agent_q:Queue, agent_param:dict):
             learner.store_transition(state, action, saved_action_param, reward, next_state,
                                     truncated, done, info)       
         if TRAIN and learner.replay_buffer.size()>=param["minimal_size"]:
-            for _ in range(k):
-                q_loss = learner.learn()
-                update_count+=1
-            if not agent_q.full() and update_count//UPDATE_FREQ>0:
+            q_loss = learner.learn()
+            update_count+=1
+            if not agent_q.full() and update_count//update_freq>0:
                 lock.acquire()
                 agent_q.put((deepcopy(learner.learn_time), deepcopy(q_loss)), block=True, timeout=None)
-                torch.save({
-                    "actor":learner.actor.state_dict(),
-                    "actor_target":learner.actor_target.state_dict(),
-                    "critic":learner.critic.state_dict(),
-                    "critic_target":learner.critic_target.state_dict()
-                }, f"{SAVE_PATH}/learner.pth")
+                learner.save_net(os.path.join(SAVE_PATH, 'learner.pth'))
                 lock.release()
-                update_count %= UPDATE_FREQ
+                update_count %= update_freq
 
 if __name__ == '__main__':
     try:

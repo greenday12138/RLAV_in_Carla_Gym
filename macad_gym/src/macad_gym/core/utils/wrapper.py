@@ -488,12 +488,12 @@ def fill_action_param(action, steer, throttle_brake, action_param, modify_change
 def print_measurements(logger, measurements):
     m = measurements
     for actor_id in m.keys():
-        logger.info(f"actor_id:{actor_id}, episode:{m[actor_id]['episode']}, step:{m[actor_id]['step']}, "
-            f"done:{m[actor_id]['done']}, truncated:{m[actor_id]['truncated']} \n"
-            f"speed_state:{m[actor_id]['speed_state']}, control_state:{'RL' if m[actor_id]['rl_switch'] else 'PID'}, \n"
-            f"vel:{m[actor_id]['velocity']}, cur_acc:{m[actor_id]['current_acc']}, last_acc:{m[actor_id]['last_acc']}, \n"
-            f"throttle:{m[actor_id]['control_info']['throttle']}, brake:{m[actor_id]['control_info']['brake']}, steer:{m[actor_id]['control_info']['steer']}, \n"
-            f"rew:{m[actor_id]['reward']}")
+        logger.info(f"actor_id: {actor_id}, episode: {m[actor_id]['episode']}, step: {m[actor_id]['step']}, \n"
+            f"done: {m[actor_id]['done']}, truncated: {m[actor_id]['truncated']} \n"
+            f"speed_state: {m[actor_id]['speed_state']}, control_state: {'RL' if m[actor_id]['rl_switch'] else 'PID'}, \n"
+            f"vel: {m[actor_id]['velocity']}, cur_acc: {m[actor_id]['current_acc']}, last_acc: {m[actor_id]['last_acc']}, \n"
+            f"throttle: {m[actor_id]['control_info']['throttle']}, brake: {m[actor_id]['control_info']['brake']}, steer: {m[actor_id]['control_info']['steer']}, \n"
+            f"rew: {m[actor_id]['reward']}")
 
 def get_next_actions(measurements, is_discrete_actions):
     """Get/Update next action, work with way_point based planner.
