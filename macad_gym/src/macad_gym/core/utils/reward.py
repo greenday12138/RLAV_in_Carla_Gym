@@ -133,7 +133,7 @@ class PDQNReward(Reward):
             if truncated == str(Truncated.CHANGE_LANE_IN_LANE_FOLLOW):
                 self.reward = -self._rl_configs["lane_penalty"]
             elif truncated == str(Truncated.COLLISION):
-                if self.curr["collision_vehicles"] > 0 or self.curr["collision_pedstrians"] > 0:
+                if self.curr["collision_vehicles"] > 0 or self.curr["collision_pedestrians"] > 0:
                     self.reward = -self._rl_configs["penalty"]
                 else:
                     # Abandon the experience that ego vehicle collide with other obstacle

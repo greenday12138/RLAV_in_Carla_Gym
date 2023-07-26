@@ -404,7 +404,7 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
         """
         [colli.destroy() for colli in self._collisions.values()]
         [lane.destroy() for lane in self._lane_invasions.values()]
-        #[camera.destroy() for camera in self._cameras.values()]
+        [camera.destroy() for camera in self._cameras.values()]
         [npc.destroy() for npc in self._npc_vehicles]
         for actor in self._actors.values():
             if actor.is_alive:
