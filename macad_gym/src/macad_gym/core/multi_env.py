@@ -894,7 +894,8 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
         if self._actor_configs[actor_id]["use_depth_camera"]:
             img = np.tile(obs.swapaxes(0, 1), 3)
         else:
-            img = obs.swapaxes(0, 1) * 128 + 128
+            img = obs.swapaxes(0, 1)
+            #img = obs.swapaxes(0, 1) * 128 + 128
         return img
 
     def _encode_obs(self, actor_id, image, state):

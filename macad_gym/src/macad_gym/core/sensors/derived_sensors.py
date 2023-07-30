@@ -51,9 +51,9 @@ class LaneInvasionSensor(object):
 
     @staticmethod
     def _on_invasion(weak_self, event):
-        self = weak_self()
-        if not self:
+        if not weak_self():
             return
+        self = weak_self()
 
         text = ['%r' % str(x).split()[-1] for x in set(event.crossed_lane_markings)]
         if self._hud is not None:
@@ -141,9 +141,9 @@ class CollisionSensor(object):
         
     @staticmethod
     def _on_collision(weak_self, event):
-        self = weak_self()
-        if not self:
+        if not weak_self():
             return
+        self = weak_self()
 
         if self._hud is not None:
             actor_type = get_actor_display_name(event.other_actor)

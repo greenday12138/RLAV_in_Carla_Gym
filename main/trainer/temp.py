@@ -4,6 +4,7 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 import random
 import carla
+import weakref
 import torch
 import os, sys
 from datetime import datetime
@@ -50,6 +51,16 @@ def smooth(read_path, save_path, file_name, x='Step', y='Value', weight=0.99):
     save = pd.DataFrame({x: data[x].values, y: smoothed})
     save.to_csv(save_path + 'smooth_'+ file_name)
 
+class temp:
+    def __init__(self) -> None:
+        self.temp = 0
+
+def tt(t):
+    self = t()
+    if self is None:
+        return
+    print("hhj")
+
 if __name__=='__main__':
     # plt.style.use('ggplot')
     # plt.rcParams['font.sans-serif'] = ['SimHei']
@@ -75,6 +86,44 @@ if __name__=='__main__':
     # # 画图
     # sns.lineplot(data=df, x="Step", y="Value")
     # plt.show()
-    print(os.path.join(os.getcwd(), 1))
-    LOG_PATH = os.path.join(os.getcwd(), "logs", f"{datetime.today().strftime('%Y-%m-%d_%H-%M')}")
-    print(LOG_PATH)
+
+    data = temp()
+    #data = np.random.random([3,3])
+    # 刚刚建立对象时的引用数
+    print(sys.getrefcount(data))			# 此时引用数为 2
+    # 建立弱引用
+    ref = weakref.ref(data)
+    tt(ref)
+    # 查看增加弱引用后的引用数
+    data.temp = 1
+    print(data.temp)
+    print(ref().temp)
+    #del data
+    print(sys.getrefcount(data))			# 此时引用数仍为 2，表明弱引用不增加引用数
+    # 如果为弱引用对象增加强引用，引用数会增加
+    print(ref())
+
+    prox_ref = ref()
+    del data
+    print(prox_ref)
+  
+    prox_ref.temp =5
+    print(sys.getrefcount(prox_ref))
+
+    print(sys.getrefcount(prox_ref))
+    print(ref().temp)
+    #print(sys.getrefcount(data))			# 引用数为 3，不要为弱引用对象增加强引用
+	# 二者输出 id 相同，表明弱引用对象指向同一内存空间
+    print(id(ref()))						# 2809935694304
+    #print(id(data))							# 2809935694304
+    # 返回为 True 表明二者为同一对象
+    print(ref() is data)					# True
+    # 对象本身为弱引用对象
+    print(ref)								# <weakref at 0x0000028E3D380A40; to 'numpy.ndarray' at 0x0000028E3D3809E0>
+    # 类型为 弱引用
+    print(type(ref))						# <class 'weakref'>
+    # 引用对象时和原始内容一致
+    print(type(ref()))						# <class 'numpy.ndarray'>
+    # 数据内容完全一样
+    print(ref())
+    print(data)

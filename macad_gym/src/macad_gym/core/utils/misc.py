@@ -523,7 +523,7 @@ def preprocess_image(image, config):
         data = data[:, :, :3]
         data = data[:, :, ::-1]
         data = cv2.resize(data, (x_res, y_res), interpolation=cv2.INTER_AREA)
-        data = (data.astype(np.float32) - 128) / 128
+        #data = (data.astype(np.float32) - 128) / 128
 
     return data
 

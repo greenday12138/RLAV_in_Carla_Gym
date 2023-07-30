@@ -1,6 +1,5 @@
 import sys, os
 import logging
-import weakref
 from macad_gym import LOG_PATH, RETRIES_ON_ERROR
 
 

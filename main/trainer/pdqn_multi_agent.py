@@ -69,10 +69,6 @@ if not os.path.exists(SAVE_PATH):
 
 def main():
     env = gym.make("HomoNcomIndePoHiwaySAFR2CTWN5-v0")
-
-    done = False
-    truncated = False
-
     random.seed(0)
     torch.manual_seed(16)
 
@@ -113,10 +109,15 @@ def main():
         ttc, efficiency, comfort, lcen, lane_change_reward = {}, {}, {}, {}, {}  # part objective scores
 
         try:
-            for i in range(10):
-                with tqdm(total=TOTAL_EPISODE // 10, desc="Iteration %d" % i) as pbar:
-                    for i_episode in range(TOTAL_EPISODE // 10):
-                        states,_ = env.reset()
+            for i in range(TOTAL_EPISODE//200):
+                with tqdm(total=200, desc="Iteration %d" % i) as pbar:
+                    for i_episode in range(200):
+                        try:
+                            states,_ = env.reset()
+                        except RuntimeError as e:
+                            env.close()
+                            continue
+                        done, truncated = False, False
                         worker.reset_noise()
                         for actor_id in states.keys():
                             ttc[actor_id], efficiency[actor_id], comfort[actor_id], lcen[actor_id],\
@@ -241,6 +242,10 @@ def main():
                             max_rolling_score=rolling_score[rolling_score.__len__-1]
                             agent.save_net() """
 
+
+                        pbar.set_postfix({
+                            "episodes": f"{(TOTAL_EPISODE//200) * i + i_episode + 1}"
+                        })
                         #if (i_episode + 1) % 10 == 0:
                         # pbar.set_postfix({
                         #     'episodes': '%d' % (TOTAL_EPISODE // 10 * i + i_episode),
@@ -252,6 +257,7 @@ def main():
                     # set new log file
                     #globals()["LOG.pdqn_multi_agent_logger"] = LOG.pdqn_multi_agent_logger(__name__, SAVE_PATH + f"/multi_agent_{i}.log", logging.DEBUG, logging.ERROR)
            
+                env.close()
         except KeyboardInterrupt:
             logging.info("Premature Terminated")
         finally:
@@ -280,7 +286,7 @@ def learner_mp(lock:Lock, traj_q: Queue, agent_q:Queue, agent_param:dict):
         #reference: https://zhuanlan.zhihu.com/p/345353294, https://arxiv.org/abs/1711.00489
         k = max(learner.replay_buffer.size()// param["minimal_size"], 1)
         learner.batch_size = k * param["batch_size"]
-        update_freq = min(k * UPDATE_FREQ, 1000)
+        #update_freq = min(k * UPDATE_FREQ, 1000)
         for _ in range(k):
             trajectory=traj_q.get(block=True,timeout=None)
             state, next_state, action, saved_action_param, reward, done, truncated, info = \

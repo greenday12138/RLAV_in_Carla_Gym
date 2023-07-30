@@ -83,6 +83,8 @@ class CameraManager(object):
         if self.sensor is not None and self.sensor.is_alive:
             self.sensor.stop()
             self.sensor.destroy()
+            self.image = None
+            self.image_list.clear()
             self.sensor = None
             self._surface = None
             self.callback_count = 0
@@ -135,6 +137,8 @@ class CameraManager(object):
             # We need to pass the lambda a weak reference to self to avoid
             # circular reference.
             weak_self = weakref.ref(self)
+            # Some sensors may require to send data asynchronously，
+            # camera sensors send the images from the render thread.
             self.sensor.listen(
                 lambda image: CameraManager._parse_image(weak_self, image))
         if notify:
@@ -155,9 +159,9 @@ class CameraManager(object):
 
     @staticmethod
     def _parse_image(weak_self, image):
-        self = weak_self()
-        if not self:
+        if not weak_self():
             return
+        self = weak_self()
         
         self.image = image
         self.callback_count += 1
