@@ -15,6 +15,7 @@ from tensorboardX import SummaryWriter
 from multiprocessing import Process, Queue, Lock
 sys.path.append(os.getcwd())
 from main.util.process import kill_process
+from main.util.utils import get_gpu_info, get_gpu_mem_info
 from macad_gym import LOG_PATH
 from macad_gym.viz.logger import LOG
 from macad_gym.core.utils.wrapper import (fill_action_param, recover_steer, Action, 
@@ -41,7 +42,7 @@ AGENT_PARAM = {
     "minimal_size": 10000,
     "batch_size": 256,
     "per_flag": True,
-    "device": torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu'),
+    "device": torch.device('cpu') ,
     "sigma": 0.5,
     "sigma_steer": 0.3,
     "sigma_acc": 0.5,
@@ -83,7 +84,7 @@ def main():
                             param["lr_actor"], param["lr_critic"], param["clip_grad"], param["zero_index_gradients"],
                             param["inverting_gradients"], param["per_flag"], param["device"])
         if TRAIN and os.path.exists(MODEL_PATH):
-            worker.load_net(MODEL_PATH, map_location=param["device"])
+            worker.load_net(MODEL_PATH, map_location=worker.device)
 
         #multi-process training
         process=list()
@@ -109,14 +110,16 @@ def main():
         ttc, efficiency, comfort, lcen, lane_change_reward = {}, {}, {}, {}, {}  # part objective scores
 
         try:
-            for i in range(TOTAL_EPISODE//200):
-                with tqdm(total=200, desc="Iteration %d" % i) as pbar:
-                    for i_episode in range(200):
-                        try:
-                            states,_ = env.reset()
-                        except RuntimeError as e:
-                            env.close()
-                            continue
+            for i in range(10):
+                with tqdm(total=TOTAL_EPISODE//10, desc="Iteration %d" % i) as pbar:
+                    for i_episode in range(TOTAL_EPISODE//10):
+                        states,_ = env.reset()
+                        # if i_episode > 100 and reload_agent(worker):
+                        #     worker = P_DQN(param["s_dim"], param["a_dim"], param["a_bound"], param["gamma"],
+                        #                     param["tau"], param["sigma_steer"], param["sigma"], param["sigma_acc"], 
+                        #                     param["theta"], param["epsilon"], param["buffer_size"], param["batch_size"], 
+                        #                     param["lr_actor"], param["lr_critic"], param["clip_grad"], param["zero_index_gradients"],
+                        #                     param["inverting_gradients"], param["per_flag"], torch.device('cuda'))
                         done, truncated = False, False
                         worker.reset_noise()
                         for actor_id in states.keys():
@@ -128,7 +131,7 @@ def main():
                             action_dict, actions, action_params, all_action_params={}, {}, {}, {}
                             if TRAIN and not agent_q.empty():
                                 lock.acquire()
-                                worker.load_net(os.path.join(SAVE_PATH, 'learner.pth'), map_location=param["device"])
+                                worker.load_net(os.path.join(SAVE_PATH, 'learner.pth'), map_location=worker.device)
                                 learn_time, q_loss = agent_q.get()
                                 lock.release()
                                 worker.learn_time=learn_time
@@ -244,7 +247,7 @@ def main():
 
 
                         pbar.set_postfix({
-                            "episodes": f"{(TOTAL_EPISODE//200) * i + i_episode + 1}"
+                            "episodes": f"{(TOTAL_EPISODE//10) * i + i_episode + 1}"
                         })
                         #if (i_episode + 1) % 10 == 0:
                         # pbar.set_postfix({
@@ -257,7 +260,7 @@ def main():
                     # set new log file
                     #globals()["LOG.pdqn_multi_agent_logger"] = LOG.pdqn_multi_agent_logger(__name__, SAVE_PATH + f"/multi_agent_{i}.log", logging.DEBUG, logging.ERROR)
            
-                env.close()
+                #env.close()
         except KeyboardInterrupt:
             logging.info("Premature Terminated")
         finally:
@@ -270,6 +273,7 @@ def main():
 #Queue vesion multiprocess
 def learner_mp(lock:Lock, traj_q: Queue, agent_q:Queue, agent_param:dict):
     param = deepcopy(agent_param)
+    param["device"] = torch.device('cuda')
     learner = P_DQN(param["s_dim"], param["a_dim"], param["a_bound"], param["gamma"],
                         param["tau"], param["sigma_steer"], param["sigma"], param["sigma_acc"], 
                         param["theta"], param["epsilon"], param["buffer_size"], param["batch_size"], 
@@ -277,7 +281,7 @@ def learner_mp(lock:Lock, traj_q: Queue, agent_q:Queue, agent_param:dict):
                         param["inverting_gradients"], param["per_flag"], param["device"])
     #load pre-trained model
     if TRAIN and os.path.exists(MODEL_PATH):
-        learner.load_net(MODEL_PATH, map_location=param["device"])
+        learner.load_net(MODEL_PATH, map_location=learner.device)
     update_freq = UPDATE_FREQ
     update_count = 0
 
@@ -305,6 +309,16 @@ def learner_mp(lock:Lock, traj_q: Queue, agent_q:Queue, agent_param:dict):
                 lock.release()
                 update_count %= update_freq
 
+def reload_agent(agent, gpu_id=0):
+    if agent.device != torch.device('cpu'):
+        return False
+    gpu_mem_total, gpu_mem_used, gpu_mem_free = get_gpu_mem_info(gpu_id=gpu_id)
+    if gpu_mem_total > 0 and gpu_mem_free > 2000:
+        LOG.pdqn_multi_agent_logger.info(f"Reload agent of process {os.getpid()}")
+        return True
+
+    return False
+
 if __name__ == '__main__':
     try:
         mp.set_start_method(method='spawn',force=True)  # force all the multiprocessing to 'spawn' methods
@@ -318,5 +332,4 @@ if __name__ == '__main__':
         logging.exception(traceback.format_exc())
         #LOG.pdqn_multi_agent_logger.exception(traceback.print_tb(sys.exc_info()[2]))
     finally:
-        tensorboard.close()
         kill_process()
