@@ -240,7 +240,7 @@ class CarlaConnector(object):
                 logger.info("Using single gpu to initialize carla server")
                 parameters = [SERVER_BINARY, 
                               "-windowed", 
-                              #"-prefernvidia",
+                              "-prefernvidia",
                               "-quality-level=Low"
                               f"-ResX={str(env_config['render_x_res'])}",
                               f"-ResY={str(env_config['render_y_res'])}",

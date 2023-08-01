@@ -306,12 +306,15 @@ class LocalPlanner(object):
                     #     next_waypoints, last_waypoint)
 
                     idx = None
+                    next_waypoint = None
                     for i, wp in enumerate(next_waypoints):
                         if wp.road_id in ROADS:
                             next_waypoint = wp
                             idx = i
+                    if next_waypoint is None:
+                        break
                     # road_option = road_options_list[idx]
-
+        
                 _waypoints_queue.append(next_waypoint)
             # delete an element from the left
             _waypoints_queue.popleft()
