@@ -70,6 +70,10 @@ class Scenarios(object):
             "car2": {
                 "start": -2.0,
                 "end": -1
+            },
+            "car3": {
+                "start": -3.0,
+                "end": -1
             }
         },
         "num_vehicles": 50,

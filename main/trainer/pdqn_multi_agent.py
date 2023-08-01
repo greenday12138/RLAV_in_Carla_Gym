@@ -42,7 +42,7 @@ AGENT_PARAM = {
     "minimal_size": 10000,
     "batch_size": 256,
     "per_flag": True,
-    "device": torch.device('cpu') ,
+    "device": torch.device('cuda') ,
     "sigma": 0.5,
     "sigma_steer": 0.3,
     "sigma_acc": 0.5,
