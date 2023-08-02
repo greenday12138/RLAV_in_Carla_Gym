@@ -18,7 +18,7 @@ from main.util.process import kill_process
 from main.util.utils import get_gpu_info, get_gpu_mem_info
 from macad_gym import LOG_PATH
 from macad_gym.viz.logger import LOG
-from macad_gym.core.utils.wrapper import (fill_action_param, recover_steer, Action, 
+from macad_gym.core.utils.wrapper import (fill_action_param, recover_steer, 
     SpeedState, Truncated)
 from algs.sac_multi_lane import SACContinuous
 
@@ -41,7 +41,7 @@ AGENT_PARAM = {
     "minimal_size": 10000,
     "batch_size": 256,
     "per_flag": True,
-    "device": torch.device('cuda') ,
+    "device": torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu'),
     "lr_actor": 0.0002,
     "lr_critic": 0.0002,
     "lr_alpha": 0.00002,
@@ -54,8 +54,8 @@ TRAIN = True
 UPDATE_FREQ = 100
 modify_change_steer=False
 base_name = f'origin_NOCA'
-MODEL_PATH = os.path.join(os.getcwd(), 'out', 'model_params', 'pdqn_ma_net_params.pth')
-SAVE_PATH = os.path.join(os.getcwd(), 'out', 'multi_agent', 'pdqn', 
+MODEL_PATH = os.path.join(os.getcwd(), 'out', 'model_params', 'sac_ma_net_params.pth')
+SAVE_PATH = os.path.join(os.getcwd(), 'out', 'multi_agent', 'sac', 
                          datetime.datetime.today().strftime('%Y-%m-%d_%H-%M'))
 if not os.path.exists(SAVE_PATH):
     os.makedirs(SAVE_PATH)
@@ -70,11 +70,10 @@ def main():
 
     for run in [base_name]:
         param = deepcopy(AGENT_PARAM)
-        worker = P_DQN(param["s_dim"], param["a_dim"], param["a_bound"], param["gamma"],
-                            param["tau"], param["sigma_steer"], param["sigma"], param["sigma_acc"], 
-                            param["theta"], param["epsilon"], param["buffer_size"], param["batch_size"], 
-                            param["lr_actor"], param["lr_critic"], param["clip_grad"], param["zero_index_gradients"],
-                            param["inverting_gradients"], param["per_flag"], param["device"])
+        worker = SACContinuous(param["s_dim"], param["a_dim"], param["a_bound"], param["gamma"],
+                               param["tau"], param["target_entropy"], param["buffer_size"],
+                               param["batch_size"], param["lr_alpha"], param["lr_actor"],
+                               param["lr_critic"], param["per_flag"], param["device"])
         if TRAIN and os.path.exists(MODEL_PATH):
             worker.load_net(MODEL_PATH, map_location=worker.device)
 
@@ -105,22 +104,15 @@ def main():
             for i in range(10):
                 with tqdm(total=TOTAL_EPISODE//10, desc="Iteration %d" % i) as pbar:
                     for i_episode in range(TOTAL_EPISODE//10):
-                        states,_ = env.reset()
-                        # if i_episode > 100 and reload_agent(worker):
-                        #     worker = P_DQN(param["s_dim"], param["a_dim"], param["a_bound"], param["gamma"],
-                        #                     param["tau"], param["sigma_steer"], param["sigma"], param["sigma_acc"], 
-                        #                     param["theta"], param["epsilon"], param["buffer_size"], param["batch_size"], 
-                        #                     param["lr_actor"], param["lr_critic"], param["clip_grad"], param["zero_index_gradients"],
-                        #                     param["inverting_gradients"], param["per_flag"], torch.device('cuda'))
+                        states, _ = env.reset()
                         done, truncated = False, False
-                        worker.reset_noise()
                         for actor_id in states.keys():
                             ttc[actor_id], efficiency[actor_id], comfort[actor_id], lcen[actor_id],\
                                 lane_change_reward[actor_id], total_reward[actor_id], avg_reward[actor_id] = \
                                 -1, -1, -1, -1, 0, -4, -4
                        
                         while not done and not truncated:
-                            action_dict, actions, action_params, all_action_params={}, {}, {}, {}
+                            actions = {}
                             if TRAIN and not agent_q.empty():
                                 lock.acquire()
                                 worker.load_net(os.path.join(SAVE_PATH, 'learner.pth'), map_location=worker.device)
@@ -132,11 +124,9 @@ def main():
                                     losses_episode.append(q_loss)
 
                             for actor_id in states.keys():
-                                actions[actor_id], action_params[actor_id], all_action_params[actor_id
-                                                        ] = worker.take_action(states[actor_id][1])
-                                action_dict[actor_id]={
-                                    "action_index": actions[actor_id], "action_param": action_params[actor_id]}
-                            next_states, rewards, dones, truncateds, infos = env.step(action_dict)
+                                actions[actor_id] = worker.take_action(states[actor_id][1])
+                                
+                            next_states, rewards, dones, truncateds, infos = env.step(actions)
                             for actor_id in next_states.keys():
                                 if infos[actor_id]["speed_state"] == str(SpeedState.RUNNING):
                                     total_reward[actor_id] = infos[actor_id]["total_reward"]
@@ -155,17 +145,11 @@ def main():
                                         deepcopy(truncateds[actor_id]!=Truncated.FALSE), deepcopy(infos[actor_id])
                                         
                                     throttle_brake = -info["control_info"]["brake"] if info["control_info"]["brake"] > 0 else info["control_info"]["throttle"]
-                                    if info['current_action']==str(Action.LANE_FOLLOW):
-                                        action=1
-                                    elif info['current_action']==str(Action.LANE_CHANGE_LEFT):
-                                        action=0
-                                    elif info['current_action']==str(Action.LANE_CHANGE_RIGHT):
-                                        action=2
-                                    saved_action_param = fill_action_param(action, info["control_info"]["steer"], throttle_brake,
-                                                                        all_action_params[actor_id], modify_change_steer)
-                                    LOG.pdqn_multi_agent_logger.debug(f"\nControl In Replay Buffer: {action}, {saved_action_param}")
+                                    action = [[info["control_info"]["steer"], throttle_brake]]
+                                    LOG.pdqn_multi_agent_logger.debug(
+                                        f"\nControl In Replay Buffer: actor_id: {actor_id} action: {action}")
 
-                                    traj_q.put((state, next_state, action, saved_action_param,
+                                    traj_q.put((state, next_state, action,
                                         reward, done, truncated, info ), block=True, timeout=None)
                                     
                                     LOG.pdqn_multi_agent_logger.debug(
@@ -182,9 +166,7 @@ def main():
                                         #f"waypoints:{next_state['right_waypoints']}, \n"
                                         f"hero_vehicle: {next_state['hero_vehicle']}\n"
                                         f"light info: {next_state['light']}\n"
-                                        f"action: {actions[actor_id]}, action_param: {action_params[actor_id]} \n"
-                                        f"all_action_param: {all_action_params[actor_id]},\n"
-                                        f"saved_action_param: {saved_action_param}\n"
+                                        f"network_action: {actions[actor_id]}, saved_actions: {action} \n"
                                         f"reward: {reward}, truncated: {truncated}, done: {done}, ")
         
                             done = dones["__all__"]
@@ -193,14 +175,7 @@ def main():
                             
                             #only record the first vehicle reward
                             if env.unwrapped._total_steps == env.unwrapped.pre_train_steps:
-                                worker.save_net(os.path.join(SAVE_PATH, 'pdqn_pre_trained.pth'))
- 
-                            if env.unwrapped._rl_control_steps > 10000 and param["sigma_acc"] > 0.01:
-                                param["sigma"] *= param["sigma_decay"]
-                                param["sigma_steer"] *= param["sigma_decay"]
-                                param["sigma_acc"] *= param["sigma_decay"]
-                                worker.set_sigma(param["sigma_steer"], param["sigma_acc"])
-                                LOG.pdqn_multi_agent_logger.info(f"Agent Sigma {param['sigma_steer']} {param['sigma_acc']}")
+                                worker.save_net(os.path.join(SAVE_PATH, 'isac_pre_trained.pth'))
                            
                         if done or truncated:
                             # restart the training
@@ -247,7 +222,7 @@ def main():
                         #     'score': '%.2f' % total_reward
                         # })
                         pbar.update(1)
-                        worker.save_net(os.path.join(SAVE_PATH, 'pdqn_final.pth'))
+                        worker.save_net(os.path.join(SAVE_PATH, 'isac_final.pth'))
 
                     # set new log file
                     #globals()["LOG.pdqn_multi_agent_logger"] = LOG.pdqn_multi_agent_logger(__name__, SAVE_PATH + f"/multi_agent_{i}.log", logging.DEBUG, logging.ERROR)
@@ -259,18 +234,17 @@ def main():
             env.close()
             [p.join() for p in process]
             episode_writer.close()
-            worker.save_net(os.path.join(SAVE_PATH, 'pdqn_final.pth'))
+            worker.save_net(os.path.join(SAVE_PATH, 'isac_final.pth'))
             logging.info('\nDone.')
 
 #Queue vesion multiprocess
 def learner_mp(lock:Lock, traj_q: Queue, agent_q:Queue, agent_param:dict):
     param = deepcopy(agent_param)
     param["device"] = torch.device('cuda')
-    learner = P_DQN(param["s_dim"], param["a_dim"], param["a_bound"], param["gamma"],
-                        param["tau"], param["sigma_steer"], param["sigma"], param["sigma_acc"], 
-                        param["theta"], param["epsilon"], param["buffer_size"], param["batch_size"], 
-                        param["lr_actor"], param["lr_critic"], param["clip_grad"], param["zero_index_gradients"],
-                        param["inverting_gradients"], param["per_flag"], param["device"])
+    learner = SACContinuous(param["s_dim"], param["a_dim"], param["a_bound"], param["gamma"],
+                            param["tau"], param["target_entropy"], param["buffer_size"],
+                            param["batch_size"], param["lr_alpha"], param["lr_actor"],
+                            param["lr_critic"], param["per_flag"], param["device"])
     #load pre-trained model
     if TRAIN and os.path.exists(MODEL_PATH):
         learner.load_net(MODEL_PATH, map_location=learner.device)
@@ -282,20 +256,19 @@ def learner_mp(lock:Lock, traj_q: Queue, agent_q:Queue, agent_param:dict):
         #reference: https://zhuanlan.zhihu.com/p/345353294, https://arxiv.org/abs/1711.00489
         k = max(learner.replay_buffer.size()// param["minimal_size"], 1)
         learner.batch_size = k * param["batch_size"]
-        #update_freq = min(k * UPDATE_FREQ, 1000)
-        for _ in range(k):
-            trajectory=traj_q.get(block=True,timeout=None)
-            state, next_state, action, saved_action_param, reward, done, truncated, info = \
-                trajectory[0], trajectory[1], trajectory[2], trajectory[3], trajectory[4], trajectory[5], \
-                trajectory[6], trajectory[7]
-
-            learner.store_transition(state, action, saved_action_param, reward, next_state,
-                                    truncated, done, info)       
-        if TRAIN and learner.replay_buffer.size()>=param["minimal_size"]:
-            q_loss = 5
+        update_freq = min(k * UPDATE_FREQ, 1000)
+        if traj_q.qsize() >= k:
             for _ in range(k):
-                q_loss = learner.learn()
-                update_count += 1
+                trajectory=traj_q.get(block=True,timeout=None)
+                state, next_state, action, reward, done, truncated, info = \
+                    trajectory[0], trajectory[1], trajectory[2], trajectory[3], \
+                    trajectory[4], trajectory[5], trajectory[6]
+
+                learner.store_transition(state, action, reward, next_state,
+                                        truncated, done, info)       
+        if TRAIN and learner.replay_buffer.size()>=param["minimal_size"]:
+            q_loss = learner.learn()
+            update_count += 1
             if not agent_q.full() and update_count//update_freq>0:
                 lock.acquire()
                 agent_q.put((deepcopy(learner.learn_time), deepcopy(q_loss)), block=True, timeout=None)

@@ -41,21 +41,29 @@ RETRIES_ON_ERROR = 2
 # Declare available environments with a brief description
 _AVAILABLE_ENVS = {
     'HomoNcomIndePOIntrxMASS3CTWN3-v0': {
-        "entry_point": "macad_gym.envs:HomoNcomIndePOIntrxMASS3CTWN3",
+        "entry_point": "macad_gym.settings:HomoNcomIndePOIntrxMASS3CTWN3",
         "description":
         "Homogeneous, Non-communicating, Independent, Partially-"
         "Observable Intersection Multi-Agent scenario with "
         "Stop-Sign, 3 Cars in Town3, version 0"
     },
     "HomoNcomIndePoHiwaySAFR2CTWN5-v0": {
-        "entry_point": "macad_gym.envs:HomoNcomIndePoHiwaySAFR2CTWN5",
+        "entry_point": "macad_gym.settings:HomoNcomIndePoHiwaySAFR2CTWN5",
         "description":
         "Homogeneous, Non-communicating, Independent, Partially-"
         "Observable Hiway Multi-Agent scenario with "
         "Traffic Lights and Fixed Route, 2 Cars in Town5, version 0"
     },
+    "PDQNHomoNcomIndePoHiwaySAFR2CTWN5-v0": {
+        "entry_point": "macad_gym.settings:PDQNHomoNcomIndePoHiwaySAFR2CTWN5",
+        "description":
+        "Homogeneous, Non-communicating, Independent, Partially-"
+        "Observable Hiway Multi-Agent scenario with "
+        "Traffic Lights and Fixed Route, 2 Cars in Town5, version 0 "
+        "Specialized for PDQN"
+    },
     'HeteNcomIndePOIntrxMATLS1B2C1PTWN3-v0': {
-        "entry_point": "macad_gym.envs:HeteNcomIndePOIntrxMATLS1B2C1PTWN3",
+        "entry_point": "macad_gym.settings:HeteNcomIndePOIntrxMATLS1B2C1PTWN3",
         "description":
         "Heterogeneous, Non-communicating, Independent,"
         "Partially-Observable Intersection Multi-Agent"

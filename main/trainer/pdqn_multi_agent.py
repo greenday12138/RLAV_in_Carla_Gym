@@ -69,7 +69,7 @@ if not os.path.exists(SAVE_PATH):
     os.makedirs(SAVE_PATH)
 
 def main():
-    env = gym.make("HomoNcomIndePoHiwaySAFR2CTWN5-v0")
+    env = gym.make("PDQNHomoNcomIndePoHiwaySAFR2CTWN5-v0")
     random.seed(0)
     torch.manual_seed(16)
 
@@ -291,8 +291,8 @@ def learner_mp(lock:Lock, traj_q: Queue, agent_q:Queue, agent_param:dict):
         #reference: https://zhuanlan.zhihu.com/p/345353294, https://arxiv.org/abs/1711.00489
         k = max(learner.replay_buffer.size()// param["minimal_size"], 1)
         learner.batch_size = k * param["batch_size"]
-        #update_freq = min(k * UPDATE_FREQ, 1000)
-        if traj_q.qsize() >= 16:
+        update_freq = min(k * UPDATE_FREQ, 1000)
+        if traj_q.qsize() >= k:
             for _ in range(k):
                 trajectory=traj_q.get(block=True,timeout=None)
                 state, next_state, action, saved_action_param, reward, done, truncated, info = \

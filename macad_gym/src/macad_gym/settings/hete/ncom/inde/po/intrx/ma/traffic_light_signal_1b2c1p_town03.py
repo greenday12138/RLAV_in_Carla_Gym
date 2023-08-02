@@ -1,14 +1,15 @@
 #!/usr/bin/env python
 import time
 
-from macad_gym.core.multi_env import MultiCarlaEnv
+from macad_gym.envs.multi_env import MultiCarlaEnv
 
 
-class StopSign3CarTown03(MultiCarlaEnv):
-    """A 4-way signalized intersection Multi-Agent Carla-Gym environment"""
+class TrafficLightSignal1B2C1PTown03(MultiCarlaEnv):
+    """A 4-way signalized intersection with 1 Bike, 2 Cars, 1 Pedestrian"""
+
     def __init__(self):
         self.configs = {
-            "scenarios": "SSUI3C_TOWN3",
+            "scenarios": "SUI1B2C1P_TOWN3",
             "env": {
                 "server_map": "/Game/Carla/Maps/Town03",
                 "render": True,
@@ -22,27 +23,28 @@ class StopSign3CarTown03(MultiCarlaEnv):
                 "verbose": False,
                 "use_depth_camera": False,
                 "send_measurements": False,
-                "enable_planner": True,
-                "spectator_loc": [140, 68, 9],
+                "enable_planner": False,
+                "spectator_loc": [70, -125, 9],
                 "sync_server": True,
                 "fixed_delta_seconds": 0.05,
             },
             "actors": {
                 "car1": {
                     "type": "vehicle_4W",
-                    "enable_planner": True,
+                    "enable_planner": False,
                     "convert_images_to_video": False,
                     "early_terminate_on_collision": True,
                     "reward_function": "corl2017",
-                    "scenarios": "SSUI3C_TOWN3_CAR1",
                     "manual_control": False,
-                    "auto_control": False,
+                    "auto_control": True,
                     "camera_type": "rgb",
                     "collision_sensor": "on",
                     "lane_sensor": "on",
                     "log_images": False,
                     "log_measurements": False,
                     "render": True,
+                    "render_x_res": 800,
+                    "render_y_res": 600,
                     "x_res": 168,
                     "y_res": 168,
                     "use_depth_camera": False,
@@ -50,31 +52,31 @@ class StopSign3CarTown03(MultiCarlaEnv):
                 },
                 "car2": {
                     "type": "vehicle_4W",
-                    "enable_planner": True,
+                    "enable_planner": False,
                     "convert_images_to_video": False,
                     "early_terminate_on_collision": True,
                     "reward_function": "corl2017",
-                    "scenarios": "SSUI3C_TOWN3_CAR2",
                     "manual_control": False,
-                    "auto_control": False,
+                    "auto_control": True,
                     "camera_type": "rgb",
                     "collision_sensor": "on",
                     "lane_sensor": "on",
                     "log_images": False,
                     "log_measurements": False,
                     "render": True,
+                    "render_x_res": 800,
+                    "render_y_res": 600,
                     "x_res": 168,
                     "y_res": 168,
                     "use_depth_camera": False,
                     "send_measurements": False,
                 },
-                "car3": {
-                    "type": "vehicle_4W",
-                    "enable_planner": True,
+                "pedestrian1": {
+                    "type": "pedestrian",
+                    "enable_planner": False,
                     "convert_images_to_video": False,
                     "early_terminate_on_collision": True,
                     "reward_function": "corl2017",
-                    "scenarios": "SSUI3C_TOWN3_CAR3",
                     "manual_control": False,
                     "auto_control": False,
                     "camera_type": "rgb",
@@ -83,6 +85,29 @@ class StopSign3CarTown03(MultiCarlaEnv):
                     "log_images": False,
                     "log_measurements": False,
                     "render": True,
+                    "render_x_res": 800,
+                    "render_y_res": 600,
+                    "x_res": 168,
+                    "y_res": 168,
+                    "use_depth_camera": False,
+                    "send_measurements": False,
+                },
+                "bike1": {
+                    "type": "vehicle_2W",
+                    "enable_planner": False,
+                    "convert_images_to_video": False,
+                    "early_terminate_on_collision": True,
+                    "reward_function": "corl2017",
+                    "manual_control": False,
+                    "auto_control": True,
+                    "camera_type": "rgb",
+                    "collision_sensor": "on",
+                    "lane_sensor": "on",
+                    "log_images": False,
+                    "log_measurements": False,
+                    "render": True,
+                    "render_x_res": 800,
+                    "render_y_res": 600,
                     "x_res": 168,
                     "y_res": 168,
                     "use_depth_camera": False,
@@ -90,11 +115,11 @@ class StopSign3CarTown03(MultiCarlaEnv):
                 },
             },
         }
-        super(StopSign3CarTown03, self).__init__(self.configs)
+        super(TrafficLightSignal1B2C1PTown03, self).__init__(self.configs)
 
 
 if __name__ == "__main__":
-    env = StopSign3CarTown03()
+    env = TrafficLightSignal1B2C1PTown03()
     configs = env.configs
     for ep in range(2):
         obs = env.reset()
@@ -121,9 +146,11 @@ if __name__ == "__main__":
             # action_dict = get_next_actions(info, env.discrete_actions)
             for actor_id in total_reward_dict.keys():
                 total_reward_dict[actor_id] += reward[actor_id]
-            print(":{}\n\t".join(["Step#", "rew", "ep_rew",
-                                  "done{}"]).format(i, reward,
-                                                    total_reward_dict, done))
+            print(
+                ":{}\n\t".join(["Step#", "rew", "ep_rew", "done{}"]).format(
+                    i, reward, total_reward_dict, done
+                )
+            )
 
             time.sleep(0.1)
 

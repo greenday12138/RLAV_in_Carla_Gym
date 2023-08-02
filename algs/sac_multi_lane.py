@@ -248,8 +248,7 @@ class SACContinuous:
         loss_2 = critic_2_loss.detach().cpu().numpy()
         return np.mean([loss_1, loss_2])
 
-    def store_transition(self, state, action, action_param, reward, next_state, truncated, done, info):  
-        # how to store the episodic data to buffer
+    def store_transition(self, state, action, reward, next_state, truncated, done, info):  # how to store the episodic data to buffer
         def _compress(state):
             # print('state: ', state)
             state_left_wps = np.array(state['left_waypoints'], dtype=np.float32).reshape((1, -1))
@@ -271,22 +270,9 @@ class SACContinuous:
         state=_compress(state)
         next_state=_compress(next_state)
 
-        # if reward_ttc < -0.1 or reward_eff < 3:
-        #     self.change_buffer.append((state, action, action_param, reward, next_state, truncated, done))
-        # if truncated:
-        #     self.change_buffer.append((state, action, action_param, reward, next_state, truncated, done))
-        if not self.per_flag:
-            if action == 0 or action == 2:
-                self.replay_buffer.add((state, action, action_param, reward, next_state, truncated, done),False)
-            self.replay_buffer.add((state, action, action_param, reward, next_state, truncated, done),True)
-        else:
-            self.replay_buffer.add((state, action, action_param, reward, next_state, truncated, done,info))
-        # print("their shapes", state, action, next_state, reward_list, truncated, done)
-        # state: [1, 28], action: [1, 2], next_state: [1, 28], reward_list = [1, 6], truncated = [1, 1], done = [1, 1]
-        # all: [1, 66]
+        self.replay_buffer.add((state, action, reward, next_state, truncated, done,info))
 
         return
-
     def save_net(self,file = None):
         state = {
             'actor': self.actor.state_dict(),

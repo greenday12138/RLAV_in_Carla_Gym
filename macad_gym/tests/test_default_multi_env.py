@@ -1,6 +1,6 @@
 """Unit tests for each method in MultiCarlaEnv"""
-from macad_gym.core.multi_env import MultiCarlaEnv
-from macad_gym.core.multi_env import DEFAULT_MULTIENV_CONFIG
+from macad_gym.gym_envs.multi_env import MultiCarlaEnv
+from macad_gym.gym_envs.multi_env import DEFAULT_MULTIENV_CONFIG
 import gym.spaces
 import pytest
 

@@ -4,7 +4,7 @@ __author__: Morphlng
 """
 
 import random
-from macad_gym.envs import MultiCarlaEnv
+from macad_gym.envs.multi_env import MultiCarlaEnv
 
 """
     This is a scenario extracted from Carla/scenario_runner (https://github.com/carla-simulator/scenario_runner/blob/master/srunner/scenarios/follow_leading_vehicle.py).
