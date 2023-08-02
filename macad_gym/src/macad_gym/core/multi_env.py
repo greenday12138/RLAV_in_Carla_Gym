@@ -722,7 +722,7 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
                                 #   'ignore_front_vehicle': random.choice([False,True]),
                                 #   'ignore_change_gap': random.choice([True, True, False]), 
                                   'lanechanging_fps': random.choice([40, 50, 60]),
-                                  'random_lane_change':False})
+                                  'random_lane_change':True})
                     self._speed_state[actor_id] = SpeedState.START
                 except RuntimeError as spawn_err:
                     del self._done_dict[actor_id]

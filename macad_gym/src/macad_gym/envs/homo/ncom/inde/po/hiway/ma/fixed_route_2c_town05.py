@@ -18,7 +18,7 @@ class FixedRoute2CarTown05(MultiCarlaEnv):
                 "modify_steer": True,
                 "penalty": 40,
                 "lane_penalty": 20,
-                "lane_change_reward": 25,
+                "lane_change_reward": 40,
             },
             "env": {
                 "server_map": "/Game/Carla/Maps/Town05_Opt",

@@ -20,7 +20,7 @@ from macad_gym import LOG_PATH
 from macad_gym.viz.logger import LOG
 from macad_gym.core.utils.wrapper import (fill_action_param, recover_steer, Action, 
     SpeedState, Truncated)
-from algs.pdqn import P_DQN
+from algs.sac_multi_lane import SACContinuous
 
 # neural network hyper parameters
 AGENT_PARAM = {
@@ -36,26 +36,18 @@ AGENT_PARAM = {
         'throttle': 1.0, 
         'brake': 1.0
     },
-    "acc3": True,
     "Kaiming_normal": False,
     "buffer_size": 160000,
     "minimal_size": 10000,
     "batch_size": 256,
     "per_flag": True,
     "device": torch.device('cuda') ,
-    "sigma": 0.5,
-    "sigma_steer": 0.3,
-    "sigma_acc": 0.5,
-    "sigma_decay": 0.9999,
-    "theta": 0.05,
     "lr_actor": 0.0002,
     "lr_critic": 0.0002,
+    "lr_alpha": 0.00002,
     "gamma": 0.9,   # q值更新系数
     "tau": 0.01,    # 软更新参数
-    "epsilon": 0.5, # epsilon-greedy
-    "clip_grad": 10,
-    "zero_index_gradients": True,
-    "inverting_gradients": True,
+    "target_entropy": -2 # reverse number of a_dim
 }
 TOTAL_EPISODE = 50000
 TRAIN = True
@@ -85,7 +77,6 @@ def main():
                             param["inverting_gradients"], param["per_flag"], param["device"])
         if TRAIN and os.path.exists(MODEL_PATH):
             worker.load_net(MODEL_PATH, map_location=worker.device)
-            #worker.set_sigma(0.01, 0.01)
 
         #multi-process training
         process=list()
@@ -292,18 +283,19 @@ def learner_mp(lock:Lock, traj_q: Queue, agent_q:Queue, agent_param:dict):
         k = max(learner.replay_buffer.size()// param["minimal_size"], 1)
         learner.batch_size = k * param["batch_size"]
         #update_freq = min(k * UPDATE_FREQ, 1000)
-        if traj_q.qsize() >= 16:
-            for _ in range(k):
-                trajectory=traj_q.get(block=True,timeout=None)
-                state, next_state, action, saved_action_param, reward, done, truncated, info = \
-                    trajectory[0], trajectory[1], trajectory[2], trajectory[3], trajectory[4], trajectory[5], \
-                    trajectory[6], trajectory[7]
+        for _ in range(k):
+            trajectory=traj_q.get(block=True,timeout=None)
+            state, next_state, action, saved_action_param, reward, done, truncated, info = \
+                trajectory[0], trajectory[1], trajectory[2], trajectory[3], trajectory[4], trajectory[5], \
+                trajectory[6], trajectory[7]
 
-                learner.store_transition(state, action, saved_action_param, reward, next_state,
-                                        truncated, done, info)       
+            learner.store_transition(state, action, saved_action_param, reward, next_state,
+                                    truncated, done, info)       
         if TRAIN and learner.replay_buffer.size()>=param["minimal_size"]:
-            q_loss = learner.learn()
-            update_count+=1
+            q_loss = 5
+            for _ in range(k):
+                q_loss = learner.learn()
+                update_count += 1
             if not agent_q.full() and update_count//update_freq>0:
                 lock.acquire()
                 agent_q.put((deepcopy(learner.learn_time), deepcopy(q_loss)), block=True, timeout=None)

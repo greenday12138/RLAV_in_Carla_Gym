@@ -354,7 +354,7 @@ class Basic_Agent(object):
             next_wp = 4
         if new_action == Action.LANE_CHANGE_LEFT:
             target_speed=50
-            self.target_waypoint = self.left_wps[next_wp+20-1]
+            self.target_waypoint = self.left_wps[next_wp+15-1]
             # print('left target waypoint: ', self.target_waypoint)
         elif new_action == Action.LANE_FOLLOW:
             target_speed=self._target_speed
@@ -362,7 +362,7 @@ class Basic_Agent(object):
             # print('center target waypoint: ', self.target_waypoint)
         elif new_action == Action.LANE_CHANGE_RIGHT:
             target_speed=50
-            self.target_waypoint = self.right_wps[next_wp+20-1]
+            self.target_waypoint = self.right_wps[next_wp+15-1]
             # print('right target waypoint: ', self.target_waypoint)
 
         # print("current location and target location: ", veh_location, self.target_waypoint.transform.location)

@@ -153,8 +153,9 @@ class QValueNet_multi(torch.nn.Module):
 
 
 class DDPG:
-    def __init__(self, state_dim, action_dim, action_bound, gamma, tau, sigma, theta, epsilon,
-                 buffer_size, batch_size, actor_lr, critic_lr,per_flag, device) -> None:
+    def __init__(self, state_dim, action_dim, action_bound, gamma, tau, 
+                 sigma, theta, epsilon, buffer_size, batch_size, 
+                 actor_lr, critic_lr,per_flag, device) -> None:
         self.learn_time = 0
         self.replace_a = 0
         self.replace_c = 0
