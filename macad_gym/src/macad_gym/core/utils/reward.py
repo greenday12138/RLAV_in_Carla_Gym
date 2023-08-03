@@ -150,8 +150,7 @@ class SACReward(Reward):
         self.efficiency_reward = self._efficiency_reward(yaw_forward)
         self.comfort_reward, yaw_change = self._comfort_reward(yaw_forward)
         Lcen, self.lane_center_reward = self._lane_center_reward(lane_center)
-        #self.lane_change_reward = self._lane_change_reward()
-        self.lane_change_reward = 0
+        self.lane_change_reward = self._lane_change_reward()
         self.reward = self.ttc_reward + self.lane_center_reward + self.lane_change_reward + \
             self.efficiency_reward + self.comfort_reward
         
@@ -290,11 +289,11 @@ class SACReward(Reward):
         last_lane, current_lane = self.curr["last_lane"], self.curr["current_lane"]
         LOG.reward_logger.debug(f"distance_to_front_vehicles:{distance_to_front_vehicles}, distance_to_rear_vehicles:{distance_to_rear_vehicles}")
         # still the distances of the last time step
-        reward = 0
-        if self.curr["current_action"] == str(Action.LANE_FOLLOW):
-            # if change lane in lane following mode, we set this reward=0, but will be truncated
-            return reward
-        if current_lane - last_lane == -1:
+        if current_lane - last_lane == 0:
+            reward = 0
+            ttc, rear_ttc_reward = self._ttc_reward(self.state["vehs"].center_rear_veh)
+            LOG.reward_logger.debug(f"lane_change_reward:{reward}, rear_ttc_reward:{rear_ttc_reward}")
+        elif current_lane - last_lane == -1:
             # change right
             self.calculate_impact = 1
             center_front_dis = distance_to_front_vehicles[0]
