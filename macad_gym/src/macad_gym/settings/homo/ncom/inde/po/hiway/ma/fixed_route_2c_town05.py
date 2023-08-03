@@ -24,8 +24,8 @@ class FixedRoute2CarTown05(MultiCarlaEnv):
                 "render": False,
                 "render_x_res": 2000,
                 "render_y_res": 1500,
-                "x_res": 500,
-                "y_res": 500,
+                "x_res": 800,
+                "y_res": 800,
                 "framestack": 1,
                 "discrete_actions": False,
                 "squash_action_logits": False,
@@ -43,7 +43,7 @@ class FixedRoute2CarTown05(MultiCarlaEnv):
                 #Distance for searching traffic light in front of ego vehicle, unit -- meters, attention: this value is tricky
                 "traffic_light_proximity": 50.0,  
                 #Min distance between two vehicles, unit -- meters
-                "min_distance": 7.0,
+                "min_distance": 10.0,
                 #Activate hybrid mode for Traffic Manager
                 "hybrid": True,
                 "ignore_traffic_light": False,
@@ -71,8 +71,8 @@ class FixedRoute2CarTown05(MultiCarlaEnv):
                     "log_images": False,
                     "log_measurements": True,
                     "render": True,
-                    "x_res": 500,
-                    "y_res": 500,
+                    "x_res": 800,
+                    "y_res": 800,
                     "use_depth_camera": False,
                     "send_measurements": True,
                     #Speed limit for hero vehicle, km/h
@@ -104,8 +104,8 @@ class FixedRoute2CarTown05(MultiCarlaEnv):
                     "log_images": False,
                     "log_measurements": True,
                     "render": True,
-                    "x_res": 500,
-                    "y_res": 500,
+                    "x_res": 800,
+                    "y_res": 800,
                     "use_depth_camera": False,
                     "send_measurements": True,
                     #Speed limit for hero vehicle, km/h
@@ -167,7 +167,7 @@ class PDQNFixedRoute2CarTown05(PDQNMultiCarlaEnv):
                 #Distance for searching traffic light in front of ego vehicle, unit -- meters, attention: this value is tricky
                 "traffic_light_proximity": 50.0,  
                 #Min distance between two vehicles, unit -- meters
-                "min_distance": 7.0,
+                "min_distance": 10.0,
                 #Activate hybrid mode for Traffic Manager
                 "hybrid": True,
                 "ignore_traffic_light": False,

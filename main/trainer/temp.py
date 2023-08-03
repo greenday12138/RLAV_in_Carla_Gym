@@ -81,11 +81,7 @@ if __name__=='__main__':
     # # 画图
     # sns.lineplot(data=df, x="Step", y="Value")
     # plt.show()
-
-    gpu_info, gpu_name = get_gpu_info()
-
-    print(gpu_name)
-    print(gpu_info)
-    gpu_mem_total, gpu_mem_used, gpu_mem_free = get_gpu_mem_info(gpu_id=0)
-    print(r'当前显卡显存使用情况：总共 {} MB， 已经使用 {} MB， 剩余 {} MB'
-          .format(gpu_mem_total, gpu_mem_used, gpu_mem_free))
+    b = torch.tensor([[1], [2]], dtype=torch.float32)
+    a = torch.tensor([[1, 2], [3, 4]], dtype=torch.float32)
+    print(a.sum(-1, keepdim=False))
+    print(b.sum(-1, keepdim=False))

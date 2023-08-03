@@ -240,7 +240,6 @@ def main():
 #Queue vesion multiprocess
 def learner_mp(lock:Lock, traj_q: Queue, agent_q:Queue, agent_param:dict):
     param = deepcopy(agent_param)
-    param["device"] = torch.device('cuda')
     learner = SACContinuous(param["s_dim"], param["a_dim"], param["a_bound"], param["gamma"],
                             param["tau"], param["target_entropy"], param["buffer_size"],
                             param["batch_size"], param["lr_alpha"], param["lr_actor"],

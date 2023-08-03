@@ -81,6 +81,7 @@ class PolicyNetContinuous(torch.nn.Module):
         action = torch.tanh(normal_sample)
         # 计算tanh_normal分布的对数概率密度
         log_prob = log_prob - torch.log(1 - torch.tanh(action).pow(2) + 1e-7)
+        log_prob = log_prob.sum(-1, keepdim=True)
         return action, log_prob
 
 
@@ -107,7 +108,7 @@ class QValueNetContinuous(torch.nn.Module):
         ego_enc = self.ego_encoder(ego_info)
         action_enc = self.action_encoder(action)
         state_ = torch.cat((left_enc, center_enc, right_enc, ego_enc, action_enc), dim=1)
-        hidden = F.relu(self.fc1(state_))
+        hidden = F.relu(self.fc(state_))
         return self.fc_out(hidden)
     
 

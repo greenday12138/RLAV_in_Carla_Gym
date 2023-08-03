@@ -624,7 +624,7 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
         loc = carla.Location(
             x=self._start_pos[actor_id][0],
             y=self._start_pos[actor_id][1],
-            z=self._start_pos[actor_id][2]+1,
+            z=self._start_pos[actor_id][2]+0.1,
         )
         rot = (
             self.map.get_waypoint(loc, project_to_road=True).transform.rotation)
@@ -1196,10 +1196,11 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
         config = self._actor_configs[actor_id]
         state = self._read_observation(actor_id)
         py_measurements = self._cur_measurement[actor_id]
-        if self.last_light_state.get(actor_id, None) == carla.TrafficLightState.Red and \
-                self._state["lights"][actor_id] is not None and self.last_light_state[
-                actor_id] != self._state["lights"][actor_id].state:
-            #light state change during steps, from red to green 
+        if (self.last_light_state.get(actor_id, None) == carla.TrafficLightState.Red and \
+                self._state["lights"][actor_id] is not None and 
+                self.last_light_state[actor_id] != self._state["lights"][actor_id].state
+                ) or self._state["vehs"][actor_id].center_front_veh is not None:
+            #light state change during steps, from red to green or have front vehicle obstacle
             self._vel_buffer[actor_id].clear()
 
         # Compute truncated
@@ -1435,18 +1436,18 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
                 self._speed_state[actor_id] = SpeedState.STOP
                 self._collisions[actor_id].sensor.stop()
                 self._lane_invasions[actor_id].sensor.stop()
-                hero_autopilot(self._actors[actor_id], self._traffic_manager, self._actor_configs[actor_id],
-                           self._env_config, False)
                 control = None
             elif not self._actor_configs[actor_id]["auto_control"]:
                 if self._rl_switch:
                     # under Rl control
                     control = cont
                 else:
-                    # PID in control
+                    # traffic manager in control
                     control = None
         elif self._speed_state[actor_id] == SpeedState.STOP:
             #Hero vehicle reaches destination, properly stop hero vehicle
+            if not self._rl_switch:
+                self._traffic_manager.vehicle_percentage_speed_difference(self._actors[actor_id], 100)
             control = None
         else:
             LOG.multi_env_logger.error('CODE LOGIC ERROR')
@@ -1477,8 +1478,8 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
                 if len(self._vel_buffer[actor_id])==self._vel_buffer[actor_id].maxlen:
                     avg_vel=0
                     for vel in self._vel_buffer[actor_id]:
-                        avg_vel+=vel/self._vel_buffer[actor_id].maxlen
-                    if avg_vel*3.6<self._actor_configs[actor_id]["speed_min"]:
+                        avg_vel += abs(vel)/self._vel_buffer[actor_id].maxlen
+                    if avg_vel*3.6 < self._actor_configs[actor_id]["speed_min"]:
                         LOG.multi_env_logger.warn(actor_id + ' vehicle speed too low')
                         return Truncated.SPEED_LOW
             

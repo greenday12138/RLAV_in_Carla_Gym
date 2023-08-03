@@ -623,7 +623,7 @@ class PDQNMultiCarlaEnv(*MultiAgentEnvBases):
         loc = carla.Location(
             x=self._start_pos[actor_id][0],
             y=self._start_pos[actor_id][1],
-            z=self._start_pos[actor_id][2]+1,
+            z=self._start_pos[actor_id][2]+0.1,
         )
         rot = (
             self.map.get_waypoint(loc, project_to_road=True).transform.rotation)
@@ -1200,10 +1200,11 @@ class PDQNMultiCarlaEnv(*MultiAgentEnvBases):
         config = self._actor_configs[actor_id]
         state = self._read_observation(actor_id)
         py_measurements = self._cur_measurement[actor_id]
-        if self.last_light_state.get(actor_id, None) == carla.TrafficLightState.Red and \
-                self._state["lights"][actor_id] is not None and self.last_light_state[
-                actor_id] != self._state["lights"][actor_id].state:
-            #light state change during steps, from red to green 
+        if (self.last_light_state.get(actor_id, None) == carla.TrafficLightState.Red and \
+                self._state["lights"][actor_id] is not None and 
+                self.last_light_state[actor_id] != self._state["lights"][actor_id].state
+                ) or self._state["vehs"][actor_id].center_front_veh is not None:
+            #light state change during steps, from red to green or have front vehicle obstacle
             self._vel_buffer[actor_id].clear()
 
         # Compute truncated
@@ -1553,11 +1554,11 @@ class PDQNMultiCarlaEnv(*MultiAgentEnvBases):
         if self._speed_state[actor_id] not in [SpeedState.START, SpeedState.STOP] \
                     and not self._state["vehs"][actor_id].center_front_veh:
             if not self._state["lights"][actor_id] or self._state["lights"][actor_id].state!=carla.TrafficLightState.Red:
-                if len(self._vel_buffer[actor_id])==self._vel_buffer[actor_id].maxlen:
+                if len(self._vel_buffer[actor_id]) == self._vel_buffer[actor_id].maxlen:
                     avg_vel=0
                     for vel in self._vel_buffer[actor_id]:
-                        avg_vel+=vel/self._vel_buffer[actor_id].maxlen
-                    if avg_vel*3.6<self._actor_configs[actor_id]["speed_min"]:
+                        avg_vel+=abs(vel) / self._vel_buffer[actor_id].maxlen
+                    if avg_vel*3.6 < self._actor_configs[actor_id]["speed_min"]:
                         LOG.multi_env_logger.warn(actor_id + ' vehicle speed too low')
                         return Truncated.SPEED_LOW
             

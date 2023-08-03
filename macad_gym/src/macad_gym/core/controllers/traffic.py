@@ -10,7 +10,7 @@ def hero_autopilot(actor, traffic_manager, actor_config, env_config,setting=True
     # Use traffic manager to control hero vehicle
     actor.set_autopilot(setting, traffic_manager.get_port())
     if setting:
-        traffic_manager.distance_to_leading_vehicle(actor, env_config['min_distance'])
+        traffic_manager.distance_to_leading_vehicle(actor, 20)
         if env_config['ignore_traffic_light']:
             traffic_manager.ignore_lights_percentage(actor, 100)
             traffic_manager.ignore_walkers_percentage(actor, 100)
@@ -19,8 +19,8 @@ def hero_autopilot(actor, traffic_manager, actor_config, env_config,setting=True
         traffic_manager.vehicle_percentage_speed_difference(actor, 
                                                 (30 - actor_config['speed_limit']) / 30 * 100)
         traffic_manager.auto_lane_change(actor, True)
-        traffic_manager.random_left_lanechange_percentage(actor, 0)
-        traffic_manager.random_right_lanechange_percentage(actor, 0)
+        traffic_manager.random_left_lanechange_percentage(actor, 50)
+        traffic_manager.random_right_lanechange_percentage(actor, 50)
 
         # traffic_manager.set_desired_speed(actor, 72)
         # ego_wp=map.get_waypoint(actor.get_location())
@@ -35,12 +35,10 @@ def hero_autopilot(actor, traffic_manager, actor_config, env_config,setting=True
 
 def apply_traffic(world, traffic_manager, env_config, num_vehicles, num_pedestrians, safe=False, route_points=None):
     # set traffic manager
-    #traffic_manager.global_percentage_speed_difference(30.0)
-    traffic_manager.set_global_distance_to_leading_vehicle(env_config["min_distance"])
     traffic_manager.set_synchronous_mode(env_config["sync_server"])
     if env_config["hybrid"] is True:
         traffic_manager.set_hybrid_physics_mode(True)
-        traffic_manager.set_hybrid_physics_radius(200)
+        traffic_manager.set_hybrid_physics_radius(500)
         traffic_manager.set_respawn_dormant_vehicles(True)
         #To enable respawning of dormant vehicles within 25 and 700 meters of the hero vehicle
         traffic_manager.set_boundaries_respawn_dormant_vehicles(200, 2000)
@@ -93,6 +91,7 @@ def apply_traffic(world, traffic_manager, env_config, num_vehicles, num_pedestri
             vehicle.set_autopilot(True, traffic_manager.get_port())
             vehicles_list.append(vehicle)
             if route_points is not None:
+                traffic_manager.distance_to_leading_vehicle(vehicle, env_config["min_distance"])
                 traffic_manager.set_route(vehicle,
                                 ['Straight', 'Straight', 'Straight', 'Straight', 'Straight', 'Straight', 'Straight', 'Straight', 'Straight', 'Straight'])
                 traffic_manager.update_vehicle_lights(vehicle, True)
