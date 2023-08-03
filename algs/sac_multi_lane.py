@@ -15,7 +15,7 @@ class lane_wise_cross_attention_encoder(torch.nn.Module):
         self.lane_encoder = nn.Linear(state_dim['waypoints'], self.hidden_size)
         self.veh_encoder = nn.Linear(state_dim['companion_vehicle'] * 2, self.hidden_size)
         self.light_encoder = nn.Linear(state_dim['light'], self.hidden_size)
-        self.ego_encoder = nn.Linear(state_dim['ego_vehicle'], self.hidden_size)
+        self.ego_encoder = nn.Linear(state_dim['hero_vehicle'], self.hidden_size)
         self.w = nn.Linear(self.hidden_size, self.hidden_size)
         self.ego_a = nn.Linear(self.hidden_size, 1)
         self.ego_o = nn.Linear(self.hidden_size, 1)
@@ -55,7 +55,7 @@ class PolicyNetContinuous(torch.nn.Module):
         self.left_encoder = lane_wise_cross_attention_encoder(self.state_dim, 64)
         self.center_encoder = lane_wise_cross_attention_encoder(self.state_dim, 64)
         self.right_encoder = lane_wise_cross_attention_encoder(self.state_dim, 64)
-        self.ego_encoder = nn.Linear(self.state_dim['ego_vehicle'], 64)
+        self.ego_encoder = nn.Linear(self.state_dim['hero_vehicle'], 64)
         self.fc1 = torch.nn.Linear(256, 256)
         self.fc_mu = torch.nn.Linear(256, self.action_param_dim)
         self.fc_std = torch.nn.Linear(256, self.action_param_dim)
@@ -85,19 +85,18 @@ class PolicyNetContinuous(torch.nn.Module):
 
 
 class QValueNetContinuous(torch.nn.Module):
-    def __init__(self, state_dim, action_param_dim, num_actions):
+    def __init__(self, state_dim, action_param_dim):
         # parameter state_dim here is a dict
         super(QValueNetContinuous, self).__init__()
         self.state_dim = state_dim
         self.action_param_dim = action_param_dim
-        self.num_actions = num_actions
         self.left_encoder = lane_wise_cross_attention_encoder(self.state_dim, 64)
         self.center_encoder = lane_wise_cross_attention_encoder(self.state_dim, 64)
         self.right_encoder = lane_wise_cross_attention_encoder(self.state_dim, 64)
-        self.ego_encoder = nn.Linear(self.state_dim['ego_vehicle'], 32)
+        self.ego_encoder = nn.Linear(self.state_dim['hero_vehicle'], 32)
         self.action_encoder = nn.Linear(self.action_param_dim, 32)
         self.fc = nn.Linear(256, 256)
-        self.fc_out = torch.nn.Linear(256, self.num_actions)
+        self.fc_out = torch.nn.Linear(256, 1)
 
     def forward(self, state, action):
         one_state_dim = self.state_dim['waypoints'] + self.state_dim['companion_vehicle'] * 2 + self.state_dim['light']
@@ -136,10 +135,10 @@ class SACContinuous:
             self.replay_buffer = ReplayBuffer(buffer_size)
             self.loss = nn.MSELoss()
         self.actor = PolicyNetContinuous(self.s_dim, self.a_dim, self.a_bound).to(device)
-        self.critic_1 = QValueNetContinuous(self.s_dim, self.a_dim, self.a_bound).to(device)  # 第一个Q网络
-        self.critic_2 = QValueNetContinuous(self.s_dim, self.a_dim, self.a_bound).to(device)  # 第二个Q网络
-        self.target_critic_1 = QValueNetContinuous(self.s_dim, self.a_dim, self.a_bound).to(device)  # 第一个目标Q网络
-        self.target_critic_2 = QValueNetContinuous(self.s_dim, self.a_dim, self.a_bound).to(device)  # 第二个目标Q网络
+        self.critic_1 = QValueNetContinuous(self.s_dim, self.a_dim).to(device)  # 第一个Q网络
+        self.critic_2 = QValueNetContinuous(self.s_dim, self.a_dim).to(device)  # 第二个Q网络
+        self.target_critic_1 = QValueNetContinuous(self.s_dim, self.a_dim).to(device)  # 第一个目标Q网络
+        self.target_critic_2 = QValueNetContinuous(self.s_dim, self.a_dim).to(device)  # 第二个目标Q网络
         # 令目标Q网络的初始参数和Q网络一样
         self.target_critic_1.load_state_dict(self.critic_1.state_dict())
         self.target_critic_2.load_state_dict(self.critic_2.state_dict())
@@ -164,7 +163,7 @@ class SACContinuous:
         state_veh_rear = torch.tensor(state['vehicle_info'][4], dtype=torch.float32).view(1, -1).to(self.device)
         state_veh_right_rear = torch.tensor(state['vehicle_info'][5], dtype=torch.float32).view(1, -1).to(self.device)
         state_light = torch.tensor(state['light'], dtype=torch.float32).view(1, -1).to(self.device)
-        state_ev = torch.tensor(state['ego_vehicle'],dtype=torch.float32).view(1,-1).to(self.device)
+        state_ev = torch.tensor(state['hero_vehicle'],dtype=torch.float32).view(1,-1).to(self.device)
         state_ = torch.cat((state_left_wps, state_veh_left_front, state_veh_left_rear, state_light,
                             state_center_wps, state_veh_front, state_veh_rear, state_light,
                             state_right_wps, state_veh_right_front, state_veh_right_rear, state_light, state_ev), dim=1)

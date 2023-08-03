@@ -1089,7 +1089,7 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
         """
         if self._discrete_actions:
             action = DISCRETE_ACTIONS[int(action)]
-        assert len(action) == 2, "Invalid action {}".format(action)
+        assert len(action[0]) == 2, "Invalid action {}".format(action)
         config = self._actor_configs[actor_id]
         if self._squash_action_logits:
             # forward = 2 * float(sigmoid(action_param[0]) - 0.5)
@@ -1099,7 +1099,7 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
             pass
         else:
             steer = action[0][0]
-            if action["action_param"][0][1] >= 0:
+            if action[0][1] >= 0:
                 brake = 0
                 throttle = np.clip(action[0][1], 0, config["throttle_bound"])
             else:
@@ -1158,15 +1158,15 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
             elif "vehicle" in agent_type:
                 cont = self._speed_switch(actor_id, control)
                 if cont is not None:
-                    self._actors[actor_id].apply_control(
-                        carla.VehicleControl(
-                            throttle=cont.throttle,
-                            steer=cont.steer,
-                            brake=cont.brake,
+                    self._actors[actor_id].apply_control(carla.VehicleControl(
+                            throttle=float(cont.throttle),
+                            steer=float(cont.steer),
+                            brake=float(cont.brake),
                             hand_brake=cont.hand_brake,
                             reverse=cont.reverse,
-                        )
-                    )
+                            manual_gear_shift = cont.manual_gear_shift,
+                            gear = int(cont.gear)
+                        ))
                     control = cont
         
         return {'steer':control.steer, 'throttle': control.throttle, 'brake': control.brake, 
@@ -1267,8 +1267,7 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
                         "a",
                     )
                 except Exception as e:
-                    LOG.multi_env_logger.error(f"File Open Error: {os.path.join(LOG.log_dir,
-                        'measurements_{}_{}.json'.format(actor_id, self._num_episodes[actor_id]))}")
+                    LOG.multi_env_logger.error(f"File Open Error: {os.path.join(LOG.log_dir, 'measurements_{}_{}.json'.format(actor_id, self._num_episodes[actor_id]))}")
                     raise e
                 self._measurements_file_dict[actor_id].write("[\n")
             self._measurements_file_dict[actor_id].write(json.dumps(py_measurements, indent=4))
@@ -1422,9 +1421,9 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
                                 self._actor_configs[actor_id], self._env_config, True)
                     control = None
                 else:
-                    hero_autopilot(self._actors[actor_id], self._traffic_manager, 
-                                self._actor_configs[actor_id], self._env_config, False)
                     if self._rl_switch:
+                        hero_autopilot(self._actors[actor_id], self._traffic_manager, 
+                                self._actor_configs[actor_id], self._env_config, False)
                         # RL in control       
                         control = cont
                     else:

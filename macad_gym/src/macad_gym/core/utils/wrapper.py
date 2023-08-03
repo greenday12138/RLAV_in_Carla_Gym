@@ -400,7 +400,7 @@ class Action(Enum):
 
 class ControlInfo(object):
     """Wrapper for vehicle(model3) control info"""
-    def __init__(self,throttle=0.0,brake=0.0,steer=0.0,gear=1, reverse=False, 
+    def __init__(self,throttle=0.0,brake=0.0,steer=0.0,gear=0, reverse=False, 
                  hand_brake=False, manual_gear_shift=False) -> None:
         self.throttle=throttle
         self.steer=steer

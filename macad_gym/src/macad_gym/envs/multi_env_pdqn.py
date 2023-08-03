@@ -1162,11 +1162,13 @@ class PDQNMultiCarlaEnv(*MultiAgentEnvBases):
                 if cont is not None:
                     self._actors[actor_id].apply_control(
                         carla.VehicleControl(
-                            throttle=cont.throttle,
-                            steer=cont.steer,
-                            brake=cont.brake,
+                            throttle=float(cont.throttle),
+                            steer=float(cont.steer),
+                            brake=float(cont.brake),
                             hand_brake=cont.hand_brake,
                             reverse=cont.reverse,
+                            manual_gear_shift = cont.manual_gear_shift,
+                            gear = int(cont.gear)
                         )
                     )
                     control = cont
