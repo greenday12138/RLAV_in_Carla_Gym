@@ -37,20 +37,20 @@ from macad_gym.core.utils.misc import (remove_unnecessary_objects, sigmoid, get_
     get_speed, preprocess_image)
 from macad_gym.core.utils.wrapper import (COMMANDS_ENUM, COMMAND_ORDINAL, ROAD_OPTION_TO_COMMANDS_MAPPING, 
     DISTANCE_TO_GOAL_THRESHOLD, ORIENTATION_TO_GOAL_THRESHOLD, GROUND_Z, DISCRETE_ACTIONS,
-    WEATHERS, get_next_actions, DEFAULT_MULTIENV_CONFIG, print_measurements,  json_dumper, process_steer,
+    WEATHERS, get_next_actions, DEFAULT_MULTIENV_CONFIG, print_measurements,
     Truncated, Action, SpeedState, ControlInfo, CarlaConnector)
 
 # from macad_gym.core.sensors.utils import get_transform_from_nearest_way_point
-from macad_gym.core.utils.reward import Reward, PDQNReward
+from macad_gym.core.utils.reward import Reward, PDQNReward, SACReward
 from macad_gym.core.sensors.hud import HUD
 from macad_gym.viz.render import Render
 from macad_gym.core.scenarios import Scenarios
 
 # The following imports require carla to be imported already.
 from macad_gym.core.sensors.camera_manager import CameraManager, CAMERA_TYPES
-from macad_gym.core.sensors.derived_sensors import LaneInvasionSensor
-from macad_gym.core.sensors.derived_sensors import CollisionSensor
+from macad_gym.core.sensors.derived_sensors import LaneInvasionSensor, CollisionSensor
 from macad_gym.core.controllers.keyboard_control import KeyboardControl
+from macad_gym.carla.agents.behavior_agent import BehaviorAgent
 from macad_gym.carla.PythonAPI.agents.navigation.global_route_planner_dao import (  # noqa: E501
     GlobalRoutePlannerDAO)
 from macad_gym.core.controllers.route_planner import RoutePlanner
@@ -131,6 +131,8 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
         self._rl_configs = configs["rl_parameters"]
         if self._env_config["reward_policy"] == "PDQN":
             self._reward_policy = PDQNReward(configs)
+        elif self._env_config["reward_policy"] == "SAC":
+            self._reward_policy = SACReward(configs)
         else:
             self._reward_policy = Reward(configs)
 
@@ -519,8 +521,6 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
             #update prev step info
             current_lane=get_lane_center(self.map, self._actors[actor_id].get_location()).lane_id
             self.last_lane[actor_id] = self.current_lane[actor_id] = current_lane
-            self.last_action[actor_id] = self.current_action[actor_id] = Action.LANE_FOLLOW
-            self.last_target_lane[actor_id] = self.current_target_lane[actor_id] = current_lane
             self.last_light_state[actor_id] = None
             self.last_acc[actor_id] = 0
             self.last_yaw[actor_id] = carla.Vector3D()
@@ -1087,10 +1087,10 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
         Returns
             control info (dict)
         """
-        # if self._discrete_actions:
-        #     action = DISCRETE_ACTIONS[int(action)]
-        config = self._actor_configs[actor_id]
+        if self._discrete_actions:
+            action = DISCRETE_ACTIONS[int(action)]
         assert len(action) == 2, "Invalid action {}".format(action)
+        config = self._actor_configs[actor_id]
         if self._squash_action_logits:
             # forward = 2 * float(sigmoid(action_param[0]) - 0.5)
             # throttle = float(np.clip(forward, 0, 1))
@@ -1098,16 +1098,13 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
             # steer = 2 * float(sigmoid(action_param[1]) - 0.5)
             pass
         else:
-            if not self._rl_configs["modify_steer"]:
-                steer = np.clip(action["action_param"][0][0], -config["steer_bound"], config["steer_bound"])
-            else:
-                steer = float(process_steer(action["action_index"], action["action_param"][0][0]))
+            steer = action[0][0]
             if action["action_param"][0][1] >= 0:
                 brake = 0
-                throttle = np.clip(action["action_param"][0][1], 0, config["throttle_bound"])
+                throttle = np.clip(action[0][1], 0, config["throttle_bound"])
             else:
                 throttle = 0
-                brake = np.clip(abs(action["action_param"][0][1]), 0, config["brake_bound"])
+                brake = np.clip(abs(action[0][1]), 0, config["brake_bound"])
         control = ControlInfo(throttle=throttle, brake=brake, steer=steer)
 
         if config["manual_control"]:
@@ -1159,7 +1156,7 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
             # TODO: Change this if different vehicle types (Eg.:vehicle_4W,
             #  vehicle_2W, etc) have different control APIs
             elif "vehicle" in agent_type:
-                cont = self._speed_switch(actor_id, action["action_index"], control)
+                cont = self._speed_switch(actor_id, control)
                 if cont is not None:
                     self._actors[actor_id].apply_control(
                         carla.VehicleControl(
@@ -1222,7 +1219,7 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
 
         # Compute reward
         flag = config["reward_function"]
-        if isinstance( self._reward_policy, PDQNReward):
+        if isinstance(self._reward_policy, Reward):
             self._reward_policy.set_state(
                 self._actors[actor_id], 
                 {
@@ -1250,9 +1247,7 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
         a_3d=self._actors[actor_id].get_acceleration()
         self.last_acc[actor_id],a_t=get_projection(a_3d,yaw_forward)
         self.last_yaw[actor_id] = self._actors[actor_id].get_transform().get_forward_vector()
-        self.last_action[actor_id]=self.current_action[actor_id]
         self.last_lane[actor_id]=self.current_lane[actor_id]=lane_center.lane_id
-        self.last_target_lane[actor_id]=self.current_target_lane[actor_id]
         self._prev_measurement[actor_id] = self._cur_measurement[actor_id]
         self._previous_rewards[actor_id] = reward
         if self._state["lights"][actor_id]:
@@ -1272,7 +1267,8 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
                         "a",
                     )
                 except Exception as e:
-                    LOG.multi_env_logger.error(f"File Open Error: {os.path.join(LOG.log_dir,'measurements_{}_{}.json'.format(actor_id, self._num_episodes[actor_id]))}")
+                    LOG.multi_env_logger.error(f"File Open Error: {os.path.join(LOG.log_dir,
+                        'measurements_{}_{}.json'.format(actor_id, self._num_episodes[actor_id]))}")
                     raise e
                 self._measurements_file_dict[actor_id].write("[\n")
             self._measurements_file_dict[actor_id].write(json.dumps(py_measurements, indent=4))
@@ -1400,10 +1396,6 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
             },
             "last_lane": self.last_lane[actor_id],
             "current_lane": self.current_lane[actor_id],
-            "last_action": str(self.last_action[actor_id]),
-            "current_action": str(self.current_action[actor_id]),
-            "last_traget_lane": self.last_target_lane[actor_id],
-            "current_target_lane": self.current_target_lane[actor_id],
             "last_light_state": self.last_light_state[actor_id],
             "velocity": measurement["velocity"],
             "current_acc": measurement["current_acc"],
@@ -1415,7 +1407,7 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
 
         return state_np
         
-    def _speed_switch(self, actor_id, action_index, cont):
+    def _speed_switch(self, actor_id, cont):
         """cont: the control command of RL agent"""
         ego_speed = get_speed(self._actors[actor_id])
         if self._speed_state[actor_id] == SpeedState.START:
@@ -1433,37 +1425,11 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
                     hero_autopilot(self._actors[actor_id], self._traffic_manager, 
                                 self._actor_configs[actor_id], self._env_config, False)
                     if self._rl_switch:
-                        # RL in control
-                        if action_index==0:
-                            self.current_action[actor_id]=Action.LANE_CHANGE_LEFT
-                            self.current_target_lane[actor_id]=self.current_lane[actor_id]+1
-                        elif action_index==2:
-                            self.current_action[actor_id]=Action.LANE_CHANGE_RIGHT
-                            self.current_target_lane[actor_id]=self.current_lane[actor_id]-1
-                        elif action_index==1:
-                            self.current_action[actor_id]=Action.LANE_FOLLOW
-                            self.current_target_lane[actor_id]=self.current_lane[actor_id]
-                        else:
-                            #action_index=4
-                            self.current_action[actor_id]=Action.STOP
-                            self.current_target_lane[actor_id]=self.current_lane[actor_id]
-                        LOG.multi_env_logger.debug(f"initial: last_lane:{self.last_lane[actor_id]}, current_lane:{self.current_lane[actor_id]}, "
-                                     f"last_target_lane:{self.last_target_lane[actor_id]}, current_target_lane:{self.current_target_lane[actor_id]}, "
-                                     f"last_action:{self.last_action[actor_id].value}, current_action:{self.current_action[actor_id].value}")          
+                        # RL in control       
                         control = cont
                     else:
-                        # PID in control
-                        LOG.multi_env_logger.debug(f"basic_lanechanging_agent before: last_lane:{self.last_lane[actor_id]}, current_lane:{self.current_lane[actor_id]}, "
-                                     f"last_target_lane:{self.last_target_lane[actor_id]}, current_target_lane:{self.current_target_lane[actor_id]}, "
-                                     f"last_action:{self.last_action[actor_id].value}, current_action:{self.current_action[actor_id].value}") 
-                        control, self.current_target_lane[actor_id], self.current_action[actor_id]= \
-                            self._auto_controller[actor_id].run_step(self.current_lane[actor_id],
-                                                                     self.last_target_lane[actor_id], 
-                                                                     self.last_action[actor_id], 
-                                                                     True)
-                        LOG.multi_env_logger.debug(f"basic_lanechanging_agent after: last_lane:{self.last_lane[actor_id]}, current_lane:{self.current_lane[actor_id]}, "
-                                     f"last_target_lane:{self.last_target_lane[actor_id]}, current_target_lane:{self.current_target_lane[actor_id]}, "
-                                     f"last_action:{self.last_action[actor_id].value}, current_action:{self.current_action[actor_id].value}")          
+                        # traffic manager in control
+                        control = None         
         elif self._speed_state[actor_id] == SpeedState.RUNNING:
             if self._state["wps"][actor_id].center_front_wps[2].road_id == self._scenario_map["dest_road_id"]:          
                 #Vehicle reaches destination, stop vehicle
@@ -1475,42 +1441,11 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
                 control = None
             elif not self._actor_configs[actor_id]["auto_control"]:
                 if self._rl_switch:
-                    # under Rl control, used to set the self.new_action. 
-                    LOG.multi_env_logger.debug(f"initial: last_lane:{self.last_lane[actor_id]}, current_lane:{self.current_lane[actor_id]}, "
-                                 f"last_target_lane:{self.last_target_lane[actor_id]}, current_target_lane:{self.current_target_lane[actor_id]}, "
-                                 f"last_action:{self.last_action[actor_id].value}, current_action:{self.current_action[actor_id].value}")                        
-                    if action_index==0:
-                        self.current_action[actor_id]=Action.LANE_CHANGE_LEFT
-                        self.current_target_lane[actor_id]=self.current_lane[actor_id]+1
-                    elif action_index==2:
-                        self.current_action[actor_id]=Action.LANE_CHANGE_RIGHT
-                        self.current_target_lane[actor_id]=self.current_lane[actor_id]-1
-                    elif action_index==1:
-                        self.current_action[actor_id]=Action.LANE_FOLLOW
-                        self.current_target_lane[actor_id]=self.current_lane[actor_id]
-                    else:
-                        #action_index=4
-                        self.current_action[actor_id]=Action.STOP
-                        self.current_target_lane[actor_id]=self.current_lane[actor_id]
-                    # _, _, _, self.distance_to_front_vehicles, self.distance_to_rear_vehicles = \
-                    #     self.autopilot_controller.run_step(self.last_lane, self.last_target_lane, self.last_action, True, action_index, self.modify_change_steer)
-                    LOG.multi_env_logger.debug(f"initial: last_lane:{self.last_lane[actor_id]}, current_lane:{self.current_lane[actor_id]}, "
-                                 f"last_target_lane:{self.last_target_lane[actor_id]}, current_target_lane:{self.current_target_lane[actor_id]}, "
-                                 f"last_action:{self.last_action[actor_id].value}, current_action:{self.current_action[actor_id].value}") 
+                    # under Rl control
                     control = cont
                 else:
                     # PID in control
-                    LOG.multi_env_logger.debug(f"basic_lanechanging_agent before: last_lane:{self.last_lane[actor_id]}, current_lane:{self.current_lane[actor_id]}, "
-                                 f"last_target_lane:{self.last_target_lane[actor_id]}, current_target_lane:{self.current_target_lane[actor_id]}, "
-                                 f"last_action:{self.last_action[actor_id].value}, current_action:{self.current_action[actor_id].value}") 
-                    control, self.current_target_lane[actor_id], self.current_action[actor_id]= \
-                        self._auto_controller[actor_id].run_step(self.current_lane[actor_id],
-                                                                    self.last_target_lane[actor_id], 
-                                                                    self.last_action[actor_id], 
-                                                                    True)
-                    LOG.multi_env_logger.debug(f"basic_lanechanging_agent after: last_lane:{self.last_lane[actor_id]}, current_lane:{self.current_lane[actor_id]}, "
-                                 f"last_target_lane:{self.last_target_lane[actor_id]}, current_target_lane:{self.current_target_lane[actor_id]}, "
-                                 f"last_action:{self.last_action[actor_id].value}, current_action:{self.current_action[actor_id].value}") 
+                    control = None
         elif self._speed_state[actor_id] == SpeedState.STOP:
             #Hero vehicle reaches destination, properly stop hero vehicle
             control = None
@@ -1537,18 +1472,6 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
         if not test_waypoint(lane_center,False):
             LOG.multi_env_logger.warn(actor_id + ' vehicle drive out of road')
             return Truncated.OUT_OF_ROAD
-        if self.current_action[actor_id] == Action.LANE_FOLLOW and \
-                self.current_lane[actor_id] != self.last_lane[actor_id]:
-            LOG.multi_env_logger.warn(actor_id + ' change lane in lane following mode')
-            return Truncated.CHANGE_LANE_IN_LANE_FOLLOW
-        if self.current_action[actor_id] == Action.LANE_CHANGE_LEFT and \
-                self.current_lane[actor_id] - self.last_lane[actor_id] < 0:
-            LOG.multi_env_logger.warn(actor_id + ' vehicle change to wrong lane')
-            return Truncated.CHANGE_TO_WRONG_LANE
-        if self.current_action[actor_id] == Action.LANE_CHANGE_RIGHT and \
-                self.current_lane[actor_id] - self.last_lane[actor_id] > 0:
-            LOG.multi_env_logger.warn(actor_id + ' vehicle change to wrong lane')
-            return Truncated.CHANGE_TO_WRONG_LANE
         if self._speed_state[actor_id] not in [SpeedState.START, SpeedState.STOP] \
                     and not self._state["vehs"][actor_id].center_front_veh:
             if not self._state["lights"][actor_id] or self._state["lights"][actor_id].state!=carla.TrafficLightState.Red:

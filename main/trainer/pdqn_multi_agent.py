@@ -283,7 +283,6 @@ def learner_mp(lock:Lock, traj_q: Queue, agent_q:Queue, agent_param:dict):
     #load pre-trained model
     if TRAIN and os.path.exists(MODEL_PATH):
         learner.load_net(MODEL_PATH, map_location=learner.device)
-    update_freq = UPDATE_FREQ
     update_count = 0
 
     while(True):
@@ -291,7 +290,6 @@ def learner_mp(lock:Lock, traj_q: Queue, agent_q:Queue, agent_param:dict):
         #reference: https://zhuanlan.zhihu.com/p/345353294, https://arxiv.org/abs/1711.00489
         k = max(learner.replay_buffer.size()// param["minimal_size"], 1)
         learner.batch_size = k * param["batch_size"]
-        update_freq = min(k * UPDATE_FREQ, 1000)
         if traj_q.qsize() >= k:
             for _ in range(k):
                 trajectory=traj_q.get(block=True,timeout=None)
@@ -304,12 +302,12 @@ def learner_mp(lock:Lock, traj_q: Queue, agent_q:Queue, agent_param:dict):
         if TRAIN and learner.replay_buffer.size()>=param["minimal_size"]:
             q_loss = learner.learn()
             update_count+=1
-            if not agent_q.full() and update_count//update_freq>0:
+            if not agent_q.full() and update_count//UPDATE_FREQ>0:
                 lock.acquire()
                 agent_q.put((deepcopy(learner.learn_time), deepcopy(q_loss)), block=True, timeout=None)
                 learner.save_net(os.path.join(SAVE_PATH, 'learner.pth'))
                 lock.release()
-                update_count %= update_freq
+                update_count %= UPDATE_FREQ
 
 def reload_agent(agent, gpu_id=0):
     if agent.device != torch.device('cpu'):

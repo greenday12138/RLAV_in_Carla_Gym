@@ -48,8 +48,7 @@ from macad_gym.core.scenarios import Scenarios
 
 # The following imports require carla to be imported already.
 from macad_gym.core.sensors.camera_manager import CameraManager, CAMERA_TYPES
-from macad_gym.core.sensors.derived_sensors import LaneInvasionSensor
-from macad_gym.core.sensors.derived_sensors import CollisionSensor
+from macad_gym.core.sensors.derived_sensors import LaneInvasionSensor, CollisionSensor
 from macad_gym.core.controllers.keyboard_control import KeyboardControl
 from macad_gym.carla.PythonAPI.agents.navigation.global_route_planner_dao import (  # noqa: E501
     GlobalRoutePlannerDAO)
