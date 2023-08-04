@@ -126,7 +126,7 @@ class SACReward(Reward):
         self.map = map
 
     def compute_reward(self, actor_id, prev_measurement, curr_measurement, flag):
-        self.reward = 0.0
+        self.reward = None
         self.actor_id = actor_id
         self.prev = prev_measurement
         self.curr = curr_measurement
@@ -151,8 +151,9 @@ class SACReward(Reward):
         self.comfort_reward, yaw_change = self._comfort_reward(yaw_forward)
         Lcen, self.lane_center_reward = self._lane_center_reward(lane_center)
         self.lane_change_reward = self._lane_change_reward()
-        self.reward = self.ttc_reward + self.lane_center_reward + self.lane_change_reward + \
-            self.efficiency_reward + self.comfort_reward
+        if self.reward is None:
+            self.reward = self.ttc_reward + self.lane_center_reward + self.lane_change_reward + \
+                self.efficiency_reward + self.comfort_reward
         
         self.vehicle = None
         self.state = {}
@@ -351,7 +352,7 @@ class PDQNReward(Reward):
         self.map = map
 
     def compute_reward(self, actor_id, prev_measurement, curr_measurement, flag):
-        self.reward = 0.0
+        self.reward = None
         self.actor_id = actor_id
         self.prev = prev_measurement
         self.curr = curr_measurement
@@ -378,8 +379,9 @@ class PDQNReward(Reward):
         self.comfort_reward, yaw_change = self._comfort_reward(yaw_forward)
         Lcen, self.lane_center_reward = self._lane_center_reward(lane_center)
         self.lane_change_reward = self._lane_change_reward()
-        self.reward = self.ttc_reward + self.lane_center_reward + self.lane_change_reward + \
-            self.efficiency_reward + self.comfort_reward
+        if self.reward is None:
+            self.reward = self.ttc_reward + self.lane_center_reward + self.lane_change_reward + \
+                self.efficiency_reward + self.comfort_reward
         
         self.vehicle = None
         self.state = {}
