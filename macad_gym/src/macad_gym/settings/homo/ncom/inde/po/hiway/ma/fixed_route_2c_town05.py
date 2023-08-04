@@ -45,7 +45,7 @@ class FixedRoute2CarTown05(MultiCarlaEnv):
                 #Min distance between two vehicles, unit -- meters
                 "min_distance": 10.0,
                 #Activate hybrid mode for Traffic Manager
-                "hybrid": True,
+                "hybrid": False,
                 "ignore_traffic_light": False,
                 #Set lane change behaviors of Traffic Manager
                 "auto_lane_change": False, 
@@ -80,7 +80,7 @@ class FixedRoute2CarTown05(MultiCarlaEnv):
                     #Speed threshold for hero vehicle, running in start phase before speed reach such threshold, km/h
                     "speed_threshold": 20.0,
                     #If hero vehicle speed reaches below this threshold across multiple steps, truncated this episode prematurely, km/h
-                    "speed_min": 3.6,
+                    "speed_min": 0.36,
                     #Steer bound for hero vehicle controller
                     "steer_bound": 1.0,
                     #Throttle bound for ego vehicle controller
@@ -113,7 +113,7 @@ class FixedRoute2CarTown05(MultiCarlaEnv):
                     #Speed threshold for hero vehicle, running in start phase before speed reach such threshold, km/h
                     "speed_threshold": 20.0,
                     #If hero vehicle speed reaches below this threshold across multiple steps, truncated this episode prematurely, km/h
-                    "speed_min": 3.6,
+                    "speed_min": 0.36,
                     #Steer bound for hero vehicle controller
                     "steer_bound": 1.0,
                     #Throttle bound for ego vehicle controller
@@ -169,7 +169,7 @@ class PDQNFixedRoute2CarTown05(PDQNMultiCarlaEnv):
                 #Min distance between two vehicles, unit -- meters
                 "min_distance": 10.0,
                 #Activate hybrid mode for Traffic Manager
-                "hybrid": True,
+                "hybrid": False,
                 "ignore_traffic_light": False,
                 #Set lane change behaviors of Traffic Manager
                 "auto_lane_change": False, 
@@ -204,7 +204,7 @@ class PDQNFixedRoute2CarTown05(PDQNMultiCarlaEnv):
                     #Speed threshold for hero vehicle, running in start phase before speed reach such threshold, km/h
                     "speed_threshold": 20.0,
                     #If hero vehicle speed reaches below this threshold across multiple steps, truncated this episode prematurely, km/h
-                    "speed_min": 3.6,
+                    "speed_min": 0.36,
                     #Steer bound for hero vehicle controller
                     "steer_bound": 1.0,
                     #Throttle bound for ego vehicle controller
@@ -237,7 +237,7 @@ class PDQNFixedRoute2CarTown05(PDQNMultiCarlaEnv):
                     #Speed threshold for hero vehicle, running in start phase before speed reach such threshold, km/h
                     "speed_threshold": 20.0,
                     #If hero vehicle speed reaches below this threshold across multiple steps, truncated this episode prematurely, km/h
-                    "speed_min": 3.6,
+                    "speed_min": 0.36,
                     #Steer bound for hero vehicle controller
                     "steer_bound": 1.0,
                     #Throttle bound for ego vehicle controller
@@ -270,7 +270,7 @@ class PDQNFixedRoute2CarTown05(PDQNMultiCarlaEnv):
                     #Speed threshold for hero vehicle, running in start phase before speed reach such threshold, km/h
                     "speed_threshold": 20.0,
                     #If hero vehicle speed reaches below this threshold across multiple steps, truncated this episode prematurely, km/h
-                    "speed_min": 3.6,
+                    "speed_min": 0.36,
                     #Steer bound for hero vehicle controller
                     "steer_bound": 1.0,
                     #Throttle bound for ego vehicle controller

@@ -221,7 +221,7 @@ class Basic_Agent(object):
         vehicle_list = actor_list.filter("*vehicle*")
         lights_list = actor_list.filter("*traffic_light*")
 
-        vehicle_speed = get_speed(self._vehicle) / 3.6
+        vehicle_speed = get_speed(self._vehicle, False)
 
         # Check for possible vehicle obstacles
         max_vehicle_distance = self._base_vehicle_threshold + vehicle_speed
@@ -341,7 +341,7 @@ class Basic_Agent(object):
         veh_location = self._vehicle.get_location()
         veh_waypoint = get_lane_center(self._map, veh_location)
 
-        vehicle_speed = get_speed(self._vehicle) / 3.6
+        vehicle_speed = get_speed(self._vehicle, False)
         lane_center_ratio = 1 - veh_waypoint.transform.location.distance(veh_location) / 4
         self._min_distance = self._base_min_distance * lane_center_ratio
         #print('min_distance: ', self._min_distance)

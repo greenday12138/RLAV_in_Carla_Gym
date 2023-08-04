@@ -5,7 +5,7 @@ from shapely.geometry import Polygon
 from macad_gym.core.scenarios import ROADS
 from macad_gym.core.controllers.route_planner import RoadOption
 from macad_gym.core.utils.wrapper import WaypointWrapper,VehicleWrapper
-from macad_gym.core.utils.misc import get_lane_center, get_speed, vector, compute_magnitude_angle, \
+from macad_gym.core.utils.misc import get_lane_center, vector, compute_magnitude_angle, \
     is_within_distance_ahead, is_within_distance_rear, draw_waypoints, compute_distance, is_within_distance, test_waypoint,\
     get_trafficlight_trigger_location
 

@@ -11,7 +11,6 @@ from enum import Enum
 from macad_gym import IS_WINDOWS_PLATFORM, SERVER_BINARY
 from macad_gym.viz.logger import LOG
 from macad_gym.core.controllers.route_planner import RoadOption
-from macad_gym.core.utils.misc import get_speed,get_yaw_diff,test_waypoint,get_sign
 
 
 

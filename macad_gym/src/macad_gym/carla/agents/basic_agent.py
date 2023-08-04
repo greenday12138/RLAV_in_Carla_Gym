@@ -193,7 +193,7 @@ class BasicAgent(object):
         # Retrieve all relevant actors
         vehicle_list = self._world.get_actors().filter("*vehicle*")
 
-        vehicle_speed = get_speed(self._vehicle) / 3.6
+        vehicle_speed = get_speed(self._vehicle, False)
 
         # Check for possible vehicle obstacles
         max_vehicle_distance = self._base_vehicle_threshold + self._speed_ratio * vehicle_speed
