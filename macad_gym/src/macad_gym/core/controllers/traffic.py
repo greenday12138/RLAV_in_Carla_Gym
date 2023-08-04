@@ -10,7 +10,7 @@ def hero_autopilot(actor, traffic_manager, actor_config, env_config,setting=True
     # Use traffic manager to control hero vehicle
     actor.set_autopilot(setting, traffic_manager.get_port())
     if setting:
-        traffic_manager.distance_to_leading_vehicle(actor, 20)
+        traffic_manager.distance_to_leading_vehicle(actor, env_config["min_distance"])
         if env_config['ignore_traffic_light']:
             traffic_manager.ignore_lights_percentage(actor, 100)
             traffic_manager.ignore_walkers_percentage(actor, 100)
@@ -38,7 +38,7 @@ def apply_traffic(world, traffic_manager, env_config, num_vehicles, num_pedestri
     traffic_manager.set_synchronous_mode(env_config["sync_server"])
     if env_config["hybrid"] is True:
         traffic_manager.set_hybrid_physics_mode(True)
-        traffic_manager.set_hybrid_physics_radius(500)
+        traffic_manager.set_hybrid_physics_radius(100)
         traffic_manager.set_respawn_dormant_vehicles(True)
         #To enable respawning of dormant vehicles within 25 and 700 meters of the hero vehicle
         traffic_manager.set_boundaries_respawn_dormant_vehicles(200, 2000)
@@ -48,12 +48,14 @@ def apply_traffic(world, traffic_manager, env_config, num_vehicles, num_pedestri
     # --------------
     blueprints = world.get_blueprint_library().filter("vehicle.*")
     if safe:
-        blueprints = list(filter(lambda x: int(x.get_attribute('number_of_wheels')) == 4 and not
-                (x.id.endswith('microlino') or
+        blueprints = list(filter(lambda x: int(x.get_attribute('number_of_wheels')) <= 4 and not
+                (#x.id.endswith('microlino') or
                  x.id.endswith('carlacola') or
                  x.id.endswith('cybertruck') or
                  x.id.endswith('t2') or
-                 x.id.endswith('sprinter') or
+                 x.id.endswith('t2_2021') or
+                 x.id.endswith('fusorosa') or
+                 #x.id.endswith('sprinter') or
                  x.id.endswith('firetruck') or
                  x.id.endswith('ambulance')), blueprints))
 
@@ -85,24 +87,11 @@ def apply_traffic(world, traffic_manager, env_config, num_vehicles, num_pedestri
             blueprint.set_attribute('driver_id', driver_id)
         blueprint.set_attribute('role_name', 'autopilot')
 
-        # spawn the cars and set their autopilot and light state all together
+        # spawn npc vehicles
         vehicle = world.try_spawn_actor(blueprint, transform)
         if vehicle is not None:
             vehicle.set_autopilot(True, traffic_manager.get_port())
             vehicles_list.append(vehicle)
-            if route_points is not None:
-                traffic_manager.distance_to_leading_vehicle(vehicle, env_config["min_distance"])
-                traffic_manager.set_route(vehicle,
-                                ['Straight', 'Straight', 'Straight', 'Straight', 'Straight', 'Straight', 'Straight', 'Straight', 'Straight', 'Straight'])
-                traffic_manager.update_vehicle_lights(vehicle, True)
-                traffic_manager.ignore_signs_percentage(vehicle, 100)
-                traffic_manager.ignore_lights_percentage(vehicle, 100 if env_config["ignore_traffic_light"] else 0)
-                traffic_manager.auto_lane_change(vehicle, env_config["auto_lane_change"])
-                # modify change probability
-                traffic_manager.random_left_lanechange_percentage(vehicle, 0)
-                traffic_manager.random_right_lanechange_percentage(vehicle, 0)
-                traffic_manager.vehicle_percentage_speed_difference(vehicle,
-                        random.choice([-100,-100,-100,-140,-160,-180]))
         else:
             failed_v += 1
 
@@ -162,15 +151,7 @@ def apply_traffic(world, traffic_manager, env_config, num_vehicles, num_pedestri
             failed_p += 1
 
     LOG.traffic_logger.info("{}/{} pedestrians correctly spawned.".format(num_pedestrians-failed_p, num_pedestrians))
-    world.tick()
-
-    # Initialize each controller and set target to walk
-    world.set_pedestrians_cross_factor(percentagePedestriansCrossing)
-    for i, controller in enumerate(controllers_list):
-        controller.start()  # start walker
-        controller.go_to_location(world.get_random_location_from_navigation())  # set walk to random point
-        controller.set_max_speed(float(pedestrians_speed[int(i / 2)]))  # max speed
-
+    
     # -------------
     # Set Traffic Lights
     # -------------
@@ -179,5 +160,29 @@ def apply_traffic(world, traffic_manager, env_config, num_vehicles, num_pedestri
         light.set_green_time(15)
         light.set_red_time(0)
         light.set_yellow_time(0)
+    
+    world.tick()
+
+    # Initialize each controller and set target to walk
+    world.set_pedestrians_cross_factor(percentagePedestriansCrossing)
+    for i, controller in enumerate(controllers_list):
+        controller.start()  # start walker
+        controller.go_to_location(world.get_random_location_from_navigation())  # set walk to random point
+        controller.set_max_speed(float(pedestrians_speed[int(i / 2)]))  # max speed
+    
+    # Initialize each npc vehicle
+    for veh in vehicles_list:
+        traffic_manager.distance_to_leading_vehicle(veh, env_config["min_distance"])
+        traffic_manager.set_route(veh,
+                        ['Straight', 'Straight', 'Straight', 'Straight', 'Straight', 'Straight', 'Straight', 'Straight', 'Straight', 'Straight'])
+        traffic_manager.update_vehicle_lights(veh, True)
+        traffic_manager.ignore_signs_percentage(veh, 100)
+        traffic_manager.ignore_lights_percentage(veh, 100 if env_config["ignore_traffic_light"] else 0)
+        traffic_manager.auto_lane_change(veh, env_config["auto_lane_change"])
+        # modify change probability
+        traffic_manager.random_left_lanechange_percentage(veh, 0)
+        traffic_manager.random_right_lanechange_percentage(veh, 0)
+        traffic_manager.vehicle_percentage_speed_difference(veh,
+                random.choice([-100,-100,-100,-140,-160,-180]))
 
     return vehicles_list, (pedestrians_list, controllers_list)

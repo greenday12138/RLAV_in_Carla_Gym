@@ -37,7 +37,7 @@ from macad_gym.core.utils.misc import (remove_unnecessary_objects, sigmoid, get_
     get_speed, preprocess_image)
 from macad_gym.core.utils.wrapper import (COMMANDS_ENUM, COMMAND_ORDINAL, ROAD_OPTION_TO_COMMANDS_MAPPING, 
     DISTANCE_TO_GOAL_THRESHOLD, ORIENTATION_TO_GOAL_THRESHOLD, GROUND_Z, DISCRETE_ACTIONS,
-    WEATHERS, get_next_actions, DEFAULT_MULTIENV_CONFIG, print_measurements,  json_dumper, process_steer,
+    WEATHERS, get_next_actions, DEFAULT_MULTIENV_CONFIG, print_measurements, process_steer,
     Truncated, Action, SpeedState, ControlInfo, CarlaConnector)
 
 # from macad_gym.core.sensors.utils import get_transform_from_nearest_way_point
@@ -850,7 +850,7 @@ class PDQNMultiCarlaEnv(*MultiAgentEnvBases):
             self._env_config,
             self._scenario_map.get("num_vehicles", 0),
             self._scenario_map.get("num_pedestrians", 0),
-            safe=False,
+            safe=True,
             route_points=self._npc_vehicles_spawn_points
         )
 
@@ -1226,7 +1226,7 @@ class PDQNMultiCarlaEnv(*MultiAgentEnvBases):
 
         # Compute reward
         flag = config["reward_function"]
-        if isinstance( self._reward_policy, PDQNReward):
+        if isinstance(self._reward_policy, Reward):
             self._reward_policy.set_state(
                 self._actors[actor_id], 
                 {
@@ -1276,7 +1276,7 @@ class PDQNMultiCarlaEnv(*MultiAgentEnvBases):
                         "a",
                     )
                 except Exception as e:
-                    LOG.multi_env_logger.error(f"File Open Error: {os.path.join(LOG.log_dir,'measurements_{}_{}.json'.format(actor_id, self._num_episodes[actor_id]))}")
+                    LOG.multi_env_logger.error(f"File Open Error: {os.path.join(LOG.log_dir, 'measurements_{}_{}.json'.format(actor_id, self._num_episodes[actor_id]))}")
                     raise e
                 self._measurements_file_dict[actor_id].write("[\n")
             self._measurements_file_dict[actor_id].write(json.dumps(py_measurements, indent=4))
@@ -1475,7 +1475,7 @@ class PDQNMultiCarlaEnv(*MultiAgentEnvBases):
                 self._collisions[actor_id].sensor.stop()
                 self._lane_invasions[actor_id].sensor.stop()
                 hero_autopilot(self._actors[actor_id], self._traffic_manager, self._actor_configs[actor_id],
-                           self._env_config, False)
+                           self._env_config, True)
                 control = None
             elif not self._actor_configs[actor_id]["auto_control"]:
                 if self._rl_switch:
@@ -1517,6 +1517,7 @@ class PDQNMultiCarlaEnv(*MultiAgentEnvBases):
                                  f"last_action:{self.last_action[actor_id].value}, current_action:{self.current_action[actor_id].value}") 
         elif self._speed_state[actor_id] == SpeedState.STOP:
             #Hero vehicle reaches destination, properly stop hero vehicle
+            self._traffic_manager.vehicle_percentage_speed_difference(self._actors[actor_id], 100)
             control = None
         else:
             LOG.multi_env_logger.error('CODE LOGIC ERROR')
@@ -1559,7 +1560,7 @@ class PDQNMultiCarlaEnv(*MultiAgentEnvBases):
                 if len(self._vel_buffer[actor_id]) == self._vel_buffer[actor_id].maxlen:
                     avg_vel=0
                     for vel in self._vel_buffer[actor_id]:
-                        avg_vel+=abs(vel) / self._vel_buffer[actor_id].maxlen
+                        avg_vel += abs(vel) / self._vel_buffer[actor_id].maxlen
                     if avg_vel*3.6 < self._actor_configs[actor_id]["speed_min"]:
                         LOG.multi_env_logger.warn(actor_id + ' vehicle speed too low')
                         return Truncated.SPEED_LOW

@@ -37,7 +37,7 @@ from macad_gym.core.utils.misc import (remove_unnecessary_objects, sigmoid, get_
     get_speed, preprocess_image)
 from macad_gym.core.utils.wrapper import (COMMANDS_ENUM, COMMAND_ORDINAL, ROAD_OPTION_TO_COMMANDS_MAPPING, 
     DISTANCE_TO_GOAL_THRESHOLD, ORIENTATION_TO_GOAL_THRESHOLD, GROUND_Z, DISCRETE_ACTIONS,
-    WEATHERS, get_next_actions, DEFAULT_MULTIENV_CONFIG, print_measurements,
+    WEATHERS, get_next_actions, DEFAULT_MULTIENV_CONFIG, print_measurements, 
     Truncated, Action, SpeedState, ControlInfo, CarlaConnector)
 
 # from macad_gym.core.sensors.utils import get_transform_from_nearest_way_point
@@ -50,7 +50,6 @@ from macad_gym.core.scenarios import Scenarios
 from macad_gym.core.sensors.camera_manager import CameraManager, CAMERA_TYPES
 from macad_gym.core.sensors.derived_sensors import LaneInvasionSensor, CollisionSensor
 from macad_gym.core.controllers.keyboard_control import KeyboardControl
-from macad_gym.carla.agents.behavior_agent import BehaviorAgent
 from macad_gym.carla.PythonAPI.agents.navigation.global_route_planner_dao import (  # noqa: E501
     GlobalRoutePlannerDAO)
 from macad_gym.core.controllers.route_planner import RoutePlanner
@@ -851,7 +850,7 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
             self._env_config,
             self._scenario_map.get("num_vehicles", 0),
             self._scenario_map.get("num_pedestrians", 0),
-            safe=False,
+            safe=True,
             route_points=self._npc_vehicles_spawn_points
         )
 
@@ -1160,7 +1159,8 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
             elif "vehicle" in agent_type:
                 cont = self._speed_switch(actor_id, control)
                 if cont is not None:
-                    self._actors[actor_id].apply_control(carla.VehicleControl(
+                    self._actors[actor_id].apply_control(
+                        carla.VehicleControl(
                             throttle=float(cont.throttle),
                             steer=float(cont.steer),
                             brake=float(cont.brake),
@@ -1168,7 +1168,8 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
                             reverse=cont.reverse,
                             manual_gear_shift = cont.manual_gear_shift,
                             gear = int(cont.gear)
-                        ))
+                        )
+                    )
                     control = cont
         
         return {'steer':control.steer, 'throttle': control.throttle, 'brake': control.brake, 
@@ -1438,6 +1439,8 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
                 self._speed_state[actor_id] = SpeedState.STOP
                 self._collisions[actor_id].sensor.stop()
                 self._lane_invasions[actor_id].sensor.stop()
+                hero_autopilot(self._actors[actor_id], self._traffic_manager, self._actor_configs[actor_id],
+                           self._env_config, True)
                 control = None
             elif not self._actor_configs[actor_id]["auto_control"]:
                 if self._rl_switch:
@@ -1448,8 +1451,7 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
                     control = None
         elif self._speed_state[actor_id] == SpeedState.STOP:
             #Hero vehicle reaches destination, properly stop hero vehicle
-            if not self._rl_switch:
-                self._traffic_manager.vehicle_percentage_speed_difference(self._actors[actor_id], 100)
+            self._traffic_manager.vehicle_percentage_speed_difference(self._actors[actor_id], 100)
             control = None
         else:
             LOG.multi_env_logger.error('CODE LOGIC ERROR')
@@ -1477,10 +1479,10 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
         if self._speed_state[actor_id] not in [SpeedState.START, SpeedState.STOP] \
                     and not self._state["vehs"][actor_id].center_front_veh:
             if not self._state["lights"][actor_id] or self._state["lights"][actor_id].state!=carla.TrafficLightState.Red:
-                if len(self._vel_buffer[actor_id])==self._vel_buffer[actor_id].maxlen:
+                if len(self._vel_buffer[actor_id]) == self._vel_buffer[actor_id].maxlen:
                     avg_vel=0
                     for vel in self._vel_buffer[actor_id]:
-                        avg_vel += abs(vel)/self._vel_buffer[actor_id].maxlen
+                        avg_vel += abs(vel) / self._vel_buffer[actor_id].maxlen
                     if avg_vel*3.6 < self._actor_configs[actor_id]["speed_min"]:
                         LOG.multi_env_logger.warn(actor_id + ' vehicle speed too low')
                         return Truncated.SPEED_LOW

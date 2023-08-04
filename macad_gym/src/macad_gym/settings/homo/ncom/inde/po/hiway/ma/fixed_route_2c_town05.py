@@ -45,7 +45,7 @@ class FixedRoute2CarTown05(MultiCarlaEnv):
                 #Min distance between two vehicles, unit -- meters
                 "min_distance": 10.0,
                 #Activate hybrid mode for Traffic Manager
-                "hybrid": False,
+                "hybrid": True,
                 "ignore_traffic_light": False,
                 #Set lane change behaviors of Traffic Manager
                 "auto_lane_change": False, 
@@ -169,7 +169,7 @@ class PDQNFixedRoute2CarTown05(PDQNMultiCarlaEnv):
                 #Min distance between two vehicles, unit -- meters
                 "min_distance": 10.0,
                 #Activate hybrid mode for Traffic Manager
-                "hybrid": False,
+                "hybrid": True,
                 "ignore_traffic_light": False,
                 #Set lane change behaviors of Traffic Manager
                 "auto_lane_change": False, 
