@@ -122,7 +122,7 @@ class QValueNetContinuous(torch.nn.Module):
 class SACContinuous:
     ''' 处理连续动作的SAC算法 '''
     def __init__(self, state_dim, action_dim, action_bound, gamma, tau, 
-                 target_entropy, buffer_size, batch_size, alpha_lr,
+                 buffer_size, batch_size, alpha_lr,
                  actor_lr, critic_lr, per_flag, device):
         self.learn_time = 0
         self.replace_a = 0

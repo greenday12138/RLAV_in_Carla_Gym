@@ -47,7 +47,6 @@ AGENT_PARAM = {
     "lr_alpha": 0.00002,
     "gamma": 0.9,   # q值更新系数
     "tau": 0.01,    # 软更新参数
-    "target_entropy": -2 # reverse number of a_dim
 }
 TOTAL_EPISODE = 50000
 TRAIN = True
@@ -70,11 +69,10 @@ def main():
 
     for run in [base_name]:
         param = deepcopy(AGENT_PARAM)
-        param["device"] = torch.device("cpu")
         worker = SACContinuous(param["s_dim"], param["a_dim"], param["a_bound"], param["gamma"],
-                               param["tau"], param["target_entropy"], param["buffer_size"],
-                               param["batch_size"], param["lr_alpha"], param["lr_actor"],
-                               param["lr_critic"], param["per_flag"], param["device"])
+                               param["tau"], param["buffer_size"], param["batch_size"], 
+                               param["lr_alpha"], param["lr_actor"], param["lr_critic"], 
+                               param["per_flag"], torch.device("cpu"))
         if TRAIN and os.path.exists(MODEL_PATH):
             worker.load_net(MODEL_PATH, map_location=worker.device)
 
@@ -106,11 +104,12 @@ def main():
                 with tqdm(total=TOTAL_EPISODE//10, desc="Iteration %d" % i) as pbar:
                     for i_episode in range(TOTAL_EPISODE//10):
                         states, _ = env.reset()
-                        if i_episode > 10 and reload_agent(worker):
+                        if i_episode > 2 and reload_agent(worker):
+                            param = deepcopy(AGENT_PARAM)
                             worker = SACContinuous(param["s_dim"], param["a_dim"], param["a_bound"], param["gamma"],
-                                                param["tau"], param["target_entropy"], param["buffer_size"],
-                                                param["batch_size"], param["lr_alpha"], param["lr_actor"],
-                                                param["lr_critic"], param["per_flag"], torch.device("cuda"))
+                                                param["tau"], param["buffer_size"], param["batch_size"], 
+                                                param["lr_alpha"], param["lr_actor"], param["lr_critic"], 
+                                                param["per_flag"], param["device"])
                         done, truncated = False, False
                         for actor_id in states.keys():
                             ttc[actor_id], efficiency[actor_id], comfort[actor_id], lcen[actor_id],\
@@ -247,7 +246,7 @@ def main():
 def learner_mp(lock:Lock, traj_q: Queue, agent_q:Queue, agent_param:dict):
     param = deepcopy(agent_param)
     learner = SACContinuous(param["s_dim"], param["a_dim"], param["a_bound"], param["gamma"],
-                            param["tau"], param["target_entropy"], param["buffer_size"],
+                            param["tau"], param["buffer_size"],
                             param["batch_size"], param["lr_alpha"], param["lr_actor"],
                             param["lr_critic"], param["per_flag"], param["device"])
     #load pre-trained model
