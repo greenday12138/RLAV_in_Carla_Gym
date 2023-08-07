@@ -38,7 +38,7 @@ from macad_gym.core.utils.misc import (remove_unnecessary_objects, sigmoid, get_
 from macad_gym.core.utils.wrapper import (COMMANDS_ENUM, COMMAND_ORDINAL, ROAD_OPTION_TO_COMMANDS_MAPPING, 
     DISTANCE_TO_GOAL_THRESHOLD, ORIENTATION_TO_GOAL_THRESHOLD, GROUND_Z, DISCRETE_ACTIONS,
     WEATHERS, get_next_actions, DEFAULT_MULTIENV_CONFIG, print_measurements, process_steer,
-    Truncated, Action, SpeedState, ControlInfo, CarlaConnector)
+    Truncated, Action, SpeedState, ControlInfo, CarlaConnector, CarlaError)
 
 # from macad_gym.core.sensors.utils import get_transform_from_nearest_way_point
 from macad_gym.core.utils.reward import Reward, PDQNReward
@@ -346,7 +346,7 @@ class PDQNMultiCarlaEnv(*MultiAgentEnvBases):
                 self._client = carla.Client("localhost", self._server_port)
                 # The socket establishment could takes some time
                 time.sleep(2)
-                self._client.set_timeout(2.0)
+                self._client.set_timeout(10.0)
                 LOG.multi_env_logger.info(
                     f"Client successfully connected to server, Carla-Server version: {self._client.get_server_version()}",)
             except RuntimeError as re:
@@ -401,18 +401,21 @@ class PDQNMultiCarlaEnv(*MultiAgentEnvBases):
         Returns:
             N/A
         """
-        [colli.destroy() for colli in self._collisions.values()]
-        [lane.destroy() for lane in self._lane_invasions.values()]
-        [camera.destroy() for camera in self._cameras.values()]
-        for npc in self._npc_vehicles:
-            if npc.is_alive:
-                npc.destroy()
-        for actor in self._actors.values():
-            if actor.is_alive:
-                actor.destroy()
-        for npc in zip(*self._npc_pedestrians):
-            npc[1].stop()  # stop controller
-            npc[0].destroy()  # kill entity
+        try:
+            [colli.destroy() for colli in self._collisions.values()]
+            [lane.destroy() for lane in self._lane_invasions.values()]
+            [camera.destroy() for camera in self._cameras.values()]
+            for npc in self._npc_vehicles:
+                if npc.is_alive:
+                    npc.destroy()
+            for actor in self._actors.values():
+                if actor.is_alive:
+                    actor.destroy()
+            for npc in zip(*self._npc_pedestrians):
+                npc[1].stop()  # stop controller
+                npc[0].destroy()  # kill entity
+        except RuntimeError as e:
+            raise CarlaError(e.args)
         # Note: the destroy process for cameras is handled in camera_manager.py
 
         self._vel_buffer = {}
@@ -470,6 +473,10 @@ class PDQNMultiCarlaEnv(*MultiAgentEnvBases):
                 else:
                     self._reset()
                 break
+            except CarlaError as e:
+                LOG.multi_env_logger.exception(e.args)
+                self._server_process = None
+                continue
             except Exception as e:
                 LOG.multi_env_logger.exception("Error during reset: {}".format(traceback.format_exc()))
                 LOG.multi_env_logger.error("reset(): Retry #: {}/{}".format(retry + 1, RETRIES_ON_ERROR))
