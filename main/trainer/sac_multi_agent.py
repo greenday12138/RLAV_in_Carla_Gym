@@ -70,6 +70,7 @@ def main():
 
     for run in [base_name]:
         param = deepcopy(AGENT_PARAM)
+        param["device"] = torch.device("cpu")
         worker = SACContinuous(param["s_dim"], param["a_dim"], param["a_bound"], param["gamma"],
                                param["tau"], param["target_entropy"], param["buffer_size"],
                                param["batch_size"], param["lr_alpha"], param["lr_actor"],
@@ -105,11 +106,11 @@ def main():
                 with tqdm(total=TOTAL_EPISODE//10, desc="Iteration %d" % i) as pbar:
                     for i_episode in range(TOTAL_EPISODE//10):
                         states, _ = env.reset()
-                        # if i_episode > 10 and reload_agent(worker):
-                        #     worker = SACContinuous(param["s_dim"], param["a_dim"], param["a_bound"], param["gamma"],
-                        #                         param["tau"], param["target_entropy"], param["buffer_size"],
-                        #                         param["batch_size"], param["lr_alpha"], param["lr_actor"],
-                        #                         param["lr_critic"], param["per_flag"], param["device"])
+                        if i_episode > 10 and reload_agent(worker):
+                            worker = SACContinuous(param["s_dim"], param["a_dim"], param["a_bound"], param["gamma"],
+                                                param["tau"], param["target_entropy"], param["buffer_size"],
+                                                param["batch_size"], param["lr_alpha"], param["lr_actor"],
+                                                param["lr_critic"], param["per_flag"], torch.device("cuda"))
                         done, truncated = False, False
                         for actor_id in states.keys():
                             ttc[actor_id], efficiency[actor_id], comfort[actor_id], lcen[actor_id],\
