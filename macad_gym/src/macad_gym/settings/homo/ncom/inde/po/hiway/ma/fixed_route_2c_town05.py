@@ -88,6 +88,39 @@ class FixedRoute2CarTown05(MultiCarlaEnv):
                     #Brake bound for ego vehicle controller
                     "brake_bound": 1.0,
                 },
+                "car2": {
+                    "type": "vehicle_4W",
+                    "blueprint": "vehicle.tesla.model3",
+                    "enable_planner": False,
+                    "convert_images_to_video": False,
+                    "early_terminate_on_collision": True,
+                    "reward_function": "corl2017",
+                    "scenarios": "FR2C_TOWN5_CAR2",
+                    "manual_control": False,
+                    "auto_control": False,
+                    "camera_type": "rgb",
+                    "collision_sensor": "on",
+                    "lane_sensor": "on",
+                    "log_images": False,
+                    "log_measurements": True,
+                    "render": True,
+                    "x_res": 800,
+                    "y_res": 800,
+                    "use_depth_camera": False,
+                    "send_measurements": True,
+                    #Speed limit for hero vehicle, km/h
+                    "speed_limit": 90.0,
+                    #Speed threshold for hero vehicle, running in start phase before speed reach such threshold, km/h
+                    "speed_threshold": 20.0,
+                    #If hero vehicle speed reaches below this threshold across multiple steps, truncated this episode prematurely, km/h
+                    "speed_min": 0.36,
+                    #Steer bound for hero vehicle controller
+                    "steer_bound": 1.0,
+                    #Throttle bound for ego vehicle controller
+                    "throttle_bound": 1.0,
+                    #Brake bound for ego vehicle controller
+                    "brake_bound": 1.0,
+                },
                 "car3": {
                     "type": "vehicle_4W",
                     "blueprint": "vehicle.tesla.model3",
