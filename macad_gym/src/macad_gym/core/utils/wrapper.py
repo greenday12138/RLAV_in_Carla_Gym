@@ -239,7 +239,7 @@ class CarlaConnector(object):
                 logger.info("Using single gpu to initialize carla server")
                 parameters = [SERVER_BINARY, 
                               "-windowed", 
-                              "-prefernvidia",
+                              #"-prefernvidia",
                               "-quality-level=Low"
                               f"-ResX={str(env_config['render_x_res'])}",
                               f"-ResY={str(env_config['render_y_res'])}",
@@ -267,6 +267,11 @@ class CarlaConnector(object):
                 logger.error(f"FATAL ERROR while launching server:{sys.exc_info()[0]}")
             
         return server_port, server_process
+
+
+class CarlaError(Exception):
+    def __init__(self, *args: object) -> None:
+        super().__init__(*args)
 
 
 class WaypointWrapper(object):

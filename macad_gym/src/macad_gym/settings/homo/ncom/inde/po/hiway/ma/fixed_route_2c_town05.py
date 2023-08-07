@@ -21,7 +21,7 @@ class FixedRoute2CarTown05(MultiCarlaEnv):
             },
             "env": {
                 "server_map": "/Game/Carla/Maps/Town05_Opt",
-                "render": False,
+                "render": True,
                 "render_x_res": 2000,
                 "render_y_res": 1500,
                 "x_res": 800,
@@ -145,7 +145,7 @@ class PDQNFixedRoute2CarTown05(PDQNMultiCarlaEnv):
             },
             "env": {
                 "server_map": "/Game/Carla/Maps/Town05_Opt",
-                "render": False,
+                "render": True,
                 "render_x_res": 2000,
                 "render_y_res": 1500,
                 "x_res": 500,

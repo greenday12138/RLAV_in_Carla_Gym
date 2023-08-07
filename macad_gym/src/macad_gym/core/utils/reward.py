@@ -153,7 +153,7 @@ class SACReward(Reward):
         self.lane_change_reward = self._lane_change_reward()
         if self.reward is None:
             self.reward = self.ttc_reward + self.lane_center_reward + self.lane_change_reward + \
-                self.efficiency_reward + self.comfort_reward
+                self.efficiency_reward * 2 + self.comfort_reward
         
         self.vehicle = None
         self.state = {}
@@ -183,7 +183,7 @@ class SACReward(Reward):
         yaw_diff = math.degrees(get_yaw_diff(last_yaw, yaw_forward))
         Yaw_jerk = -abs(yaw_diff) / 30
 
-        return np.clip(acc_jerk * 0.5 + Yaw_jerk, -1, 0), yaw_diff
+        return np.clip(acc_jerk * 0.5 + Yaw_jerk, -0.5, 0), yaw_diff
 
     def _efficiency_reward(self, yaw_forward):
         v_3d = self.vehicle.get_velocity()
@@ -381,7 +381,7 @@ class PDQNReward(Reward):
         self.lane_change_reward = self._lane_change_reward()
         if self.reward is None:
             self.reward = self.ttc_reward + self.lane_center_reward + self.lane_change_reward + \
-                self.efficiency_reward + self.comfort_reward
+                self.efficiency_reward * 2 + self.comfort_reward
         
         self.vehicle = None
         self.state = {}
@@ -411,7 +411,7 @@ class PDQNReward(Reward):
         yaw_diff = math.degrees(get_yaw_diff(last_yaw, yaw_forward))
         Yaw_jerk = -abs(yaw_diff) / 30
 
-        return np.clip(acc_jerk * 0.5 + Yaw_jerk, -1, 0), yaw_diff
+        return np.clip(acc_jerk * 0.5 + Yaw_jerk, -0.5, 0), yaw_diff
 
     def _efficiency_reward(self, yaw_forward):
         v_3d = self.vehicle.get_velocity()

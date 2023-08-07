@@ -130,8 +130,8 @@ class CollisionSensor(object):
         tags, ids = set(), set()
         for tag, id, frame, intensity in self._history:
             history[frame] += intensity
-            tags.update(tag)
-            ids.update(id)
+            tags.add(tag.name)
+            ids.add(id)
 
         if self._hud is not None:
             #used in pygame

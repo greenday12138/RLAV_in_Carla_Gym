@@ -105,6 +105,11 @@ def main():
                 with tqdm(total=TOTAL_EPISODE//10, desc="Iteration %d" % i) as pbar:
                     for i_episode in range(TOTAL_EPISODE//10):
                         states, _ = env.reset()
+                        # if i_episode > 10 and reload_agent(worker):
+                        #     worker = SACContinuous(param["s_dim"], param["a_dim"], param["a_bound"], param["gamma"],
+                        #                         param["tau"], param["target_entropy"], param["buffer_size"],
+                        #                         param["batch_size"], param["lr_alpha"], param["lr_actor"],
+                        #                         param["lr_critic"], param["per_flag"], param["device"])
                         done, truncated = False, False
                         for actor_id in states.keys():
                             ttc[actor_id], efficiency[actor_id], comfort[actor_id], lcen[actor_id],\
@@ -277,7 +282,7 @@ def reload_agent(agent, gpu_id=0):
     if agent.device != torch.device('cpu'):
         return False
     gpu_mem_total, gpu_mem_used, gpu_mem_free = get_gpu_mem_info(gpu_id=gpu_id)
-    if gpu_mem_total > 0 and gpu_mem_free > 2000:
+    if gpu_mem_total > 0 and gpu_mem_free > 900:
         LOG.pdqn_multi_agent_logger.info(f"Reload agent of process {os.getpid()}")
         return True
 
