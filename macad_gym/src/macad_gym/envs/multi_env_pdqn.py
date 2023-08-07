@@ -1537,8 +1537,20 @@ class PDQNMultiCarlaEnv(*MultiAgentEnvBases):
         if (m["collision_vehicles"] > 0 or m["collision_pedestrians"]>0 or m["collision_other"] > 0) \
                 and self._actor_configs[actor_id].get("early_terminate_on_collision", True):
             # Here we judge speed state because there might be collision event when spawning vehicles
-            LOG.multi_env_logger.warn(actor_id + ' collison happend')
-            return Truncated.COLLISION
+                    # Ignore case in which another actor collides with ego actor from the back
+            history, tags, ids = self._collisions[actor_id].get_collision_history()
+            collision = True
+            for id in ids:
+                actor = self.world.get_actor(id)
+                actor_lane = get_lane_center(self.map, actor.get_location())
+                if self._state["vehs"][actor_id].center_rear_veh and \
+                        self._state["vehs"][actor_id].center_rear_veh.id == id:
+                    # Ignore the case in which other actor collide with hero vehicle from the back
+                    collision = False
+            
+            if collision:
+                LOG.multi_env_logger.warn(actor_id + ' collison happend')
+                return Truncated.COLLISION
         if not test_waypoint(lane_center,False):
             LOG.multi_env_logger.warn(actor_id + ' vehicle drive out of road')
             return Truncated.OUT_OF_ROAD

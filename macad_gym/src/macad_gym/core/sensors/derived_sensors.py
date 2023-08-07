@@ -127,17 +127,18 @@ class CollisionSensor(object):
 
     def get_collision_history(self):
         history = collections.defaultdict(int)
-        tags = set()
-        for tag, frame, intensity in self._history:
+        tags, ids = set(), set()
+        for tag, id, frame, intensity in self._history:
             history[frame] += intensity
             tags.update(tag)
+            ids.update(id)
 
         if self._hud is not None:
             #used in pygame
             return history
         else:
             #used elsewhere
-            return history, tags
+            return history, tags, ids
         
     @staticmethod
     def _on_collision(weak_self, event):
@@ -151,7 +152,8 @@ class CollisionSensor(object):
         impulse = event.normal_impulse
         intensity = math.sqrt(impulse.x**2 + impulse.y**2 + impulse.z**2)
         for tag in event.other_actor.semantic_tags:
-            self._history.append((SemanticTags(tag), event.frame_number, intensity))
+            self._history.append(
+                (SemanticTags(tag), event.other_actor.id, event.frame_number, intensity))
         if len(self._history) > 400:
             self._history.pop(0)
         """

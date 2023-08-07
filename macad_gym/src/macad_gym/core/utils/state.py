@@ -220,7 +220,9 @@ class StateDAO(object):
                             v_info = [distance / vehicle_proximity, distance_t, rel_speed, lane]
                         else:
                             v_info = [-distance / vehicle_proximity, distance_t, -rel_speed, lane]
-                            
+
+            # # remove lateral distance
+            # v_info[1] = 0
             all_v_info.append(v_info)
         # print(all_v_info)
         return np.array(all_v_info)

@@ -38,7 +38,7 @@ def apply_traffic(world, traffic_manager, env_config, num_vehicles, num_pedestri
     traffic_manager.set_synchronous_mode(env_config["sync_server"])
     if env_config["hybrid"] is True:
         traffic_manager.set_hybrid_physics_mode(True)
-        traffic_manager.set_hybrid_physics_radius(100)
+        traffic_manager.set_hybrid_physics_radius(500)
         traffic_manager.set_respawn_dormant_vehicles(True)
         #To enable respawning of dormant vehicles within 25 and 700 meters of the hero vehicle
         traffic_manager.set_boundaries_respawn_dormant_vehicles(200, 2000)

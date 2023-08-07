@@ -48,6 +48,8 @@ class PolicyNetContinuous(torch.nn.Module):
     def __init__(self, state_dim, action_param_dim, action_bound, train=True):
         # the action bound and state_dim here are dicts
         super(PolicyNetContinuous, self).__init__()
+        self.log_std_min = -20.0
+        self.log_std_max = 2.0
         self.state_dim = state_dim
         self.action_bound = action_bound
         self.action_param_dim = action_param_dim
@@ -74,13 +76,18 @@ class PolicyNetContinuous(torch.nn.Module):
 
         x = F.relu(self.fc1(state_))
         mu = self.fc_mu(x)
-        std = F.softplus(self.fc_std(x))
+
+        log_std = self.fc_std(x).tanh()
+        log_std = self.log_std_min + 0.5 * (
+            self.log_std_max - self.log_std_min
+        ) * (log_std + 1)
+        std = torch.exp(log_std)
+    
         dist = Normal(mu, std)
         normal_sample = dist.rsample()  # rsample()是重参数化采样
-        log_prob = dist.log_prob(normal_sample)
         action = torch.tanh(normal_sample)
         # 计算tanh_normal分布的对数概率密度
-        log_prob = log_prob - torch.log(1 - torch.tanh(action).pow(2) + 1e-7)
+        log_prob = dist.log_prob(normal_sample) - torch.log(1 - action.pow(2) + 1e-7)
         log_prob = log_prob.sum(-1, keepdim=True)
         return action, log_prob
 
@@ -147,10 +154,9 @@ class SACContinuous:
         self.critic_1_optimizer = torch.optim.Adam(self.critic_1.parameters(), lr=critic_lr)
         self.critic_2_optimizer = torch.optim.Adam(self.critic_2.parameters(), lr=critic_lr)
         # 使用alpha的log值,可以使训练结果比较稳定
-        self.log_alpha = torch.tensor(np.log(0.01), dtype=torch.float)
-        self.log_alpha.requires_grad = True  # 可以对alpha求梯度
+        self.log_alpha = torch.zeros(1, dtype=torch.float32, requires_grad=True, device=device)
         self.log_alpha_optimizer = torch.optim.Adam([self.log_alpha], lr=alpha_lr)
-        self.target_entropy = target_entropy  # 目标熵的大小
+        self.target_entropy = -np.prod((action_dim,)).item() # heuristic
 
     def take_action(self, state):
         # print('vehicle_info', state['vehicle_info'])
