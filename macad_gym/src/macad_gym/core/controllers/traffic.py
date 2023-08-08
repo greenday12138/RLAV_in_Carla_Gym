@@ -1,6 +1,7 @@
 ﻿import random
 import carla
 from macad_gym.viz.logger import LOG
+from macad_gym.core.utils.wrapper import CarlaConnector
 
 
 # TODO make the seed user configurable
@@ -46,7 +47,8 @@ def apply_traffic(world, traffic_manager, env_config, num_vehicles, num_pedestri
     # --------------
     # Spawn vehicles
     # --------------
-    blueprints = world.get_blueprint_library().filter("vehicle.*")
+
+    blueprints = CarlaConnector.get_blueprint_library(world, LOG.traffic_logger).filter("vehicle.*")
     if safe:
         blueprints = list(filter(lambda x: int(x.get_attribute('number_of_wheels')) <= 4 and not
                 (#x.id.endswith('microlino') or
@@ -108,8 +110,8 @@ def apply_traffic(world, traffic_manager, env_config, num_vehicles, num_pedestri
     # -------------
     percentagePedestriansRunning = 0.0  # how many pedestrians will run
     percentagePedestriansCrossing = 0.0  # how many pedestrians will walk through the road
-    blueprints = world.get_blueprint_library().filter("walker.pedestrian.*")
-    pedestrian_controller_bp = world.get_blueprint_library().find('controller.ai.walker')
+    blueprints = CarlaConnector.get_blueprint_library(world, LOG.traffic_logger).filter("walker.pedestrian.*")
+    pedestrian_controller_bp = CarlaConnector.get_blueprint_library(world, LOG.traffic_logger).find('controller.ai.walker')
 
     # Take all the random locations to spawn
     spawn_points = []
@@ -161,7 +163,7 @@ def apply_traffic(world, traffic_manager, env_config, num_vehicles, num_pedestri
         light.set_red_time(0)
         light.set_yellow_time(0)
     
-    world.tick()
+    CarlaConnector.tick(world, LOG.traffic_logger)
 
     # Initialize each controller and set target to walk
     world.set_pedestrians_cross_factor(percentagePedestriansCrossing)

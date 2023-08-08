@@ -78,7 +78,7 @@ class LOG(object):
     pdqn_logger = None
     hud_logger = None
     basic_agent_logger = None
-    pdqn_multi_agent_logger = None
+    rl_trainer_logger = None
     route_planner_logger = None
     misc_logger = None
     traffic_logger = None
@@ -106,7 +106,7 @@ class LOG(object):
             LOG.pdqn_logger = Logger('pdqn.py', LOG.log_file, logging.DEBUG, logging.ERROR)
             LOG.hud_logger = Logger('hud.py', LOG.log_file, logging.DEBUG, logging.ERROR)
             LOG.basic_agent_logger = Logger('basic_agent.py', LOG.log_file, logging.DEBUG, logging.ERROR)
-            LOG.pdqn_multi_agent_logger = Logger('pdqn_multi_agent.py', LOG.log_file, logging.DEBUG, logging.ERROR)
+            LOG.rl_trainer_logger = Logger('rl_trainer.py', LOG.log_file, logging.DEBUG, logging.ERROR)
         else:
             attrs = vars(LOG)
             for attr, value in attrs.items():

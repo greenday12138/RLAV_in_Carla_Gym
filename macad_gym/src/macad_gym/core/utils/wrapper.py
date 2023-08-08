@@ -138,7 +138,72 @@ WEATHERS = {
 }
 
 
+class CarlaError(Exception):
+    def __init__(self, *args: object) -> None:
+        super().__init__(*args)
+
+
 class CarlaConnector(object):
+    @staticmethod
+    def set_weather(world, weather, logger):
+        try:
+            world.set_weather(weather)
+        except RuntimeError as e:
+            logger.exception("Carla world set_weather failed, restart carla!")
+            raise CarlaError(e.args) from e
+
+    @staticmethod
+    def get_weather(world, logger):
+        weas = None
+        try:
+            weas = world.get_weather()
+        except RuntimeError as e:
+            logger.exception("Carla world get_weather failed, restart carla!")
+            raise CarlaError(e.args) from e
+        
+        return weas
+
+    @staticmethod
+    def get_traffic_light(world, logger):
+        tras = None
+        try:
+            tras = world.get_traffic_light()
+        except RuntimeError as e:
+            logger.exception("Carla world get_traffic_light failed, restart carla!")
+            raise CarlaError(e.args) from e
+        
+        return tras
+
+    @staticmethod
+    def get_spectator(world, logger):
+        spe = None
+        try:
+            spe = world.get_spectator()
+        except RuntimeError as e:
+            logger.exception("Carla world get_spectator failed, restart carla!")
+            raise CarlaError(e.args) from e
+        
+        return spe
+
+    @staticmethod
+    def get_blueprint_library(world, logger):
+        lib = None
+        try:
+            lib = world.get_blueprint_library()
+        except RuntimeError as e:
+            logger.exception("Carla world get_blueprint_library failed, restart carla!")
+            raise CarlaError(e.args) from e
+        
+        return lib
+
+    @staticmethod
+    def tick(world, logger):
+        try:
+            world.tick()
+        except RuntimeError as e:
+            logger.exception("Carla world tick failed, restart carla!")
+            raise CarlaError(e.args) from e
+
     @staticmethod
     def clear_server(process):
         pass
@@ -267,11 +332,6 @@ class CarlaConnector(object):
                 logger.error(f"FATAL ERROR while launching server:{sys.exc_info()[0]}")
             
         return server_port, server_process
-
-
-class CarlaError(Exception):
-    def __init__(self, *args: object) -> None:
-        super().__init__(*args)
 
 
 class WaypointWrapper(object):

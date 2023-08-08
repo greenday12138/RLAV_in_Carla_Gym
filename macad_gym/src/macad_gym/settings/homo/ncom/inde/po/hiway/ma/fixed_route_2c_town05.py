@@ -178,7 +178,7 @@ class PDQNFixedRoute2CarTown05(PDQNMultiCarlaEnv):
             },
             "env": {
                 "server_map": "/Game/Carla/Maps/Town05_Opt",
-                "render": True,
+                "render": False,
                 "render_x_res": 2000,
                 "render_y_res": 1500,
                 "x_res": 500,

@@ -19,7 +19,7 @@ from main.util.utils import get_gpu_info, get_gpu_mem_info
 from macad_gym import LOG_PATH
 from macad_gym.viz.logger import LOG
 from macad_gym.core.utils.wrapper import (fill_action_param, recover_steer, 
-    SpeedState, Truncated)
+    SpeedState, Truncated, CarlaError)
 from algs.sac_multi_lane import SACContinuous
 
 # neural network hyper parameters
@@ -100,139 +100,141 @@ def main():
         ttc, efficiency, comfort, lcen, lane_change_reward = {}, {}, {}, {}, {}  # part objective scores
 
         try:
-            for i in range(10):
-                with tqdm(total=TOTAL_EPISODE//10, desc="Iteration %d" % i) as pbar:
-                    for i_episode in range(TOTAL_EPISODE//10):
-                        states, _ = env.reset()
-                        if i_episode > 2 and reload_agent(worker):
-                            param = deepcopy(AGENT_PARAM)
-                            worker = SACContinuous(param["s_dim"], param["a_dim"], param["a_bound"], param["gamma"],
-                                                param["tau"], param["buffer_size"], param["batch_size"], 
-                                                param["lr_alpha"], param["lr_actor"], param["lr_critic"], 
-                                                param["per_flag"], param["device"])
-                        done, truncated = False, False
-                        for actor_id in states.keys():
-                            ttc[actor_id], efficiency[actor_id], comfort[actor_id], lcen[actor_id],\
-                                lane_change_reward[actor_id], total_reward[actor_id], avg_reward[actor_id] = \
-                                -1, -1, -1, -1, 0, -4, -4
-                       
-                        while not done and not truncated:
-                            actions = {}
-                            if TRAIN and not agent_q.empty():
-                                lock.acquire()
-                                worker.load_net(os.path.join(SAVE_PATH, 'learner.pth'), map_location=worker.device)
-                                learn_time, q_loss = agent_q.get()
-                                lock.release()
-                                worker.learn_time=learn_time
-                                if q_loss is not None:
-                                    LOG.pdqn_multi_agent_logger.info(f"LEARN TIME:{learn_time}, Q_loss:{q_loss}")
-                                    losses_episode.append(q_loss)
-
+            for i in range(TOTAL_EPISODE//2000):
+                with tqdm(total=2000, desc="Iteration %d" % i) as pbar:
+                    for i_episode in range(2000):
+                        try:
+                            states, _ = env.reset()
+                            if i_episode > 2 and reload_agent(worker):
+                                param = deepcopy(AGENT_PARAM)
+                                worker = SACContinuous(param["s_dim"], param["a_dim"], param["a_bound"], param["gamma"],
+                                                    param["tau"], param["buffer_size"], param["batch_size"], 
+                                                    param["lr_alpha"], param["lr_actor"], param["lr_critic"], 
+                                                    param["per_flag"], param["device"])
+                            done, truncated = False, False
                             for actor_id in states.keys():
-                                actions[actor_id] = worker.take_action(states[actor_id][1])
-                                
-                            next_states, rewards, dones, truncateds, infos = env.step(actions)
-                            for actor_id in next_states.keys():
-                                if infos[actor_id]["speed_state"] == str(SpeedState.RUNNING):
-                                    total_reward[actor_id] = infos[actor_id]["total_reward"]
-                                    if truncateds[actor_id] == Truncated.FALSE:
-                                        info = infos[actor_id]["reward_info"]
-                                        ttc[actor_id] += info["ttc_reward"]
-                                        efficiency[actor_id] += info["efficiency_reward"]
-                                        comfort[actor_id] += info["comfort_reward"]
-                                        lcen[actor_id] += info["lane_center_reward"]
-                                        lane_change_reward[actor_id] += info["lane_change_reward"]
+                                ttc[actor_id], efficiency[actor_id], comfort[actor_id], lcen[actor_id],\
+                                    lane_change_reward[actor_id], total_reward[actor_id], avg_reward[actor_id] = \
+                                    -1, -1, -1, -1, 0, -4, -4
+                        
+                            while not done and not truncated:
+                                actions = {}
+                                if TRAIN and not agent_q.empty():
+                                    lock.acquire()
+                                    worker.load_net(os.path.join(SAVE_PATH, 'learner.pth'), map_location=worker.device)
+                                    learn_time, q_loss = agent_q.get()
+                                    lock.release()
+                                    worker.learn_time=learn_time
+                                    if q_loss is not None:
+                                        LOG.rl_trainer_logger.info(f"LEARN TIME:{learn_time}, Q_loss:{q_loss}")
+                                        losses_episode.append(q_loss)
 
-                                    #process action params
-                                    state, next_state, reward, done, truncated, info = \
-                                        deepcopy(states[actor_id][1]), deepcopy(next_states[actor_id][1]), \
-                                        deepcopy(rewards[actor_id]), deepcopy(dones[actor_id]),\
-                                        deepcopy(truncateds[actor_id]!=Truncated.FALSE), deepcopy(infos[actor_id])
-                                        
-                                    throttle_brake = -info["control_info"]["brake"] if info["control_info"]["brake"] > 0 else info["control_info"]["throttle"]
-                                    action = [[info["control_info"]["steer"], throttle_brake]]
-                                    LOG.pdqn_multi_agent_logger.debug(
-                                        f"\nControl In Replay Buffer: actor_id: {actor_id} action: {action}")
-
-                                    traj_q.put((state, next_state, action,
-                                        reward, done, truncated, info ), block=True, timeout=None)
+                                for actor_id in states.keys():
+                                    actions[actor_id] = worker.take_action(states[actor_id][1])
                                     
-                                    LOG.pdqn_multi_agent_logger.debug(
-                                        f"actor_id: {actor_id} time_steps: {info['step']}\n"
-                                        f"state -- vehicle_info: {state['vehicle_info']}\n"
-                                        #f"waypoints:{state['left_waypoints']}, \n"
-                                        #f"waypoints:{state['center_waypoints']}, \n"
-                                        #f"waypoints:{state['right_waypoints']}, \n"
-                                        f"hero_vehicle: {state['hero_vehicle']}, \n"
-                                        f"light info: {state['light']}\n"
-                                        f"next_state -- vehicle_info:{next_state['vehicle_info']}\n"
-                                        #f"waypoints:{next_state['left_waypoints']}, \n"
-                                        #f"waypoints:{next_state['center_waypoints']}, \n"
-                                        #f"waypoints:{next_state['right_waypoints']}, \n"
-                                        f"hero_vehicle: {next_state['hero_vehicle']}\n"
-                                        f"light info: {next_state['light']}\n"
-                                        f"network_action: {actions[actor_id]}, saved_actions: {action} \n"
-                                        f"reward: {reward}, truncated: {truncated}, done: {done}, ")
-        
-                            done = dones["__all__"]
-                            truncated = truncateds["__all__"]!=Truncated.FALSE
-                            states = next_states
+                                next_states, rewards, dones, truncateds, infos = env.step(actions)
+                                for actor_id in next_states.keys():
+                                    if infos[actor_id]["speed_state"] == str(SpeedState.RUNNING):
+                                        total_reward[actor_id] = infos[actor_id]["total_reward"]
+                                        if truncateds[actor_id] == Truncated.FALSE:
+                                            info = infos[actor_id]["reward_info"]
+                                            ttc[actor_id] += info["ttc_reward"]
+                                            efficiency[actor_id] += info["efficiency_reward"]
+                                            comfort[actor_id] += info["comfort_reward"]
+                                            lcen[actor_id] += info["lane_center_reward"]
+                                            lane_change_reward[actor_id] += info["lane_change_reward"]
+
+                                        #process action params
+                                        state, next_state, reward, done, truncated, info = \
+                                            deepcopy(states[actor_id][1]), deepcopy(next_states[actor_id][1]), \
+                                            deepcopy(rewards[actor_id]), deepcopy(dones[actor_id]),\
+                                            deepcopy(truncateds[actor_id]!=Truncated.FALSE), deepcopy(infos[actor_id])
+                                            
+                                        throttle_brake = -info["control_info"]["brake"] if info["control_info"]["brake"] > 0 else info["control_info"]["throttle"]
+                                        action = [[info["control_info"]["steer"], throttle_brake]]
+                                        LOG.rl_trainer_logger.debug(
+                                            f"\nControl In Replay Buffer: actor_id: {actor_id} action: {action}")
+
+                                        traj_q.put((state, next_state, action,
+                                            reward, done, truncated, info ), block=True, timeout=None)
+                                        
+                                        LOG.rl_trainer_logger.debug(
+                                            f"actor_id: {actor_id} time_steps: {info['step']}\n"
+                                            f"state -- vehicle_info: {state['vehicle_info']}\n"
+                                            #f"waypoints:{state['left_waypoints']}, \n"
+                                            #f"waypoints:{state['center_waypoints']}, \n"
+                                            #f"waypoints:{state['right_waypoints']}, \n"
+                                            f"hero_vehicle: {state['hero_vehicle']}, \n"
+                                            f"light info: {state['light']}\n"
+                                            f"next_state -- vehicle_info:{next_state['vehicle_info']}\n"
+                                            #f"waypoints:{next_state['left_waypoints']}, \n"
+                                            #f"waypoints:{next_state['center_waypoints']}, \n"
+                                            #f"waypoints:{next_state['right_waypoints']}, \n"
+                                            f"hero_vehicle: {next_state['hero_vehicle']}\n"
+                                            f"light info: {next_state['light']}\n"
+                                            f"network_action: {actions[actor_id]}, saved_actions: {action} \n"
+                                            f"reward: {reward}, truncated: {truncated}, done: {done}, ")
+            
+                                done = dones["__all__"]
+                                truncated = truncateds["__all__"]!=Truncated.FALSE
+                                states = next_states
+                                
+                                #only record the first vehicle reward
+                                if env.unwrapped._total_steps == env.unwrapped.pre_train_steps:
+                                    worker.save_net(os.path.join(SAVE_PATH, 'isac_pre_trained.pth'))
                             
-                            #only record the first vehicle reward
-                            if env.unwrapped._total_steps == env.unwrapped.pre_train_steps:
-                                worker.save_net(os.path.join(SAVE_PATH, 'isac_pre_trained.pth'))
-                           
-                        if done or truncated:
-                            # restart the training
-                            done = False
-                            truncated = False
+                            if done or truncated:
+                                # restart the training
+                                done = False
+                                truncated = False
 
-                        # record episode results
-                        if env.unwrapped._rl_switch:
-                            episode_writer.add_scalars("Total_Reward", total_reward, i*(TOTAL_EPISODE // 10)+i_episode)
-                            for actor_id in total_reward.keys():
-                                avg_reward[actor_id] = total_reward[actor_id] / (env.unwrapped._time_steps[actor_id] + 1) 
-                                ttc[actor_id] /= env.unwrapped._time_steps[actor_id] + 1
-                                efficiency[actor_id] /= env.unwrapped._time_steps[actor_id] + 1
-                                comfort[actor_id] /= env.unwrapped._time_steps[actor_id] + 1
-                                lcen[actor_id] /= env.unwrapped._time_steps[actor_id] + 1
-                                lane_change_reward[actor_id] /= env.unwrapped._time_steps[actor_id] + 1
-                            episode_writer.add_scalars('Avg_Reward', avg_reward, i*(TOTAL_EPISODE // 10)+i_episode)
-                            episode_writer.add_scalars('Time_Steps', env.unwrapped._time_steps, i*(TOTAL_EPISODE // 10)+i_episode)
-                            episode_writer.add_scalars('TTC', ttc, i*(TOTAL_EPISODE // 10)+i_episode)
-                            episode_writer.add_scalars('Efficiency', efficiency, i*(TOTAL_EPISODE // 10)+i_episode)
-                            episode_writer.add_scalars('Comfort', comfort, i*(TOTAL_EPISODE // 10)+i_episode)
-                            episode_writer.add_scalars('Lcen', lcen, i*(TOTAL_EPISODE // 10)+i_episode)
-                            episode_writer.add_scalars('Lane_change_reward', lane_change_reward, i*(TOTAL_EPISODE // 10)+i_episode)
-                            
-                            # score_safe.append(ttc)
-                            # score_efficiency.append(efficiency)
-                            # score_comfort.append(comfort)
-                            # rolling_score.append(np.mean(episode_score[max]))
-                            # cum_collision_num.append(collision_train)
+                            # record episode results
+                            if env.unwrapped._rl_switch:
+                                episode_writer.add_scalars("Total_Reward", total_reward, i* 2000 +i_episode)
+                                for actor_id in total_reward.keys():
+                                    avg_reward[actor_id] = total_reward[actor_id] / (env.unwrapped._time_steps[actor_id] + 1) 
+                                    ttc[actor_id] /= env.unwrapped._time_steps[actor_id] + 1
+                                    efficiency[actor_id] /= env.unwrapped._time_steps[actor_id] + 1
+                                    comfort[actor_id] /= env.unwrapped._time_steps[actor_id] + 1
+                                    lcen[actor_id] /= env.unwrapped._time_steps[actor_id] + 1
+                                    lane_change_reward[actor_id] /= env.unwrapped._time_steps[actor_id] + 1
+                                episode_writer.add_scalars('Avg_Reward', avg_reward, i * 2000+i_episode)
+                                episode_writer.add_scalars('Time_Steps', env.unwrapped._time_steps, i *  2000 + i_episode)
+                                episode_writer.add_scalars('TTC', ttc, i * 2000 + i_episode)
+                                episode_writer.add_scalars('Efficiency', efficiency, i * 2000 + i_episode)
+                                episode_writer.add_scalars('Comfort', comfort, i * 2000 + i_episode)
+                                episode_writer.add_scalars('Lcen', lcen, i * 2000 + i_episode)
+                                episode_writer.add_scalars('Lane_change_reward', lane_change_reward, i * 2000 + i_episode)
+                                
+                                # score_safe.append(ttc)
+                                # score_efficiency.append(efficiency)
+                                # score_comfort.append(comfort)
+                                # rolling_score.append(np.mean(episode_score[max]))
+                                # cum_collision_num.append(collision_train)
 
-                        LOG.pdqn_multi_agent_logger.info(f"Total_steps:{env.unwrapped._total_steps} RL_control_steps:{env.unwrapped._rl_control_steps}")
+                            LOG.rl_trainer_logger.info(f"Total_steps:{env.unwrapped._total_steps} RL_control_steps:{env.unwrapped._rl_control_steps}")
 
-                        """ if rolling_score[rolling_score.__len__-1]>max_rolling_score:
-                            max_rolling_score=rolling_score[rolling_score.__len__-1]
-                            agent.save_net() """
+                            """ if rolling_score[rolling_score.__len__-1]>max_rolling_score:
+                                max_rolling_score=rolling_score[rolling_score.__len__-1]
+                                agent.save_net() """
 
 
-                        pbar.set_postfix({
-                            "episodes": f"{(TOTAL_EPISODE//10) * i + i_episode + 1}"
-                        })
-                        #if (i_episode + 1) % 10 == 0:
-                        # pbar.set_postfix({
-                        #     'episodes': '%d' % (TOTAL_EPISODE // 10 * i + i_episode),
-                        #     'score': '%.2f' % total_reward
-                        # })
-                        pbar.update(1)
-                        worker.save_net(os.path.join(SAVE_PATH, 'isac_final.pth'))
-
-                    # set new log file
-                    #globals()["LOG.pdqn_multi_agent_logger"] = LOG.pdqn_multi_agent_logger(__name__, SAVE_PATH + f"/multi_agent_{i}.log", logging.DEBUG, logging.ERROR)
+                            pbar.set_postfix({
+                                "episodes": f"{2000 * i + i_episode + 1}"
+                            })
+                            #if (i_episode + 1) % 10 == 0:
+                            # pbar.set_postfix({
+                            #     'episodes': '%d' % (2000 * i + i_episode),
+                            #     'score': '%.2f' % total_reward
+                            # })
+                            pbar.update(1)
+                            worker.save_net(os.path.join(SAVE_PATH, 'isac_final.pth'))
+                        except CarlaError as e:
+                            LOG.rl_trainer_logger.exception("Carla Failed, restart carla!")
+                            continue
            
-                #env.close()
+                # restart carla to clear garbage
+                env.close()
         except KeyboardInterrupt:
             logging.info("Premature Terminated")
         finally:
@@ -283,7 +285,7 @@ def reload_agent(agent, gpu_id=0):
         return False
     gpu_mem_total, gpu_mem_used, gpu_mem_free = get_gpu_mem_info(gpu_id=gpu_id)
     if gpu_mem_total > 0 and gpu_mem_free > 900:
-        LOG.pdqn_multi_agent_logger.info(f"Reload agent of process {os.getpid()}")
+        LOG.rl_trainer_logger.info(f"Reload agent of process {os.getpid()}")
         return True
 
     return False
@@ -299,6 +301,6 @@ if __name__ == '__main__':
     except BaseException as e:
         logging.exception(e.args)
         logging.exception(traceback.format_exc())
-        #LOG.pdqn_multi_agent_logger.exception(traceback.print_tb(sys.exc_info()[2]))
+        #LOG.rl_trainer_logger.exception(traceback.print_tb(sys.exc_info()[2]))
     finally:
         kill_process()

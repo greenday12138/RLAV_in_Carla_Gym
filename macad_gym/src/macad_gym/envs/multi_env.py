@@ -478,6 +478,7 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
             except CarlaError as e:
                 LOG.multi_env_logger.exception(e.args)
                 self._server_process = None
+                self._clear_server_state()
                 continue
             except Exception as e:
                 LOG.multi_env_logger.exception("Error during reset: {}".format(traceback.format_exc()))
@@ -516,7 +517,7 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
             # Shouldn't take too long
             while cam.callback_count == 0:
                 if self._sync_server:
-                    self.world.tick()
+                    CarlaConnector.tick(self.world, LOG.multi_env_logger)
                     # `wait_for_tick` is no longer needed, see https://github.com/carla-simulator/carla/pull/1803
                     # self.world.wait_for_tick()
             if cam.image is None:
@@ -589,12 +590,13 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
             #: closest match
 
         if actor_type == "pedestrian":
-            blueprints = self.world.get_blueprint_library().filter(
+            blueprints = CarlaConnector.get_blueprint_library(self.world, LOG.multi_env_logger).filter(
                 "walker.pedestrian.*"
             )
 
         elif actor_type == "vehicle_4W":
-            blueprints = self.world.get_blueprint_library().filter("vehicle")
+            blueprints = CarlaConnector.get_blueprint_library(
+                self.world, LOG.multi_env_logger).filter("vehicle")
             # Further filter down to 4-wheeled vehicles
             blueprints = [
                 b for b in blueprints if int(b.get_attribute("number_of_wheels")) == 4
@@ -615,7 +617,8 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
                     )
                 )
         elif actor_type == "vehicle_2W":
-            blueprints = self.world.get_blueprint_library().filter("vehicle")
+            blueprints = CarlaConnector.get_blueprint_library(
+                self.world, LOG.multi_env_logger).filter("vehicle")
             # Further filter down to 2-wheeled vehicles
             blueprints = [
                 b for b in blueprints if int(b.get_attribute("number_of_wheels")) == 2
@@ -646,7 +649,7 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
         for retry in range(RETRIES_ON_ERROR):
             vehicle = self.world.try_spawn_actor(blueprint, transform)
             if self._sync_server:
-                self.world.tick()
+                CarlaConnector.tick(self.world, LOG.multi_env_logger)
             if vehicle is not None and vehicle.get_location().z > 0.0:
                 # Register it under traffic manager
                 # Walker vehicle type does not have autopilot. Use walker controller ai
@@ -660,7 +663,7 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
             LOG.multi_env_logger.error("spawn_actor: Retry#:{}/{}".format(retry + 1, RETRIES_ON_ERROR))
         if vehicle is None:
             # Request a spawn one last time possibly raising the error
-            vehicle = self.world.spawn_actor(blueprint, transform)
+            vehicle = self.world.try_spawn_actor(blueprint, transform)
         return vehicle
 
     def _reset(self, clean_world=True):
@@ -698,14 +701,9 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
             if weather_num not in WEATHERS:
                 weather_num = 0
 
-        self.world.set_weather(WEATHERS[weather_num])
-
-        self._weather = [
-            self.world.get_weather().cloudiness,
-            self.world.get_weather().precipitation,
-            self.world.get_weather().precipitation_deposits,
-            self.world.get_weather().wind_intensity,
-        ]
+        CarlaConnector.set_weather(self.world, WEATHERS[weather_num], LOG.multi_env_logger)
+        weas= CarlaConnector.get_weather(self.world, LOG.multi_env_logger)
+        self._weather = [weas.cloudiness, weas.precipitation, weas.precipitation_deposits, weas.wind_intensity]
 
         for actor_id, actor_config in self._actor_configs.items():
             if self._done_dict.get("__all__", True) or \
@@ -1020,9 +1018,9 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
             # NOTE: A distinction is made between "(A)Synchronous Environment" and
             # "(A)Synchronous (carla) server"
             if self._sync_server:
-                self.world.tick()
+                CarlaConnector.tick(self.world, LOG.multi_env_logger)
                 if self._render:
-                    spectator = self.world.get_spectator()
+                    spectator = CarlaConnector.get_spectator(self.world, LOG.multi_env_logger)
                     transform = self._actors[actor_id].get_transform()
                     spectator.set_transform(carla.Transform(transform.location + carla.Location(z=80),
                                                             carla.Rotation(pitch=-90)))
@@ -1074,6 +1072,11 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
             if self._verbose:
                 print_measurements(LOG.multi_env_logger, self._cur_measurement)
             return obs_dict, reward_dict, self._done_dict, self._truncated_dict, info_dict
+        except CarlaError as e:
+            LOG.multi_env_logger.exception(e.args)
+            self._server_process = None
+            self._clear_server_state()
+            raise e
         except Exception as e:
             LOG.multi_env_logger.exception(f"Error during step, terminating episode early."
                              f"{traceback.format_exc()}")
