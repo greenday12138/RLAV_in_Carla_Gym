@@ -4,7 +4,6 @@ import datetime,time, os
 import gym, macad_gym
 import random, sys
 import traceback
-import tensorboard
 import numpy as np
 import matplotlib.pyplot as plt
 import multiprocessing as mp
@@ -21,6 +20,7 @@ from macad_gym.viz.logger import LOG
 from macad_gym.core.utils.wrapper import (fill_action_param, recover_steer, 
     SpeedState, Truncated, CarlaError)
 from algs.sac_multi_lane import SACContinuous
+os.environ['PYTHONWARNINGS'] = 'ignore:semaphore_tracker:UserWarning'
 
 # neural network hyper parameters
 AGENT_PARAM = {
@@ -72,7 +72,7 @@ def main():
         worker = SACContinuous(param["s_dim"], param["a_dim"], param["a_bound"], param["gamma"],
                                param["tau"], param["buffer_size"], param["batch_size"], 
                                param["lr_alpha"], param["lr_actor"], param["lr_critic"], 
-                               param["per_flag"], torch.device("cpu"))
+                               param["per_flag"], param["device"])
         if TRAIN and os.path.exists(MODEL_PATH):
             worker.load_net(MODEL_PATH, map_location=worker.device)
 
@@ -105,12 +105,12 @@ def main():
                     for i_episode in range(2000):
                         try:
                             states, _ = env.reset()
-                            if i_episode > 2 and reload_agent(worker):
-                                param = deepcopy(AGENT_PARAM)
-                                worker = SACContinuous(param["s_dim"], param["a_dim"], param["a_bound"], param["gamma"],
-                                                    param["tau"], param["buffer_size"], param["batch_size"], 
-                                                    param["lr_alpha"], param["lr_actor"], param["lr_critic"], 
-                                                    param["per_flag"], param["device"])
+                            # if i_episode > 2 and reload_agent(worker):
+                            #     param = deepcopy(AGENT_PARAM)
+                            #     worker = SACContinuous(param["s_dim"], param["a_dim"], param["a_bound"], param["gamma"],
+                            #                         param["tau"], param["buffer_size"], param["batch_size"], 
+                            #                         param["lr_alpha"], param["lr_actor"], param["lr_critic"], 
+                            #                         param["per_flag"], param["device"])
                             done, truncated = False, False
                             for actor_id in states.keys():
                                 ttc[actor_id], efficiency[actor_id], comfort[actor_id], lcen[actor_id],\
@@ -229,12 +229,14 @@ def main():
                             # })
                             pbar.update(1)
                             worker.save_net(os.path.join(SAVE_PATH, 'isac_final.pth'))
+                            # if i_episode % 10 == 0:
+                            #     env.close()
                         except CarlaError as e:
                             LOG.rl_trainer_logger.exception("Carla Failed, restart carla!")
                             continue
            
                 # restart carla to clear garbage
-                env.close()
+                #env.close()
         except KeyboardInterrupt:
             logging.info("Premature Terminated")
         finally:
@@ -304,3 +306,4 @@ if __name__ == '__main__':
         #LOG.rl_trainer_logger.exception(traceback.print_tb(sys.exc_info()[2]))
     finally:
         kill_process()
+        del os.environ['PYTHONWARNINGS']

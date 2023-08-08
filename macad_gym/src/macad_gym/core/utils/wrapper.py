@@ -232,6 +232,7 @@ class CarlaConnector(object):
             f"3. Binary: {SERVER_BINARY}"
         )
         multigpu_success = False
+        server_process = None
         gpus = GPUtil.getGPUs()
         if not env_config["render"] and (gpus is not None and len(gpus)) > 0:
             try:
@@ -263,37 +264,37 @@ class CarlaConnector(object):
                     )
 
                 # Else, run in headless mode
-                else:
-                    # Since carla 0.9.12+ use -RenderOffScreen to start headlessly
-                    # https://carla.readthedocs.io/en/latest/adv_rendering_options/
-                    server_process = subprocess.Popen(
-                        (  # 'SDL_VIDEODRIVER=offscreen SDL_HINT_CUDA_DEVICE={} DISPLAY='
-                            '"{}" -RenderOffScreen -benchmark -fps={} -carla-server'
-                            " -world-port={} -carla-streaming-port=0".format(
-                                SERVER_BINARY,
-                                1/env_config["fixed_delta_seconds"],
-                                server_port,
-                            )
-                        ),
-                        shell=True,
-                        # for Linux
-                        preexec_fn=None if IS_WINDOWS_PLATFORM else os.setsid,
-                        # for Windows (not necessary)
-                        creationflags=subprocess.CREATE_NEW_PROCESS_GROUP
-                        if IS_WINDOWS_PLATFORM
-                        else 0,
-                        stdout=open(LOG.server_log, 'w'),
-                    )
+                # else:
+                #     # Since carla 0.9.12+ use -RenderOffScreen to start headlessly
+                #     # https://carla.readthedocs.io/en/latest/adv_rendering_options/
+                #     server_process = subprocess.Popen(
+                #         (  # 'SDL_VIDEODRIVER=offscreen SDL_HINT_CUDA_DEVICE={} DISPLAY='
+                #             '"{}" -RenderOffScreen -benchmark -fps={} -carla-server'
+                #             " -world-port={} -carla-streaming-port=0".format(
+                #                 SERVER_BINARY,
+                #                 1/env_config["fixed_delta_seconds"],
+                #                 server_port,
+                #             )
+                #         ),
+                #         shell=True,
+                #         # for Linux
+                #         preexec_fn=None if IS_WINDOWS_PLATFORM else os.setsid,
+                #         # for Windows (not necessary)
+                #         creationflags=subprocess.CREATE_NEW_PROCESS_GROUP
+                #         if IS_WINDOWS_PLATFORM
+                #         else 0,
+                #         stdout=open(LOG.server_log, 'w'),
+                #     )
             # TODO: Make the try-except style handling work with Popen
             # exceptions after launching the server procs are not caught
             except Exception as e:
                 logger.exception(traceback.format_exc())
             # Temporary soln to check if CARLA server proc started and wrote
             # something to stdout which is the usual case during startup
-            if os.path.isfile(LOG.server_log):
-                multigpu_success = True
-            else:
+            if server_process is None:
                 multigpu_success = False
+            else:
+                multigpu_success = True
 
             if multigpu_success:
                 logger.info("Running sim servers in headless/multi-GPU mode")

@@ -4,7 +4,6 @@ import datetime,time, os
 import gym, macad_gym
 import random, sys
 import traceback
-import tensorboard
 import numpy as np
 import matplotlib.pyplot as plt
 import multiprocessing as mp
@@ -21,6 +20,7 @@ from macad_gym.viz.logger import LOG
 from macad_gym.core.utils.wrapper import (fill_action_param, recover_steer, Action, 
     SpeedState, Truncated, CarlaError)
 from algs.pdqn import P_DQN
+os.environ['PYTHONWARNINGS'] = 'ignore:semaphore_tracker:UserWarning'
 
 # neural network hyper parameters
 AGENT_PARAM = {
@@ -116,12 +116,13 @@ def main():
                     for i_episode in range(2000):
                         try:
                             states, _ = env.reset()
-                            # if i_episode > 100 and reload_agent(worker):
+                            # if i_episode > 2 and reload_agent(worker):
+                            #     param = deepcopy(AGENT_PARAM)
                             #     worker = P_DQN(param["s_dim"], param["a_dim"], param["a_bound"], param["gamma"],
                             #                     param["tau"], param["sigma_steer"], param["sigma"], param["sigma_acc"], 
                             #                     param["theta"], param["epsilon"], param["buffer_size"], param["batch_size"], 
                             #                     param["lr_actor"], param["lr_critic"], param["clip_grad"], param["zero_index_gradients"],
-                            #                     param["inverting_gradients"], param["per_flag"], torch.device('cuda'))
+                            #                     param["inverting_gradients"], param["per_flag"], param["device"])
                             done, truncated = False, False
                             worker.reset_noise()
                             for actor_id in states.keys():
@@ -263,7 +264,7 @@ def main():
                             continue
            
                 # restart carla to clear garbage
-                env.close()
+                #env.close()
         except KeyboardInterrupt:
             logging.info("Premature Terminated")
         finally:
@@ -335,3 +336,4 @@ if __name__ == '__main__':
         #LOG.rl_trainer_logger.exception(traceback.print_tb(sys.exc_info()[2]))
     finally:
         kill_process()
+        del os.environ['PYTHONWARNINGS']

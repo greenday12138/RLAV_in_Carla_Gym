@@ -267,6 +267,7 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
         self._server_port = None
         self._server_process = None
         self._client = None
+        self.world = None
         self.SWITCH_THRESHOLD = self._rl_configs["switch_threshold"]
         if self._rl_configs["train"]:
             self.pre_train_steps = self._rl_configs["pre_train_steps"]
@@ -358,7 +359,11 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
 
         self._client.set_timeout(60.0)
         # load map using client api since 0.9.6+
-        self._client.load_world(self._server_map)
+        print(self._client.get_available_maps())
+        if self.world is None:
+            self._client.load_world(self._server_map)
+        else:
+            self._client.reload_world()
         self.world = self._client.get_world()
         remove_unnecessary_objects(self.world)
         self.map = self.world.get_map()
@@ -441,6 +446,7 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
         LOG.multi_env_logger.info("Clearing Carla server state")
         try:
             if self._client:
+                del self._client
                 self._client = None
         except Exception as e:
             LOG.multi_env_logger.exception("Error disconnecting client: {}".format(e))
