@@ -1,9 +1,6 @@
 import math
 import pygame
 
-pygame.init()
-pygame.display.set_caption("MACAD-Gym")
-
 
 class Render(object):
     """Handle rendering of pygame window."""
@@ -14,6 +11,15 @@ class Render(object):
     resY = 480
 
     save_cnt = 0
+
+    @staticmethod
+    def init():
+        pygame.init()
+        pygame.display.set_caption("MACAD-Gym")
+
+    @staticmethod
+    def quit():
+        pygame.quit()
 
     @staticmethod
     def reset_frame_cnt():

@@ -36,7 +36,7 @@ def hero_autopilot(actor, traffic_manager, actor_config, env_config,setting=True
 
 def apply_traffic(world, traffic_manager, env_config, num_vehicles, num_pedestrians, safe=False, route_points=None):
     # set traffic manager
-    traffic_manager.set_synchronous_mode(env_config["sync_server"])
+    #traffic_manager.set_synchronous_mode(env_config["sync_server"])
     if env_config["hybrid"] is True:
         traffic_manager.set_hybrid_physics_mode(True)
         traffic_manager.set_hybrid_physics_radius(500)

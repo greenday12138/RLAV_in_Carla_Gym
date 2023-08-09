@@ -229,8 +229,8 @@ def main():
                             # })
                             pbar.update(1)
                             worker.save_net(os.path.join(SAVE_PATH, 'isac_final.pth'))
-                            # if i_episode % 10 == 0:
-                            #     env.close()
+                            if i_episode % 2 == 0:
+                                env.close()
                         except CarlaError as e:
                             LOG.rl_trainer_logger.exception("Carla Failed, restart carla!")
                             continue

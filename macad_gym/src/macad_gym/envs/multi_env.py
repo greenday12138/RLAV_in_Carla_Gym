@@ -8,6 +8,7 @@ __author__: @Praveen-Palanisamy
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
+import gc
 import argparse
 import atexit
 import json
@@ -357,18 +358,12 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
                     LOG.multi_env_logger.error(f"Could not connect to Carla server because:{re}")
                 self._client = None
 
-        self._client.set_timeout(60.0)
+        self._client.set_timeout(10.0)
         # load map using client api since 0.9.6+
-        print(self._client.get_available_maps())
-        if self.world is None:
-            self._client.load_world(self._server_map)
-        else:
-            self._client.reload_world()
         self.world = self._client.get_world()
-        remove_unnecessary_objects(self.world)
-        self.map = self.world.get_map()
-        world_settings = self.world.get_settings()
+        self._traffic_manager = self._client.get_trafficmanager(8001)
         # Actors will become dormant 2km away from here vehicle
+        world_settings = self.world.get_settings()
         if self._env_config["hybrid"]:
             world_settings.actor_active_distance = 2000 
         world_settings.synchronous_mode = self._sync_server
@@ -378,9 +373,21 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
             # Available with CARLA version>=0.9.6
             # Set fixed_delta_seconds to have reliable physics between sim steps
             world_settings.fixed_delta_seconds = self._fixed_delta_seconds
+            self._traffic_manager.set_synchronous_mode(True)
         self.world.apply_settings(world_settings)
         # Sign on traffic manager
-        self._traffic_manager = self._client.get_trafficmanager(8001)
+        CarlaConnector.tick(self.world, LOG.multi_env_logger)
+        if self.world is None:
+            self._client.load_world(self._server_map, reset_settings=False)
+        else:
+            #self.world = self._client.get_world()
+            self._client.load_world(self._server_map, reset_settings=False, 
+                                    map_layers=carla.MapLayer.NONE)
+        self.world = self._client.get_world()
+        CarlaConnector.tick(self.world, LOG.multi_env_logger)
+        #remove_unnecessary_objects(self.world)
+        self.map = self.world.get_map()
+
         # Set the spectator/server view if rendering is enabled
         if self._render and self._env_config.get("spectator_loc"):
             spectator = self.world.get_spectator()
@@ -401,6 +408,8 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
         if self._env_config.get("fixed_route"):
             self._npc_vehicles_spawn_points = \
                 RoutePlanner(self.map, sampling_resolution=4.0).get_spawn_points()
+            
+        Render.init()
 
     def _clean_world(self):
         """Destroy all actors cleanly before exiting
@@ -421,6 +430,7 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
             for npc in zip(*self._npc_pedestrians):
                 npc[1].stop()  # stop controller
                 npc[0].destroy()  # kill entity
+            #CarlaConnector.tick(self.world, LOG.multi_env_logger)
         except RuntimeError as e:
             raise CarlaError(e.args)
         # Note: the destroy process for cameras is handled in camera_manager.py
@@ -447,7 +457,12 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
         try:
             if self._client:
                 del self._client
+                del self.world
+                self.world = None
                 self._client = None
+                self._traffic_manager = None
+                self.map = None
+                Render.quit()
         except Exception as e:
             LOG.multi_env_logger.exception("Error disconnecting client: {}".format(e))
         if self._server_process:
@@ -463,6 +478,8 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
 
             self._server_port = None
             self._server_process = None
+
+        gc.collect()
 
     def reset(self, seed=None, options=None):
         """Reset the carla world, call _init_server()
