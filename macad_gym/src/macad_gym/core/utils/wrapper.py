@@ -306,7 +306,7 @@ class CarlaConnector(object):
                 parameters = [SERVER_BINARY, 
                               "-windowed", 
                               #"-prefernvidia",
-                              "-quality-level=Low"
+                              "-quality-level=Low",
                               f"-ResX={str(env_config['render_x_res'])}",
                               f"-ResY={str(env_config['render_y_res'])}",
                               "-benchmark",

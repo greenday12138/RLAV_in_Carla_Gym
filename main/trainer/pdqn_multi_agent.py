@@ -220,7 +220,7 @@ def main():
 
                             # record episode results
                             if env.unwrapped._rl_switch:
-                                episode_writer.add_scalars("Total_Reward", total_reward, i*(TOTAL_EPISODE // 10)+i_episode)
+                                episode_writer.add_scalars("Total_Reward", total_reward, i* 2000 +i_episode)
                                 for actor_id in total_reward.keys():
                                     avg_reward[actor_id] = total_reward[actor_id] / (env.unwrapped._time_steps[actor_id] + 1) 
                                     ttc[actor_id] /= env.unwrapped._time_steps[actor_id] + 1
@@ -228,13 +228,13 @@ def main():
                                     comfort[actor_id] /= env.unwrapped._time_steps[actor_id] + 1
                                     lcen[actor_id] /= env.unwrapped._time_steps[actor_id] + 1
                                     lane_change_reward[actor_id] /= env.unwrapped._time_steps[actor_id] + 1
-                                episode_writer.add_scalars('Avg_Reward', avg_reward, i*(TOTAL_EPISODE // 10)+i_episode)
-                                episode_writer.add_scalars('Time_Steps', env.unwrapped._time_steps, i*(TOTAL_EPISODE // 10)+i_episode)
-                                episode_writer.add_scalars('TTC', ttc, i*(TOTAL_EPISODE // 10)+i_episode)
-                                episode_writer.add_scalars('Efficiency', efficiency, i*(TOTAL_EPISODE // 10)+i_episode)
-                                episode_writer.add_scalars('Comfort', comfort, i*(TOTAL_EPISODE // 10)+i_episode)
-                                episode_writer.add_scalars('Lcen', lcen, i*(TOTAL_EPISODE // 10)+i_episode)
-                                episode_writer.add_scalars('Lane_change_reward', lane_change_reward, i*(TOTAL_EPISODE // 10)+i_episode)
+                                episode_writer.add_scalars('Avg_Reward', avg_reward, i * 2000+i_episode)
+                                episode_writer.add_scalars('Time_Steps', env.unwrapped._time_steps, i *  2000 + i_episode)
+                                episode_writer.add_scalars('TTC', ttc, i * 2000 + i_episode)
+                                episode_writer.add_scalars('Efficiency', efficiency, i * 2000 + i_episode)
+                                episode_writer.add_scalars('Comfort', comfort, i * 2000 + i_episode)
+                                episode_writer.add_scalars('Lcen', lcen, i * 2000 + i_episode)
+                                episode_writer.add_scalars('Lane_change_reward', lane_change_reward, i * 2000 + i_episode)
                                 
                                 # score_safe.append(ttc)
                                 # score_efficiency.append(efficiency)
@@ -250,11 +250,11 @@ def main():
 
 
                             pbar.set_postfix({
-                                "episodes": f"{(TOTAL_EPISODE//10) * i + i_episode + 1}"
+                                "episodes": f"{2000 * i + i_episode + 1}"
                             })
                             #if (i_episode + 1) % 10 == 0:
                             # pbar.set_postfix({
-                            #     'episodes': '%d' % (TOTAL_EPISODE // 10 * i + i_episode),
+                            #     'episodes': '%d' % (2000 * i + i_episode),
                             #     'score': '%.2f' % total_reward
                             # })
                             pbar.update(1)
