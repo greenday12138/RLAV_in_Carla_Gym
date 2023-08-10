@@ -1,4 +1,5 @@
 import carla
+import time
 import socket
 import GPUtil
 import random
@@ -18,62 +19,111 @@ class CarlaError(Exception):
 
 
 class CarlaConnector(object):
-    @staticmethod
-    def set_weather(world, weather, logger):
+    def __init__(self) -> None:
+        super().__init__()
+
+        self._client = None
+        self._world = None
+        self._map = None
+        self._traffic_manager = None
+
+    def start(self, server_port, server_map, env_config):
+        while self._client is None:
+            try:
+                self._client = carla.Client("localhost", server_port)
+                # The socket establishment could takes some time
+                time.sleep(2)
+                self._client.set_timeout(10.0)
+                LOG.multi_env_logger.info(
+                    f"Client successfully connected to server, Carla-Server version: {self._client.get_server_version()}",)
+            except RuntimeError as re:
+                if "timeout" not in str(re) and "time-out" not in str(re):
+                    LOG.multi_env_logger.error(f"Could not connect to Carla server because:{re}")
+                self._client = None
+
+        # load map using client api since 0.9.6+
+        self._world = self._client.get_world()
+        print(str(self._world.get_settings()))
+        self._map = self._world.get_map()
+        #CarlaConnector.tick(self._world, LOG.multi_env_logger)
+
+        if self._world is None:
+            self._client.load_world(server_map, reset_settings=False)
+        else:
+            #self._world = self._client.get_world()
+            self._client.load_world(server_map, reset_settings=False, 
+                                    map_layers=carla.MapLayer.NONE)
+        self._world = self._client.get_world()
+        self._map = self._world.get_map()
+        self.tick(LOG.multi_env_logger)
+        #remove_unnecessary_objects(self._world)
+        
+        # Sign on traffic manager
+        self._traffic_manager = self._client.get_trafficmanager()
+        # Actors will become dormant 2km away from here vehicle
+        world_settings = self._world.get_settings()
+        if env_config["hybrid"]:
+            world_settings.actor_active_distance = 2000 
+        world_settings.synchronous_mode = env_config["sync_server"]
+        if env_config["sync_server"]:
+            # Synchronous mode
+            # try:
+            # Available with CARLA version>=0.9.6
+            # Set fixed_delta_seconds to have reliable physics between sim steps
+            world_settings.fixed_delta_seconds = env_config["fixed_delta_seconds"]
+            self._traffic_manager.set_synchronous_mode(True)
+        self._world.apply_settings(world_settings)
+
+    def set_weather(self, weather, logger):
         try:
-            world.set_weather(weather)
+            self._world.set_weather(weather)
         except RuntimeError as e:
             logger.exception("Carla world set_weather failed, restart carla!")
             raise CarlaError(e.args) from e
 
-    @staticmethod
-    def get_weather(world, logger):
+    def get_weather(self, logger):
         weas = None
         try:
-            weas = world.get_weather()
+            weas = self._world.get_weather()
         except RuntimeError as e:
             logger.exception("Carla world get_weather failed, restart carla!")
             raise CarlaError(e.args) from e
         
         return weas
 
-    @staticmethod
-    def get_traffic_light(world, logger):
+    def get_traffic_light(self, logger):
         tras = None
         try:
-            tras = world.get_traffic_light()
+            tras = self._world.get_traffic_light()
         except RuntimeError as e:
             logger.exception("Carla world get_traffic_light failed, restart carla!")
             raise CarlaError(e.args) from e
         
         return tras
 
-    @staticmethod
-    def get_spectator(world, logger):
+    def get_spectator(self, logger):
         spe = None
         try:
-            spe = world.get_spectator()
+            spe = self._world.get_spectator()
         except RuntimeError as e:
             logger.exception("Carla world get_spectator failed, restart carla!")
             raise CarlaError(e.args) from e
         
         return spe
 
-    @staticmethod
-    def get_blueprint_library(world, logger):
+    def get_blueprint_library(self, logger):
         lib = None
         try:
-            lib = world.get_blueprint_library()
+            lib = self._world.get_blueprint_library()
         except RuntimeError as e:
             logger.exception("Carla world get_blueprint_library failed, restart carla!")
             raise CarlaError(e.args) from e
         
         return lib
 
-    @staticmethod
-    def tick(world, logger):
+    def tick(self, logger):
         try:
-            world.tick()
+            self._world.tick()
         except RuntimeError as e:
             logger.exception("Carla world tick failed, restart carla!")
             raise CarlaError(e.args) from e
@@ -236,5 +286,3 @@ class CarlaDataProvider(object):
     _available_points = set()
     _blueprint_library = None
     _rng = np.random.RandomState(2000)
-
-    pass

@@ -8,6 +8,7 @@ __author__: @Praveen-Palanisamy
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
+import weakref
 import gc
 import argparse
 import atexit
@@ -268,8 +269,7 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
         self._spec.id = "Carla-v0"
         self._server_port = None
         self._server_process = None
-        self._client = None
-        self.world = None
+        self._carla = None
         self.SWITCH_THRESHOLD = self._rl_configs["switch_threshold"]
         if self._rl_configs["train"]:
             self.pre_train_steps = self._rl_configs["pre_train_steps"]
@@ -344,57 +344,12 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
         else:
             live_carla_processes.add(os.getpgid(self._server_process.pid))
 
-        # Start client
-        self._client = None
-        while self._client is None:
-            try:
-                self._client = carla.Client("localhost", self._server_port)
-                # The socket establishment could takes some time
-                time.sleep(2)
-                self._client.set_timeout(10.0)
-                LOG.multi_env_logger.info(
-                    f"Client successfully connected to server, Carla-Server version: {self._client.get_server_version()}",)
-            except RuntimeError as re:
-                if "timeout" not in str(re) and "time-out" not in str(re):
-                    LOG.multi_env_logger.error(f"Could not connect to Carla server because:{re}")
-                self._client = None
-
-        self._client.set_timeout(10.0)
-        # load map using client api since 0.9.6+
-        self.world = self._client.get_world()
-        print(str(self.world.get_settings()))
-        self.map = self.world.get_map()
-        #CarlaConnector.tick(self.world, LOG.multi_env_logger)
-        self._traffic_manager = self._client.get_trafficmanager(8001)
-        # Actors will become dormant 2km away from here vehicle
-        world_settings = self.world.get_settings()
-        if self._env_config["hybrid"]:
-            world_settings.actor_active_distance = 2000 
-        world_settings.synchronous_mode = self._sync_server
-        if self._sync_server:
-            # Synchronous mode
-            # try:
-            # Available with CARLA version>=0.9.6
-            # Set fixed_delta_seconds to have reliable physics between sim steps
-            world_settings.fixed_delta_seconds = self._fixed_delta_seconds
-            self._traffic_manager.set_synchronous_mode(True)
-        self.world.apply_settings(world_settings)
-        # Sign on traffic manager
-
-        if self.world is None:
-            self._client.load_world(self._server_map, reset_settings=False)
-        else:
-            #self.world = self._client.get_world()
-            self._client.load_world(self._server_map, reset_settings=False, 
-                                    map_layers=carla.MapLayer.NONE)
-        self.world = self._client.get_world()
-        CarlaConnector.tick(self.world, LOG.multi_env_logger)
-        #remove_unnecessary_objects(self.world)
-        self.map = self.world.get_map()
+        self._carla = CarlaConnector()
+        self._carla.start(self._server_port, self._server_map, self._env_config)
 
         # Set the spectator/server view if rendering is enabled
         if self._render and self._env_config.get("spectator_loc"):
-            spectator = self.world.get_spectator()
+            spectator = self._carla._world.get_spectator()
             spectator_loc = carla.Location(*self._env_config["spectator_loc"])
             d = 6.4
             angle = 160  # degrees
@@ -411,7 +366,7 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
 
         if self._env_config.get("fixed_route"):
             self._npc_vehicles_spawn_points = \
-                RoutePlanner(self.map, sampling_resolution=4.0).get_spawn_points()
+                RoutePlanner(weakref.proxy(self._carla._map), sampling_resolution=4.0).get_spawn_points()
             
         Render.init()
 
@@ -435,11 +390,11 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
                 npc[1].stop()  # stop controller
                 npc[0].destroy()  # kill entity
             #self._client.reload_world(reset_settings=False)
-            for actor in self.world.get_actors():
-                print(actor.id, actor.type_id, sep='\t')
-            CarlaConnector.tick(self.world, LOG.multi_env_logger)
-            for actor in self.world.get_actors():
-                print(actor.id, actor.type_id, sep='\t')
+            # for actor in self.world.get_actors():
+            #     print(actor.id, actor.type_id, sep='\t')
+            self._carla.tick(LOG.multi_env_logger)
+            # for actor in self.world.get_actors():
+            #     print(actor.id, actor.type_id, sep='\t')
         except RuntimeError as e:
             raise CarlaError(e.args)
         # Note: the destroy process for cameras is handled in camera_manager.py
@@ -464,13 +419,9 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
         """Clear server process"""
         LOG.multi_env_logger.info("Clearing Carla server state")
         try:
-            if self._client:
-                del self._client
-                del self.world
-                self.world = None
-                self._client = None
-                self._traffic_manager = None
-                self.map = None
+            if self._carla:
+                del self._carla
+                self._carla = None
                 Render.quit()
         except Exception as e:
             LOG.multi_env_logger.exception("Error disconnecting client: {}".format(e))
@@ -549,7 +500,7 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
             # Shouldn't take too long
             while cam.callback_count == 0:
                 if self._sync_server:
-                    CarlaConnector.tick(self.world, LOG.multi_env_logger)
+                    self._carla.tick(LOG.multi_env_logger)
                     # `wait_for_tick` is no longer needed, see https://github.com/carla-simulator/carla/pull/1803
                     # self.world.wait_for_tick()
             if cam.image is None:
@@ -560,7 +511,7 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
             self._total_reward[actor_id] = None
             
             #update prev step info
-            current_lane=get_lane_center(self.map, self._actors[actor_id].get_location()).lane_id
+            current_lane=get_lane_center(weakref.proxy(self._carla._map), self._actors[actor_id].get_location()).lane_id
             self.last_lane[actor_id] = self.current_lane[actor_id] = current_lane
             self.last_light_state[actor_id] = None
             self.last_acc[actor_id] = 0
@@ -568,7 +519,7 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
             self.control_info[actor_id] = ControlInfo()
 
             #update time steps and prev step info
-            current_lane=get_lane_center(self.map, self._actors[actor_id].get_location()).lane_id
+            current_lane=get_lane_center(weakref.proxy(self._carla._map), self._actors[actor_id].get_location()).lane_id
             if actor_id in self._num_episodes.keys():
                 self._num_episodes[actor_id]+=1
             else:
@@ -611,24 +562,23 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
                 self._start_pos[actor_id][2],
             )
             rot = (
-                self.map.get_waypoint(loc, project_to_road=True).transform.rotation)
+                self._carla._map.get_waypoint(loc, project_to_road=True).transform.rotation)
             #: If yaw is provided in addition to (X, Y, Z), set yaw
             if len(self._start_pos[actor_id]) > 3:
                 rot.yaw = self._start_pos[actor_id][3]
             transform = carla.Transform(loc, rot)
             self._actor_configs[actor_id]["start_transform"] = transform
-            tls = traffic_lights.get_tls(self.world, transform, sort=True)
+            tls = traffic_lights.get_tls(self._carla._world, transform, sort=True)
             return tls[0][0]  #: Return the key (carla.TrafficLight object) of
             #: closest match
 
         if actor_type == "pedestrian":
-            blueprints = CarlaConnector.get_blueprint_library(self.world, LOG.multi_env_logger).filter(
+            blueprints = self._carla.get_blueprint_library(LOG.multi_env_logger).filter(
                 "walker.pedestrian.*"
             )
 
         elif actor_type == "vehicle_4W":
-            blueprints = CarlaConnector.get_blueprint_library(
-                self.world, LOG.multi_env_logger).filter("vehicle")
+            blueprints = self._carla.get_blueprint_library(LOG.multi_env_logger).filter("vehicle")
             # Further filter down to 4-wheeled vehicles
             blueprints = [
                 b for b in blueprints if int(b.get_attribute("number_of_wheels")) == 4
@@ -649,8 +599,7 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
                     )
                 )
         elif actor_type == "vehicle_2W":
-            blueprints = CarlaConnector.get_blueprint_library(
-                self.world, LOG.multi_env_logger).filter("vehicle")
+            blueprints = self._carla.get_blueprint_library(LOG.multi_env_logger).filter("vehicle")
             # Further filter down to 2-wheeled vehicles
             blueprints = [
                 b for b in blueprints if int(b.get_attribute("number_of_wheels")) == 2
@@ -670,7 +619,7 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
             z=self._start_pos[actor_id][2]+0.1,
         )
         rot = (
-            self.map.get_waypoint(loc, project_to_road=True).transform.rotation)
+            self._carla._map.get_waypoint(loc, project_to_road=True).transform.rotation)
         #: If yaw is provided in addition to (X, Y, Z), set yaw
         if len(self._start_pos[actor_id]) > 3:
             rot.yaw = self._start_pos[actor_id][3]
@@ -679,9 +628,9 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
         self._actor_configs[actor_id]["start_transform"] = transform
         vehicle = None
         for retry in range(RETRIES_ON_ERROR):
-            vehicle = self.world.try_spawn_actor(blueprint, transform)
+            vehicle = self._carla._world.try_spawn_actor(blueprint, transform)
             if self._sync_server:
-                CarlaConnector.tick(self.world, LOG.multi_env_logger)
+                self._carla.tick(LOG.multi_env_logger)
             if vehicle is not None and vehicle.get_location().z > 0.0:
                 # Register it under traffic manager
                 # Walker vehicle type does not have autopilot. Use walker controller ai
@@ -695,7 +644,7 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
             LOG.multi_env_logger.error("spawn_actor: Retry#:{}/{}".format(retry + 1, RETRIES_ON_ERROR))
         if vehicle is None:
             # Request a spawn one last time possibly raising the error
-            vehicle = self.world.try_spawn_actor(blueprint, transform)
+            vehicle = self._carla._world.try_spawn_actor(blueprint, transform)
         return vehicle
 
     def _reset(self, clean_world=True):
@@ -733,8 +682,8 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
             if weather_num not in WEATHERS:
                 weather_num = 0
 
-        CarlaConnector.set_weather(self.world, WEATHERS[weather_num], LOG.multi_env_logger)
-        weas= CarlaConnector.get_weather(self.world, LOG.multi_env_logger)
+        self._carla.set_weather(WEATHERS[weather_num], LOG.multi_env_logger)
+        weas = self._carla.get_weather(LOG.multi_env_logger)
         self._weather = [weas.cloudiness, weas.precipitation, weas.precipitation_deposits, weas.wind_intensity]
 
         for actor_id, actor_config in self._actor_configs.items():
@@ -771,7 +720,7 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
 
                 if self._env_config["enable_planner"]:
                     self._path_trackers[actor_id] = PathTracker(
-                        self.world,
+                        self._carla._world,
                         self.planner,
                         (
                             self._start_pos[actor_id][0],
@@ -877,13 +826,13 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
             "actor_config": self._actor_configs,
             "rl_config": self._rl_configs,
             "actors": self._actors,
-            "world": self.world,
-            "map": self.map,
+            "world": weakref.proxy(self._carla._world),
+            "map": weakref.proxy(self._carla._map),
         })
 
         self._npc_vehicles, self._npc_pedestrians = apply_traffic(
-            self.world,
-            self._traffic_manager,
+            weakref.proxy(self._carla._world),
+            weakref.proxy(self._carla._traffic_manager),
             self._env_config,
             self._scenario_map.get("num_vehicles", 0),
             self._scenario_map.get("num_pedestrians", 0),
@@ -995,7 +944,7 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
             ValueError: If `action_dict` contains actions for nonexistent actor
         """
 
-        if (not self._server_process) or (not self._client):
+        if (not self._server_process) or (not self._carla):
             raise RuntimeError("Cannot call step(...) before calling reset()")
 
         assert len(self._actors), (
@@ -1050,9 +999,9 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
             # NOTE: A distinction is made between "(A)Synchronous Environment" and
             # "(A)Synchronous (carla) server"
             if self._sync_server:
-                CarlaConnector.tick(self.world, LOG.multi_env_logger)
+                self._carla.tick(LOG.multi_env_logger)
                 if self._render:
-                    spectator = CarlaConnector.get_spectator(self.world, LOG.multi_env_logger)
+                    spectator = self._carla.get_spectator(LOG.multi_env_logger)
                     transform = self._actors[actor_id].get_transform()
                     spectator.set_transform(carla.Transform(transform.location + carla.Location(z=80),
                                                             carla.Rotation(pitch=-90)))
@@ -1153,7 +1102,7 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
         if config["manual_control"]:
             self._control_clock.tick(60)
             self._manual_control_camera_manager._hud.tick(
-                self.world,
+                self._carla._world,
                 self._actors[actor_id],
                 self._collisions[actor_id],
                 self._control_clock,
@@ -1273,7 +1222,7 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
                     "lights": self._state["lights"][actor_id], 
                     "vehs": self._state["vehs"][actor_id],  
                 }, 
-                self.map)
+                weakref.proxy(self._carla._map))
         reward = self._reward_policy.compute_reward(
             actor_id, self._prev_measurement[actor_id], py_measurements, flag
         )
@@ -1288,7 +1237,7 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
         py_measurements["step"]=self._time_steps[actor_id] 
 
         #update last step info
-        lane_center=get_lane_center(self.map, self._actors[actor_id].get_location())
+        lane_center=get_lane_center(weakref.proxy(self._carla._map), self._actors[actor_id].get_location())
         yaw_forward = lane_center.transform.get_forward_vector().make_unit_vector()
         a_3d=self._actors[actor_id].get_acceleration()
         self.last_acc[actor_id],a_t=get_projection(a_3d,yaw_forward)
@@ -1456,19 +1405,19 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
         """cont: the control command of RL agent"""
         ego_speed = get_speed(self._actors[actor_id])
         if self._speed_state[actor_id] == SpeedState.START:
-            hero_autopilot(self._actors[actor_id], self._traffic_manager, 
+            hero_autopilot(self._actors[actor_id], weakref.proxy(self._carla._traffic_manager), 
                            self._actor_configs[actor_id], self._env_config, True)
             control = None
             # control = self.controller.run_step({'waypoints':self.next_wps,'vehicle_front':self.vehicle_front})
             if ego_speed >= self._actor_configs[actor_id]["speed_threshold"]:
                 self._speed_state[actor_id] = SpeedState.RUNNING
                 if self._actor_configs[actor_id]["auto_control"]:
-                    hero_autopilot(self._actors[actor_id], self._traffic_manager, 
+                    hero_autopilot(self._actors[actor_id], weakref.proxy(self._carla._traffic_manager), 
                                 self._actor_configs[actor_id], self._env_config, True)
                     control = None
                 else:
                     if self._rl_switch:
-                        hero_autopilot(self._actors[actor_id], self._traffic_manager, 
+                        hero_autopilot(self._actors[actor_id], weakref.proxy(self._carla._traffic_manager), 
                                 self._actor_configs[actor_id], self._env_config, False)
                         # RL in control       
                         control = cont
@@ -1481,7 +1430,7 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
                 self._speed_state[actor_id] = SpeedState.STOP
                 self._collisions[actor_id].sensor.stop()
                 self._lane_invasions[actor_id].sensor.stop()
-                hero_autopilot(self._actors[actor_id], self._traffic_manager, self._actor_configs[actor_id],
+                hero_autopilot(self._actors[actor_id], weakref.proxy(self._carla._traffic_manager), self._actor_configs[actor_id],
                            self._env_config, True)
                 control = None
             elif not self._actor_configs[actor_id]["auto_control"]:
@@ -1493,7 +1442,7 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
                     control = None
         elif self._speed_state[actor_id] == SpeedState.STOP:
             #Hero vehicle reaches destination, properly stop hero vehicle
-            self._traffic_manager.vehicle_percentage_speed_difference(self._actors[actor_id], 100)
+            self._carla._traffic_manager.vehicle_percentage_speed_difference(self._actors[actor_id], 100)
             control = None
         else:
             LOG.multi_env_logger.error('CODE LOGIC ERROR')
@@ -1503,7 +1452,7 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
     def _truncated(self, actor_id):
         """Decide whether to terminate current episode or not"""
         m = self._cur_measurement[actor_id]
-        lane_center=get_lane_center(self.map, self._actors[actor_id].get_location())
+        lane_center=get_lane_center(weakref.proxy(self._carla._map), self._actors[actor_id].get_location())
         yaw_diff = math.degrees(get_yaw_diff(lane_center.transform.get_forward_vector(),
                         self._actors[actor_id].get_transform().get_forward_vector()))
         
@@ -1517,8 +1466,8 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
             history, tags, ids = self._collisions[actor_id].get_collision_history()
             collision = True
             for id in ids:
-                actor = self.world.get_actor(id)
-                actor_lane = get_lane_center(self.map, actor.get_location())
+                actor = self._carla._world.get_actor(id)
+                actor_lane = get_lane_center(weakref.proxy(self._carla._map), actor.get_location())
                 if self._state["vehs"][actor_id].center_rear_veh and \
                         self._state["vehs"][actor_id].center_rear_veh.id == id:
                     # Ignore the case in which other actor collide with hero vehicle from the back
@@ -1548,10 +1497,10 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
             LOG.multi_env_logger.warn(actor_id + ' moving in opposite direction')
             return Truncated.OPPOSITE_DIRECTION
         if self._state["lights"][actor_id] and self._state["lights"][actor_id].state!=carla.TrafficLightState.Green:
-            self.world.debug.draw_point(self._state["lights"][actor_id].get_location(),size=0.3,life_time=0)
+            self._carla._world.debug.draw_point(self._state["lights"][actor_id].get_location(),size=0.3,life_time=0)
             wps=self._state["lights"][actor_id].get_stop_waypoints()
             for wp in wps:
-                self.world.debug.draw_point(wp.transform.location,size=0.1,life_time=0)
+                self._carla._world.debug.draw_point(wp.transform.location,size=0.1,life_time=0)
                 if is_within_distance_ahead(self._actors[actor_id].get_location(),
                         wp.transform.location, wp.transform, self._env_config["min_distance"]):
                     LOG.multi_env_logger.warn(actor_id + ' break traffic light rule')

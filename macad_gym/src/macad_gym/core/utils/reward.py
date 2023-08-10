@@ -147,13 +147,13 @@ class SACReward(Reward):
         yaw_forward = lane_center.transform.get_forward_vector().make_unit_vector()
 
         ttc, self.ttc_reward = self._ttc_reward(self.state["vehs"].center_front_veh)
-        self.efficiency_reward = self._efficiency_reward(yaw_forward)
+        self.efficiency_reward = self._efficiency_reward(yaw_forward) * 2
         self.comfort_reward, yaw_change = self._comfort_reward(yaw_forward)
         Lcen, self.lane_center_reward = self._lane_center_reward(lane_center)
         self.lane_change_reward = self._lane_change_reward()
         if self.reward is None:
             self.reward = self.ttc_reward + self.lane_center_reward + self.lane_change_reward + \
-                self.efficiency_reward * 2 + self.comfort_reward
+                self.efficiency_reward
         
         self.vehicle = None
         self.state = {}
@@ -200,9 +200,9 @@ class SACReward(Reward):
         max_speed = min(speed_1, speed_2)
         if v_s * 3.6 > max_speed:
             # fEff = 1
-            fEff = math.exp(max_speed - v_s * 3.6)
+            fEff = math.exp(max_speed - v_s * 3.6) - 1
         else:
-            fEff = v_s * 3.6 / max_speed
+            fEff = v_s * 3.6 / max_speed - 1
         # if max_speed<self.speed_min:
         #     fEff=1
 
@@ -233,7 +233,8 @@ class SACReward(Reward):
                     TTC = distance / rel_speed
         # fTTC=-math.exp(-TTC)
         if TTC >= 0 and TTC <= self.TTC_THRESHOLD:
-            fTTC = np.clip(np.log(TTC / self.TTC_THRESHOLD), -1, 0)
+            fTTC = TTC / self.TTC_THRESHOLD - 1
+            #fTTC = np.clip(np.log(TTC / self.TTC_THRESHOLD), -1, 0)
         else:
             fTTC = 0
             # TTC=TTC_THRESHOLD
@@ -375,13 +376,13 @@ class PDQNReward(Reward):
         yaw_forward = lane_center.transform.get_forward_vector().make_unit_vector()
 
         ttc, self.ttc_reward = self._ttc_reward(self.state["vehs"].center_front_veh)
-        self.efficiency_reward = self._efficiency_reward(yaw_forward)
+        self.efficiency_reward = self._efficiency_reward(yaw_forward) * 2
         self.comfort_reward, yaw_change = self._comfort_reward(yaw_forward)
         Lcen, self.lane_center_reward = self._lane_center_reward(lane_center)
         self.lane_change_reward = self._lane_change_reward()
         if self.reward is None:
             self.reward = self.ttc_reward + self.lane_center_reward + self.lane_change_reward + \
-                self.efficiency_reward * 2 + self.comfort_reward
+                self.efficiency_reward
         
         self.vehicle = None
         self.state = {}
@@ -428,9 +429,9 @@ class PDQNReward(Reward):
         max_speed = min(speed_1, speed_2)
         if v_s * 3.6 > max_speed:
             # fEff = 1
-            fEff = math.exp(max_speed - v_s * 3.6)
+            fEff = math.exp(max_speed - v_s * 3.6) - 1
         else:
-            fEff = v_s * 3.6 / max_speed
+            fEff = v_s * 3.6 / max_speed - 1
         # if max_speed<self.speed_min:
         #     fEff=1
 
@@ -461,7 +462,8 @@ class PDQNReward(Reward):
                     TTC = distance / rel_speed
         # fTTC=-math.exp(-TTC)
         if TTC >= 0 and TTC <= self.TTC_THRESHOLD:
-            fTTC = np.clip(np.log(TTC / self.TTC_THRESHOLD), -1, 0)
+            fTTC = TTC / self.TTC_THRESHOLD - 1
+            #fTTC = np.clip(np.log(TTC / self.TTC_THRESHOLD), -1, 0)
         else:
             fTTC = 0
             # TTC=TTC_THRESHOLD
