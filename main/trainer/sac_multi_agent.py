@@ -73,7 +73,7 @@ def main():
         worker = SACContinuous(param["s_dim"], param["a_dim"], param["a_bound"], param["gamma"],
                                param["tau"], param["buffer_size"], param["batch_size"], 
                                param["lr_alpha"], param["lr_actor"], param["lr_critic"], 
-                               param["per_flag"], torch.device("cpu"))
+                               param["per_flag"], param["device"])
         if TRAIN and os.path.exists(MODEL_PATH):
             worker.load_net(MODEL_PATH, map_location=worker.device)
 
