@@ -35,10 +35,11 @@ from macad_gym.core.maps.nodeid_coord_map import MAP_TO_COORDS_MAPPING
 from macad_gym.core.utils.misc import (remove_unnecessary_objects, sigmoid, get_lane_center, 
     get_yaw_diff, test_waypoint, is_within_distance_ahead, get_projection, draw_waypoints,
     get_speed, preprocess_image)
+from macad_gym.core.simulator.carla_provider import CarlaConnector, CarlaError, CarlaDataProvider
 from macad_gym.core.utils.wrapper import (COMMANDS_ENUM, COMMAND_ORDINAL, ROAD_OPTION_TO_COMMANDS_MAPPING, 
     DISTANCE_TO_GOAL_THRESHOLD, ORIENTATION_TO_GOAL_THRESHOLD, GROUND_Z, DISCRETE_ACTIONS,
     WEATHERS, get_next_actions, DEFAULT_MULTIENV_CONFIG, print_measurements, process_steer,
-    Truncated, Action, SpeedState, ControlInfo, CarlaConnector, CarlaError)
+    Truncated, Action, SpeedState, ControlInfo)
 
 # from macad_gym.core.sensors.utils import get_transform_from_nearest_way_point
 from macad_gym.core.utils.reward import Reward, PDQNReward

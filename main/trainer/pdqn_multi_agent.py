@@ -17,8 +17,9 @@ from main.util.process import kill_process
 from main.util.utils import get_gpu_info, get_gpu_mem_info
 from macad_gym import LOG_PATH
 from macad_gym.viz.logger import LOG
+from macad_gym.core.simulator.carla_provider import CarlaError
 from macad_gym.core.utils.wrapper import (fill_action_param, recover_steer, Action, 
-    SpeedState, Truncated, CarlaError)
+    SpeedState, Truncated)
 from algs.pdqn import P_DQN
 os.environ['PYTHONWARNINGS'] = 'ignore:semaphore_tracker:UserWarning'
 
@@ -259,6 +260,11 @@ def main():
                             # })
                             pbar.update(1)
                             worker.save_net(os.path.join(SAVE_PATH, 'pdqn_final.pth'))
+                        except AttributeError as e:
+                            if e.args.find("'NoneType' object has no attribute") == -1:
+                                raise e
+                            else:
+                                continue
                         except CarlaError as e:
                             LOG.rl_trainer_logger.exception("Carla Failed, restart carla!")
                             continue

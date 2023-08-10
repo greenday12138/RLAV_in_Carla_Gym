@@ -17,8 +17,9 @@ from main.util.process import kill_process
 from main.util.utils import get_gpu_info, get_gpu_mem_info
 from macad_gym import LOG_PATH
 from macad_gym.viz.logger import LOG
+from macad_gym.core.simulator.carla_provider import CarlaError
 from macad_gym.core.utils.wrapper import (fill_action_param, recover_steer, 
-    SpeedState, Truncated, CarlaError)
+    SpeedState, Truncated)
 from algs.sac_multi_lane import SACContinuous
 os.environ['PYTHONWARNINGS'] = 'ignore:semaphore_tracker:UserWarning'
 
@@ -72,7 +73,7 @@ def main():
         worker = SACContinuous(param["s_dim"], param["a_dim"], param["a_bound"], param["gamma"],
                                param["tau"], param["buffer_size"], param["batch_size"], 
                                param["lr_alpha"], param["lr_actor"], param["lr_critic"], 
-                               param["per_flag"], param["device"])
+                               param["per_flag"], torch.device("cpu"))
         if TRAIN and os.path.exists(MODEL_PATH):
             worker.load_net(MODEL_PATH, map_location=worker.device)
 
@@ -229,8 +230,13 @@ def main():
                             # })
                             pbar.update(1)
                             worker.save_net(os.path.join(SAVE_PATH, 'isac_final.pth'))
-                            # if i_episode % 10 == 0:
+                            # if i_episode % 2 == 0:
                             #     env.close()
+                        except AttributeError as e:
+                            if e.args.find("'NoneType' object has no attribute") == -1:
+                                raise e
+                            else:
+                                continue
                         except CarlaError as e:
                             LOG.rl_trainer_logger.exception("Carla Failed, restart carla!")
                             continue

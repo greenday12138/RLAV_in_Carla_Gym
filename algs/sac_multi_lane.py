@@ -290,6 +290,7 @@ class SACContinuous:
             'critic_1_optimizer': self.critic_1_optimizer.state_dict(),
             'critic_2_optimizer': self.critic_2_optimizer.state_dict(),
             'log_alpha_optimizer': self.log_alpha_optimizer.state_dict(),
+            'log_alpha': self.log_alpha,
         }
         torch.save(state, file)
 
@@ -314,3 +315,5 @@ class SACContinuous:
                 self.critic_2_optimizer.load_state_dict(state['critic_2_optimizer'])
             if 'log_alpha_optimizer' in state:
                 self.log_alpha_optimizer.load_state_dict(state['log_alpha_optimizer'])
+            if 'log_alpha' in state:
+                self.log_alpha = torch.tensor(state['log_alpha'], requires_grad=True, device=map_location)

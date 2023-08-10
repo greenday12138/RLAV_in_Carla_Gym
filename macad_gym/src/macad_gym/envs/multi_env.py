@@ -36,10 +36,11 @@ from macad_gym.core.maps.nodeid_coord_map import MAP_TO_COORDS_MAPPING
 from macad_gym.core.utils.misc import (remove_unnecessary_objects, sigmoid, get_lane_center, 
     get_yaw_diff, test_waypoint, is_within_distance_ahead, get_projection, draw_waypoints,
     get_speed, preprocess_image)
-from macad_gym.core.utils.wrapper import (COMMANDS_ENUM, COMMAND_ORDINAL, ROAD_OPTION_TO_COMMANDS_MAPPING, 
-    DISTANCE_TO_GOAL_THRESHOLD, ORIENTATION_TO_GOAL_THRESHOLD, GROUND_Z, DISCRETE_ACTIONS,
+from macad_gym.core.simulator.carla_provider import CarlaConnector, CarlaError, CarlaDataProvider
+from macad_gym.core.utils.wrapper import (ROAD_OPTION_TO_COMMANDS_MAPPING, 
+    DISTANCE_TO_GOAL_THRESHOLD, ORIENTATION_TO_GOAL_THRESHOLD, DISCRETE_ACTIONS,
     WEATHERS, get_next_actions, DEFAULT_MULTIENV_CONFIG, print_measurements, 
-    Truncated, Action, SpeedState, ControlInfo, CarlaConnector, CarlaError)
+    Truncated, SpeedState, ControlInfo)
 
 # from macad_gym.core.sensors.utils import get_transform_from_nearest_way_point
 from macad_gym.core.utils.reward import Reward, PDQNReward, SACReward
@@ -361,6 +362,9 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
         self._client.set_timeout(10.0)
         # load map using client api since 0.9.6+
         self.world = self._client.get_world()
+        print(str(self.world.get_settings()))
+        self.map = self.world.get_map()
+        #CarlaConnector.tick(self.world, LOG.multi_env_logger)
         self._traffic_manager = self._client.get_trafficmanager(8001)
         # Actors will become dormant 2km away from here vehicle
         world_settings = self.world.get_settings()
@@ -376,7 +380,7 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
             self._traffic_manager.set_synchronous_mode(True)
         self.world.apply_settings(world_settings)
         # Sign on traffic manager
-        CarlaConnector.tick(self.world, LOG.multi_env_logger)
+
         if self.world is None:
             self._client.load_world(self._server_map, reset_settings=False)
         else:
@@ -430,7 +434,12 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
             for npc in zip(*self._npc_pedestrians):
                 npc[1].stop()  # stop controller
                 npc[0].destroy()  # kill entity
-            #CarlaConnector.tick(self.world, LOG.multi_env_logger)
+            #self._client.reload_world(reset_settings=False)
+            for actor in self.world.get_actors():
+                print(actor.id, actor.type_id, sep='\t')
+            CarlaConnector.tick(self.world, LOG.multi_env_logger)
+            for actor in self.world.get_actors():
+                print(actor.id, actor.type_id, sep='\t')
         except RuntimeError as e:
             raise CarlaError(e.args)
         # Note: the destroy process for cameras is handled in camera_manager.py

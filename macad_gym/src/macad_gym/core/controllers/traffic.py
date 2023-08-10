@@ -1,7 +1,7 @@
 ﻿import random
 import carla
 from macad_gym.viz.logger import LOG
-from macad_gym.core.utils.wrapper import CarlaConnector
+from macad_gym.core.simulator.carla_provider import CarlaConnector
 
 
 # TODO make the seed user configurable
