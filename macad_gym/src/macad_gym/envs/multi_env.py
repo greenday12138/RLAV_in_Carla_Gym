@@ -349,7 +349,7 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
 
         # Set the spectator/server view if rendering is enabled
         if self._render and self._env_config.get("spectator_loc"):
-            spectator = self._carla._world.get_spectator()
+            spectator = self._carla.get_spectator(LOG.multi_env_logger)
             spectator_loc = carla.Location(*self._env_config["spectator_loc"])
             d = 6.4
             angle = 160  # degrees
@@ -568,7 +568,7 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
                 rot.yaw = self._start_pos[actor_id][3]
             transform = carla.Transform(loc, rot)
             self._actor_configs[actor_id]["start_transform"] = transform
-            tls = traffic_lights.get_tls(self._carla._world, transform, sort=True)
+            tls = traffic_lights.get_tls(weakref.proxy(self._carla._world), transform, sort=True)
             return tls[0][0]  #: Return the key (carla.TrafficLight object) of
             #: closest match
 
@@ -720,7 +720,7 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
 
                 if self._env_config["enable_planner"]:
                     self._path_trackers[actor_id] = PathTracker(
-                        self._carla._world,
+                        weakref.proxy(self._carla._world),
                         self.planner,
                         (
                             self._start_pos[actor_id][0],
@@ -1102,7 +1102,7 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
         if config["manual_control"]:
             self._control_clock.tick(60)
             self._manual_control_camera_manager._hud.tick(
-                self._carla._world,
+                weakref.proxy(self._carla._world),
                 self._actors[actor_id],
                 self._collisions[actor_id],
                 self._control_clock,
@@ -1430,8 +1430,8 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
                 self._speed_state[actor_id] = SpeedState.STOP
                 self._collisions[actor_id].sensor.stop()
                 self._lane_invasions[actor_id].sensor.stop()
-                hero_autopilot(self._actors[actor_id], weakref.proxy(self._carla._traffic_manager), self._actor_configs[actor_id],
-                           self._env_config, True)
+                hero_autopilot(self._actors[actor_id], weakref.proxy(self._carla._traffic_manager), 
+                               self._actor_configs[actor_id], self._env_config, True)
                 control = None
             elif not self._actor_configs[actor_id]["auto_control"]:
                 if self._rl_switch:

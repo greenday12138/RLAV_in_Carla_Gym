@@ -18,8 +18,7 @@ from main.util.utils import get_gpu_info, get_gpu_mem_info
 from macad_gym import LOG_PATH
 from macad_gym.viz.logger import LOG
 from macad_gym.core.simulator.carla_provider import CarlaError
-from macad_gym.core.utils.wrapper import (fill_action_param, recover_steer, 
-    SpeedState, Truncated)
+from macad_gym.core.utils.wrapper import (SpeedState, Truncated)
 from algs.sac_multi_lane import SACContinuous
 os.environ['PYTHONWARNINGS'] = 'ignore:semaphore_tracker:UserWarning'
 

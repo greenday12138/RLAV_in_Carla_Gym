@@ -43,7 +43,6 @@ class CarlaConnector(object):
 
         # load map using client api since 0.9.6+
         self._world = self._client.get_world()
-        print(str(self._world.get_settings()))
         self._map = self._world.get_map()
         #CarlaConnector.tick(self._world, LOG.multi_env_logger)
 
