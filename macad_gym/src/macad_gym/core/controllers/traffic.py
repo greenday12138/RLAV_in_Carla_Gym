@@ -19,9 +19,9 @@ def hero_autopilot(actor, traffic_manager, actor_config, env_config,setting=True
         traffic_manager.ignore_vehicles_percentage(actor, 0)
         traffic_manager.vehicle_percentage_speed_difference(actor, 
                                                 (30 - actor_config['speed_limit']) / 30 * 100)
-        traffic_manager.auto_lane_change(actor, True)
-        traffic_manager.random_left_lanechange_percentage(actor, 50)
-        traffic_manager.random_right_lanechange_percentage(actor, 50)
+        #traffic_manager.auto_lane_change(actor, True)
+        traffic_manager.random_left_lanechange_percentage(actor, 100)
+        traffic_manager.random_right_lanechange_percentage(actor, 100)
 
         # traffic_manager.set_desired_speed(actor, 72)
         # ego_wp=map.get_waypoint(actor.get_location())

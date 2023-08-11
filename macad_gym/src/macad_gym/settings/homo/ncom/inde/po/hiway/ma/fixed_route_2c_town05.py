@@ -13,7 +13,7 @@ class FixedRoute2CarTown05(MultiCarlaEnv):
                 #Let the RL controller and PID controller alternatively take control every 20 episodes
                 "switch_threshold": 10,
                 #During pre-train steps, agent is only under PID control.
-                "pre_train_steps": 320000,
+                "pre_train_steps": 640000,
                 "train": True,
                 "debug": False,
                 "penalty": 40,
@@ -168,7 +168,7 @@ class PDQNFixedRoute2CarTown05(PDQNMultiCarlaEnv):
                 #Let the RL controller and PID controller alternatively take control every 20 episodes
                 "switch_threshold": 10,
                 #During pre-train steps, agent is only under PID control.
-                "pre_train_steps": 320000,
+                "pre_train_steps": 640000,
                 "train": True,
                 "debug": False,
                 "modify_steer": True,
