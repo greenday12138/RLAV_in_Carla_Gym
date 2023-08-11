@@ -7,6 +7,12 @@ from macad_gym.core.utils.misc import (get_speed, get_yaw_diff, get_sign, test_w
 from macad_gym.core.utils.wrapper import SemanticTags, Truncated, Action
 
 
+def get_len_wid(vehicle):
+    proj_s, proj_t = get_projection(vehicle.bounding_box.extent, 
+                                vehicle.bounding_box.rotation.get_forward_vector())
+    
+    return abs(proj_s), abs(proj_t)
+
 class Reward(object):
     def __init__(self, configs):
         self.reward = 0.0
@@ -215,11 +221,13 @@ class SACReward(Reward):
         ego_veh = self.vehicle
         if target_veh and ego_veh:
             distance = ego_veh.get_location().distance(target_veh.get_location())
-            vehicle_len = max(abs(ego_veh.bounding_box.extent.x),
-                              abs(ego_veh.bounding_box.extent.y)) + \
-                max(abs(target_veh.bounding_box.extent.x),
-                    abs(target_veh.bounding_box.extent.y))
-            distance -= vehicle_len
+            ego_half_len, ego_half_wid = get_len_wid(ego_veh)
+            veh_half_len, veh_half_wid = get_len_wid(target_veh)
+            # vehicle_len = max(abs(ego_veh.bounding_box.extent.x),
+            #                   abs(ego_veh.bounding_box.extent.y)) + \
+            #     max(abs(target_veh.bounding_box.extent.x),
+            #         abs(target_veh.bounding_box.extent.y))
+            distance -= ego_half_len + veh_half_len
             # rel_speed = get_speed(ego_veh,False) - get_speed(target_veh, False)
             # if abs(rel_speed) > float(0.0000001):
             #     TTC = distance / rel_speed
@@ -444,11 +452,13 @@ class PDQNReward(Reward):
         ego_veh = self.vehicle
         if target_veh and ego_veh:
             distance = ego_veh.get_location().distance(target_veh.get_location())
-            vehicle_len = max(abs(ego_veh.bounding_box.extent.x),
-                              abs(ego_veh.bounding_box.extent.y)) + \
-                max(abs(target_veh.bounding_box.extent.x),
-                    abs(target_veh.bounding_box.extent.y))
-            distance -= vehicle_len
+            ego_half_len, ego_half_wid = get_len_wid(ego_veh)
+            veh_half_len, veh_half_wid = get_len_wid(target_veh)
+            # vehicle_len = max(abs(ego_veh.bounding_box.extent.x),
+            #                   abs(ego_veh.bounding_box.extent.y)) + \
+            #     max(abs(target_veh.bounding_box.extent.x),
+            #         abs(target_veh.bounding_box.extent.y))
+            distance -= ego_half_len + veh_half_len
             # rel_speed = get_speed(ego_veh,False) - get_speed(target_veh, False)
             # if abs(rel_speed) > float(0.0000001):
             #     TTC = distance / rel_speed

@@ -43,7 +43,7 @@ class FixedRoute2CarTown05(MultiCarlaEnv):
                 #Distance for searching traffic light in front of ego vehicle, unit -- meters, attention: this value is tricky
                 "traffic_light_proximity": 50.0,  
                 #Min distance between two vehicles, unit -- meters
-                "min_distance": 10.0,
+                "min_distance": 15.0,
                 #Activate hybrid mode for Traffic Manager
                 "hybrid": True,
                 "ignore_traffic_light": False,
@@ -200,7 +200,7 @@ class PDQNFixedRoute2CarTown05(PDQNMultiCarlaEnv):
                 #Distance for searching traffic light in front of ego vehicle, unit -- meters, attention: this value is tricky
                 "traffic_light_proximity": 50.0,  
                 #Min distance between two vehicles, unit -- meters
-                "min_distance": 10.0,
+                "min_distance": 15.0,
                 #Activate hybrid mode for Traffic Manager
                 "hybrid": True,
                 "ignore_traffic_light": False,

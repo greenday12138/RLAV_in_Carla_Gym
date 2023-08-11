@@ -1533,6 +1533,7 @@ class PDQNMultiCarlaEnv(*MultiAgentEnvBases):
                         self._state["vehs"][actor_id].center_rear_veh.id == id:
                     # Ignore the case in which other actor collide with hero vehicle from the back
                     collision = False
+                    self._collisions[actor_id]._reset()
             
             if collision:
                 LOG.multi_env_logger.warn(actor_id + ' collison happend')
