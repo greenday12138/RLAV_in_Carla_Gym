@@ -20,6 +20,8 @@ class Render(object):
     @staticmethod
     def quit():
         pygame.quit()
+        Render._screen = None
+        Render._update_size = False
 
     @staticmethod
     def reset_frame_cnt():

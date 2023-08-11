@@ -17,7 +17,7 @@ from main.util.process import kill_process
 from main.util.utils import get_gpu_info, get_gpu_mem_info
 from macad_gym import LOG_PATH
 from macad_gym.viz.logger import LOG
-from macad_gym.core.simulator.carla_provider import CarlaError
+from macad_gym.core.simulator.carla_provider import CarlaError, CarlaConnector
 from macad_gym.core.utils.wrapper import (fill_action_param, recover_steer, Action, 
     SpeedState, Truncated)
 from algs.pdqn import P_DQN
@@ -264,13 +264,15 @@ def main():
                             if e.args.find("'NoneType' object has no attribute") == -1:
                                 raise e
                             else:
+                                CarlaConnector.server_process = None
                                 continue
                         except CarlaError as e:
                             LOG.rl_trainer_logger.exception("Carla Failed, restart carla!")
+                            CarlaConnector.server_process = None
                             continue
            
                 # restart carla to clear garbage
-                #env.close()
+                env.close()
         except KeyboardInterrupt:
             logging.info("Premature Terminated")
         finally:
@@ -283,7 +285,6 @@ def main():
 #Queue vesion multiprocess
 def learner_mp(lock:Lock, traj_q: Queue, agent_q:Queue, agent_param:dict):
     param = deepcopy(agent_param)
-    param["device"] = torch.device('cuda')
     learner = P_DQN(param["s_dim"], param["a_dim"], param["a_bound"], param["gamma"],
                         param["tau"], param["sigma_steer"], param["sigma"], param["sigma_acc"], 
                         param["theta"], param["epsilon"], param["buffer_size"], param["batch_size"], 
@@ -310,7 +311,7 @@ def learner_mp(lock:Lock, traj_q: Queue, agent_q:Queue, agent_param:dict):
                                         truncated, done, info)       
         if TRAIN and learner.replay_buffer.size()>=param["minimal_size"]:
             q_loss = learner.learn()
-            update_count+=1
+            update_count += 1
             if not agent_q.full() and update_count//UPDATE_FREQ>0:
                 lock.acquire()
                 agent_q.put((deepcopy(learner.learn_time), deepcopy(q_loss)), block=True, timeout=None)

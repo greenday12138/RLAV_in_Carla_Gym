@@ -7,11 +7,16 @@ import shutil
 import subprocess
 import traceback
 import os, sys
+import signal
 import numpy as np
 from typing import Any, Dict, List, Optional, Tuple
 from macad_gym import IS_WINDOWS_PLATFORM, SERVER_BINARY
 from macad_gym.viz.logger import LOG
 
+
+def termination_cleanup(*_):
+    CarlaConnector.clean_up()
+    sys.exit(0)
 
 class CarlaError(Exception):
     def __init__(self, *args: object) -> None:
@@ -19,42 +24,45 @@ class CarlaError(Exception):
 
 
 class CarlaConnector(object):
-    def __init__(self) -> None:
-        super().__init__()
+    live_carla_processes = set()
+    server_process = None
 
+    def __init__(self, server_map, env_config) -> None:
+        super().__init__()
         self._client = None
         self._world = None
         self._map = None
         self._traffic_manager = None
 
-    def start(self, server_port, server_map, env_config):
+        # Create a new server process and start the client.
+        # self._connected_carla.append(CarlaConnector(self._server_port, self._server_map, self._env_config))
+        # self._carla = weakref.proxy(self._connected_carla[-1])
+        self._server_port, CarlaConnector.server_process =  CarlaConnector.connect(LOG.multi_env_logger, env_config)
+
+        if IS_WINDOWS_PLATFORM:
+            CarlaConnector.live_carla_processes.add(CarlaConnector.server_process.pid)
+        else:
+            CarlaConnector.live_carla_processes.add(os.getpgid(CarlaConnector.server_process.pid))
+
         while self._client is None:
             try:
-                self._client = carla.Client("localhost", server_port)
+                self._client = carla.Client("localhost", self._server_port, worker_threads=0)
                 # The socket establishment could takes some time
                 time.sleep(2)
                 self._client.set_timeout(10.0)
                 LOG.multi_env_logger.info(
-                    f"Client successfully connected to server, Carla-Server version: {self._client.get_server_version()}",)
+                    f"Client successfully connected to server, Live Carla Process ID:{CarlaConnector.live_carla_processes}\n"
+                    f"Carla-Server version: {self._client.get_server_version()}, Carla-Client version:{self._client.get_client_version()}")
             except RuntimeError as re:
                 if "timeout" not in str(re) and "time-out" not in str(re):
                     LOG.multi_env_logger.error(f"Could not connect to Carla server because:{re}")
                 self._client = None
 
         # load map using client api since 0.9.6+
+        self._client.load_world(server_map, reset_settings=False, 
+                                map_layers=carla.MapLayer.NONE)
         self._world = self._client.get_world()
         self._map = self._world.get_map()
-        #CarlaConnector.tick(self._world, LOG.multi_env_logger)
-
-        if self._world is None:
-            self._client.load_world(server_map, reset_settings=False)
-        else:
-            #self._world = self._client.get_world()
-            self._client.load_world(server_map, reset_settings=False, 
-                                    map_layers=carla.MapLayer.NONE)
-        self._world = self._client.get_world()
-        self._map = self._world.get_map()
-        self.tick(LOG.multi_env_logger)
         #remove_unnecessary_objects(self._world)
         
         # Sign on traffic manager
@@ -72,6 +80,38 @@ class CarlaConnector(object):
             world_settings.fixed_delta_seconds = env_config["fixed_delta_seconds"]
             self._traffic_manager.set_synchronous_mode(True)
         self._world.apply_settings(world_settings)
+        self.tick(LOG.multi_env_logger)
+
+    def __del__(self):
+        # XXX: traffic_manager.shut_donw() is critical in carla server restart procedure.
+        # Without such code, you cannot clear local client cache and world cache, so you'll still be connecting to previous carla server port 
+        # even if you start another carla server and call carla.Client("localhost", new_carla_port).
+        # This bug cost me half month……
+        self._traffic_manager.shut_down()
+        del self._traffic_manager
+        del self._map
+        del self._world
+        del self._client
+        self._client, self._map, self._world, self._traffic_manager = None, None, None, None
+
+        if CarlaConnector.server_process:
+            if IS_WINDOWS_PLATFORM:
+                subprocess.call(
+                    ["taskkill", "/F", "/T", "/PID", str(CarlaConnector.server_process.pid)]
+                )
+                CarlaConnector.live_carla_processes.remove(CarlaConnector.server_process.pid)
+            else:
+                pgid = os.getpgid(CarlaConnector.server_process.pid)
+                os.killpg(pgid, signal.SIGKILL)
+                CarlaConnector.live_carla_processes.remove(pgid)
+        else:
+            if IS_WINDOWS_PLATFORM:
+                CarlaConnector.live_carla_processes.remove(CarlaConnector.server_process.pid)
+            else:
+                CarlaConnector.live_carla_processes.remove(os.getpgid(CarlaConnector.server_process.pid))
+
+        self._server_port = None
+        CarlaConnector.server_process = None
 
     def set_weather(self, weather, logger):
         try:
@@ -128,8 +168,17 @@ class CarlaConnector(object):
             raise CarlaError(e.args) from e
 
     @staticmethod
-    def clear_server(process):
-        pass
+    def clean_up():
+        LOG.multi_env_logger.info(f"Killing live carla processes:{CarlaConnector.live_carla_processes}")
+        for pgid in CarlaConnector.live_carla_processes:
+            if IS_WINDOWS_PLATFORM:
+                # for Windows
+                subprocess.call(["taskkill", "/F", "/T", "/PID", str(pgid)])
+            else:
+                # for Linux
+                os.killpg(pgid, signal.SIGKILL)
+
+        CarlaConnector.live_carla_processes.clear()
 
     @staticmethod
     def get_tcp_port(port=0):

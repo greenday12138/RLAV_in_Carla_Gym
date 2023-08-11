@@ -17,7 +17,7 @@ from main.util.process import kill_process
 from main.util.utils import get_gpu_info, get_gpu_mem_info
 from macad_gym import LOG_PATH
 from macad_gym.viz.logger import LOG
-from macad_gym.core.simulator.carla_provider import CarlaError
+from macad_gym.core.simulator.carla_provider import CarlaError, CarlaConnector
 from macad_gym.core.utils.wrapper import (SpeedState, Truncated)
 from algs.sac_multi_lane import SACContinuous
 os.environ['PYTHONWARNINGS'] = 'ignore:semaphore_tracker:UserWarning'
@@ -235,13 +235,15 @@ def main():
                             if e.args.find("'NoneType' object has no attribute") == -1:
                                 raise e
                             else:
+                                CarlaConnector.server_process = None
                                 continue
                         except CarlaError as e:
                             LOG.rl_trainer_logger.exception("Carla Failed, restart carla!")
+                            CarlaConnector.server_process = None
                             continue
            
                 # restart carla to clear garbage
-                #env.close()
+                env.close()
         except KeyboardInterrupt:
             logging.info("Premature Terminated")
         finally:
@@ -291,7 +293,7 @@ def reload_agent(agent, gpu_id=0):
     if agent.device != torch.device('cpu'):
         return False
     gpu_mem_total, gpu_mem_used, gpu_mem_free = get_gpu_mem_info(gpu_id=gpu_id)
-    if gpu_mem_total > 0 and gpu_mem_free > 900:
+    if gpu_mem_total > 0 and gpu_mem_free > 2000:
         LOG.rl_trainer_logger.info(f"Reload agent of process {os.getpid()}")
         return True
 

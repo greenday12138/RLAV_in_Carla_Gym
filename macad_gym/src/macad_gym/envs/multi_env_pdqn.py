@@ -16,8 +16,6 @@ import json
 import os
 import random
 import signal
-import subprocess
-import sys
 import time
 import traceback
 import math
@@ -28,20 +26,20 @@ import numpy as np  # linalg.norm is used
 from collections import deque
 from gym.spaces import Box, Discrete, Tuple, Dict
 
-from macad_gym import LOG_PATH, IS_WINDOWS_PLATFORM, RETRIES_ON_ERROR
+from macad_gym import LOG_PATH, RETRIES_ON_ERROR
 from macad_gym.viz.logger import LOG
 from macad_gym.core.utils.state import StateDAO
 from macad_gym.core.controllers.traffic import apply_traffic, hero_autopilot
 from macad_gym.multi_actor_env import MultiActorEnv
 from macad_gym.core.maps.nodeid_coord_map import MAP_TO_COORDS_MAPPING
-from macad_gym.core.utils.misc import (remove_unnecessary_objects, sigmoid, get_lane_center, 
-    get_yaw_diff, test_waypoint, is_within_distance_ahead, get_projection, draw_waypoints,
-    get_speed, preprocess_image)
-from macad_gym.core.simulator.carla_provider import CarlaConnector, CarlaError, CarlaDataProvider
-from macad_gym.core.utils.wrapper import (COMMANDS_ENUM, COMMAND_ORDINAL, ROAD_OPTION_TO_COMMANDS_MAPPING, 
-    DISTANCE_TO_GOAL_THRESHOLD, ORIENTATION_TO_GOAL_THRESHOLD, GROUND_Z, DISCRETE_ACTIONS,
-    WEATHERS, get_next_actions, DEFAULT_MULTIENV_CONFIG, print_measurements, process_steer,
-    Truncated, Action, SpeedState, ControlInfo)
+from macad_gym.core.utils.misc import (get_lane_center, get_yaw_diff, test_waypoint, 
+                                       is_within_distance_ahead, get_projection, draw_waypoints,
+                                       get_speed, preprocess_image)
+from macad_gym.core.simulator.carla_provider import CarlaConnector, CarlaError, CarlaDataProvider, termination_cleanup
+from macad_gym.core.utils.wrapper import (ROAD_OPTION_TO_COMMANDS_MAPPING, DISTANCE_TO_GOAL_THRESHOLD, 
+                                          ORIENTATION_TO_GOAL_THRESHOLD, DISCRETE_ACTIONS, WEATHERS, 
+                                          get_next_actions, DEFAULT_MULTIENV_CONFIG, print_measurements, process_steer,
+                                          Truncated, Action, SpeedState, ControlInfo)
 
 # from macad_gym.core.sensors.utils import get_transform_from_nearest_way_point
 from macad_gym.core.utils.reward import Reward, PDQNReward
@@ -63,28 +61,9 @@ from macad_gym.core.maps.nav_utils import PathTracker  # noqa: E402
 from macad_gym.carla.PythonAPI.agents.navigation.global_route_planner import (  # noqa: E402, E501
     GlobalRoutePlanner)
 
-
-live_carla_processes = set()
-
-def cleanup():
-    LOG.multi_env_logger.info(f"Killing live carla processes:{live_carla_processes}")
-    for pgid in live_carla_processes:
-        if IS_WINDOWS_PLATFORM:
-            # for Windows
-            subprocess.call(["taskkill", "/F", "/T", "/PID", str(pgid)])
-        else:
-            # for Linux
-            os.killpg(pgid, signal.SIGKILL)
-
-    live_carla_processes.clear()
-
-def termination_cleanup(*_):
-    cleanup()
-    sys.exit(0)
-
 signal.signal(signal.SIGTERM, termination_cleanup)
 signal.signal(signal.SIGINT, termination_cleanup)
-atexit.register(cleanup)
+atexit.register(CarlaConnector.clean_up)
 
 MultiAgentEnvBases = [MultiActorEnv]
 try:
@@ -265,8 +244,6 @@ class PDQNMultiCarlaEnv(*MultiAgentEnvBases):
         self.pos_coor_map = MAP_TO_COORDS_MAPPING[self._server_map]
         self._spec = lambda: None
         self._spec.id = "Carla-v0"
-        self._server_port = None
-        self._server_process = None
         self._carla = None
         self.SWITCH_THRESHOLD = self._rl_configs["switch_threshold"]
         if self._rl_configs["train"]:
@@ -334,16 +311,7 @@ class PDQNMultiCarlaEnv(*MultiAgentEnvBases):
             N/A
         """
         LOG.multi_env_logger.info("Initializing new Carla server...")
-        # Create a new server process and start the client.
-        self._server_port, self._server_process =  CarlaConnector.connect(LOG.multi_env_logger, self._env_config)
-
-        if IS_WINDOWS_PLATFORM:
-            live_carla_processes.add(self._server_process.pid)
-        else:
-            live_carla_processes.add(os.getpgid(self._server_process.pid))
-
-        self._carla = CarlaConnector()
-        self._carla.start(self._server_port, self._server_map, self._env_config)
+        self._carla = CarlaConnector(self._server_map, self._env_config)
 
         # Set the spectator/server view if rendering is enabled
         if self._render and self._env_config.get("spectator_loc"):
@@ -418,19 +386,6 @@ class PDQNMultiCarlaEnv(*MultiAgentEnvBases):
                 Render.quit()
         except Exception as e:
             LOG.multi_env_logger.exception("Error disconnecting client: {}".format(e))
-        if self._server_process:
-            if IS_WINDOWS_PLATFORM:
-                subprocess.call(
-                    ["taskkill", "/F", "/T", "/PID", str(self._server_process.pid)]
-                )
-                live_carla_processes.remove(self._server_process.pid)
-            else:
-                pgid = os.getpgid(self._server_process.pid)
-                os.killpg(pgid, signal.SIGKILL)
-                live_carla_processes.remove(pgid)
-
-            self._server_port = None
-            self._server_process = None
 
         gc.collect()
 
@@ -445,7 +400,7 @@ class PDQNMultiCarlaEnv(*MultiAgentEnvBases):
 
         for retry in range(RETRIES_ON_ERROR):
             try:
-                if not self._server_process:
+                if not self._carla or not CarlaConnector.server_process:
                     self._init_server()
                     self._reset(clean_world=False)
                 else:
@@ -453,7 +408,7 @@ class PDQNMultiCarlaEnv(*MultiAgentEnvBases):
                 break
             except CarlaError as e:
                 LOG.multi_env_logger.exception(e.args)
-                self._server_process = None
+                CarlaConnector.server_process = None
                 self._clear_server_state()
                 continue
             except Exception as e:
@@ -831,8 +786,8 @@ class PDQNMultiCarlaEnv(*MultiAgentEnvBases):
             self._env_config,
             self._scenario_map.get("num_vehicles", 0),
             self._scenario_map.get("num_pedestrians", 0),
-            safe=True,
-            route_points=self._npc_vehicles_spawn_points
+            safe = True,
+            route_points = self._npc_vehicles_spawn_points
         )
 
     def _load_scenario(self, scenario_parameter):
@@ -939,7 +894,7 @@ class PDQNMultiCarlaEnv(*MultiAgentEnvBases):
             ValueError: If `action_dict` contains actions for nonexistent actor
         """
 
-        if (not self._server_process) or (not self._carla):
+        if not self._carla or not CarlaConnector.server_process:
             raise RuntimeError("Cannot call step(...) before calling reset()")
 
         assert len(self._actors), (
@@ -1050,7 +1005,7 @@ class PDQNMultiCarlaEnv(*MultiAgentEnvBases):
             return obs_dict, reward_dict, self._done_dict, self._truncated_dict, info_dict
         except CarlaError as e:
             LOG.multi_env_logger.exception(e.args)
-            self._server_process = None
+            CarlaConnector.server_process = None
             self._clear_server_state()
             raise e
         except Exception as e:
