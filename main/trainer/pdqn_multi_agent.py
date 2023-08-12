@@ -17,7 +17,7 @@ from main.util.process import kill_process
 from main.util.utils import get_gpu_info, get_gpu_mem_info
 from macad_gym import LOG_PATH
 from macad_gym.viz.logger import LOG
-from macad_gym.core.simulator.carla_provider import CarlaError, CarlaConnector
+from macad_gym.core.simulator.carla_provider import CarlaError
 from macad_gym.core.utils.wrapper import (fill_action_param, recover_steer, Action, 
     SpeedState, Truncated)
 from algs.pdqn import P_DQN
@@ -83,7 +83,7 @@ def main():
                             param["tau"], param["sigma_steer"], param["sigma"], param["sigma_acc"], 
                             param["theta"], param["epsilon"], param["buffer_size"], param["batch_size"], 
                             param["lr_actor"], param["lr_critic"], param["clip_grad"], param["zero_index_gradients"],
-                            param["inverting_gradients"], param["per_flag"], param["device"])
+                            param["inverting_gradients"], param["per_flag"], torch.device('cpu'))
         if TRAIN and os.path.exists(MODEL_PATH):
             worker.load_net(MODEL_PATH, map_location=worker.device)
             #worker.set_sigma(0.01, 0.01)
@@ -140,7 +140,7 @@ def main():
                                     lock.release()
                                     worker.learn_time=learn_time
                                     if q_loss is not None:
-                                        LOG.rl_trainer_logger.info(f"LEARN TIME:{learn_time}, Q_loss:{q_loss}")
+                                        LOG.rl_trainer_logger.info(f"PDQN LEARN TIME:{learn_time}, Q_loss:{q_loss}")
                                         losses_episode.append(q_loss)
 
                                 for actor_id in states.keys():
@@ -175,12 +175,13 @@ def main():
                                             action=2
                                         saved_action_param = fill_action_param(action, info["control_info"]["steer"], throttle_brake,
                                                                             all_action_params[actor_id], modify_change_steer)
-                                        LOG.rl_trainer_logger.debug(f"\nControl In Replay Buffer: {action}, {saved_action_param}")
+                                        LOG.rl_trainer_logger.debug(f"\nPDQN Control In Replay Buffer: {action}, {saved_action_param}")
 
                                         traj_q.put((state, next_state, action, saved_action_param,
                                             reward, done, truncated, info ), block=True, timeout=None)
                                         
                                         LOG.rl_trainer_logger.debug(
+                                            f"PDQN\n"
                                             f"actor_id: {actor_id} time_steps: {info['step']}\n"
                                             f"state -- vehicle_info: {state['vehicle_info']}\n"
                                             #f"waypoints:{state['left_waypoints']}, \n"
@@ -212,7 +213,7 @@ def main():
                                     param["sigma_steer"] *= param["sigma_decay"]
                                     param["sigma_acc"] *= param["sigma_decay"]
                                     worker.set_sigma(param["sigma_steer"], param["sigma_acc"])
-                                    LOG.rl_trainer_logger.info(f"Agent Sigma {param['sigma_steer']} {param['sigma_acc']}")
+                                    LOG.rl_trainer_logger.info(f"PDQN Agent Sigma {param['sigma_steer']} {param['sigma_acc']}")
                             
                             if done or truncated:
                                 # restart the training
@@ -220,8 +221,9 @@ def main():
                                 truncated = False
 
                             # record episode results
+                            episodes = 2000 * i + i_episode
                             if env.unwrapped._rl_switch:
-                                episode_writer.add_scalars("Total_Reward", total_reward, i* 2000 +i_episode)
+                                episode_writer.add_scalars("Total_Reward", total_reward, episodes)
                                 for actor_id in total_reward.keys():
                                     avg_reward[actor_id] = total_reward[actor_id] / (env.unwrapped._time_steps[actor_id] + 1) 
                                     ttc[actor_id] /= env.unwrapped._time_steps[actor_id] + 1
@@ -229,13 +231,13 @@ def main():
                                     comfort[actor_id] /= env.unwrapped._time_steps[actor_id] + 1
                                     lcen[actor_id] /= env.unwrapped._time_steps[actor_id] + 1
                                     lane_change_reward[actor_id] /= env.unwrapped._time_steps[actor_id] + 1
-                                episode_writer.add_scalars('Avg_Reward', avg_reward, i * 2000+i_episode)
-                                episode_writer.add_scalars('Time_Steps', env.unwrapped._time_steps, i *  2000 + i_episode)
-                                episode_writer.add_scalars('TTC', ttc, i * 2000 + i_episode)
-                                episode_writer.add_scalars('Efficiency', efficiency, i * 2000 + i_episode)
-                                episode_writer.add_scalars('Comfort', comfort, i * 2000 + i_episode)
-                                episode_writer.add_scalars('Lcen', lcen, i * 2000 + i_episode)
-                                episode_writer.add_scalars('Lane_change_reward', lane_change_reward, i * 2000 + i_episode)
+                                episode_writer.add_scalars('Avg_Reward', avg_reward, episodes)
+                                episode_writer.add_scalars('Time_Steps', env.unwrapped._time_steps, episodes)
+                                episode_writer.add_scalars('TTC', ttc, episodes)
+                                episode_writer.add_scalars('Efficiency', efficiency, episodes)
+                                episode_writer.add_scalars('Comfort', comfort, episodes)
+                                episode_writer.add_scalars('Lcen', lcen, episodes)
+                                episode_writer.add_scalars('Lane_change_reward', lane_change_reward, episodes)
                                 
                                 # score_safe.append(ttc)
                                 # score_efficiency.append(efficiency)
@@ -243,7 +245,7 @@ def main():
                                 # rolling_score.append(np.mean(episode_score[max]))
                                 # cum_collision_num.append(collision_train)
 
-                            LOG.rl_trainer_logger.info(f"Total_steps:{env.unwrapped._total_steps} RL_control_steps:{env.unwrapped._rl_control_steps}")
+                            LOG.rl_trainer_logger.info(f"PDQN Total_steps:{env.unwrapped._total_steps} RL_control_steps:{env.unwrapped._rl_control_steps}")
 
                             """ if rolling_score[rolling_score.__len__-1]>max_rolling_score:
                                 max_rolling_score=rolling_score[rolling_score.__len__-1]
@@ -251,7 +253,7 @@ def main():
 
 
                             pbar.set_postfix({
-                                "episodes": f"{2000 * i + i_episode + 1}"
+                                "episodes": f"{episodes + 1}"
                             })
                             #if (i_episode + 1) % 10 == 0:
                             # pbar.set_postfix({
@@ -260,15 +262,10 @@ def main():
                             # })
                             pbar.update(1)
                             worker.save_net(os.path.join(SAVE_PATH, 'pdqn_final.pth'))
-                        except AttributeError as e:
-                            if e.args.find("'NoneType' object has no attribute") == -1:
-                                raise e
-                            else:
-                                CarlaConnector.server_process = None
-                                continue
+                            if TRAIN and episodes % 500 == 0:
+                                worker.save_net(os.path.join(SAVE_PATH, f'pdqn_{episodes}_net_params.pth'))
                         except CarlaError as e:
-                            LOG.rl_trainer_logger.exception("Carla Failed, restart carla!")
-                            CarlaConnector.server_process = None
+                            LOG.rl_trainer_logger.exception("PDQN Carla Failed, restart carla!")
                             continue
            
                 # restart carla to clear garbage
@@ -324,7 +321,7 @@ def reload_agent(agent, gpu_id=0):
         return False
     gpu_mem_total, gpu_mem_used, gpu_mem_free = get_gpu_mem_info(gpu_id=gpu_id)
     if gpu_mem_total > 0 and gpu_mem_free > 2000:
-        LOG.rl_trainer_logger.info(f"Reload agent of process {os.getpid()}")
+        LOG.rl_trainer_logger.info(f"PDQN Reload agent of process {os.getpid()}")
         return True
 
     return False

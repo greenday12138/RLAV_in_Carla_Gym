@@ -66,7 +66,7 @@ class CarlaConnector(object):
         #remove_unnecessary_objects(self._world)
         
         # Sign on traffic manager
-        self._traffic_manager = self._client.get_trafficmanager()
+        self._traffic_manager = self._client.get_trafficmanager(self._server_port + 4)
         # Actors will become dormant 2km away from here vehicle
         world_settings = self._world.get_settings()
         if env_config["hybrid"]:
@@ -104,11 +104,6 @@ class CarlaConnector(object):
                 pgid = os.getpgid(CarlaConnector.server_process.pid)
                 os.killpg(pgid, signal.SIGKILL)
                 CarlaConnector.live_carla_processes.remove(pgid)
-        else:
-            if IS_WINDOWS_PLATFORM:
-                CarlaConnector.live_carla_processes.remove(CarlaConnector.server_process.pid)
-            else:
-                CarlaConnector.live_carla_processes.remove(os.getpgid(CarlaConnector.server_process.pid))
 
         self._server_port = None
         CarlaConnector.server_process = None

@@ -413,6 +413,14 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
                 CarlaConnector.server_process = None
                 self._clear_server_state()
                 continue
+            except AttributeError as e:
+                LOG.multi_env_logger.exception(e.args)
+                if e.args.find("'NoneType' object has no attribute") == -1:
+                    raise e
+                else:
+                    CarlaConnector.server_process = None
+                    self._clear_server_state()
+                    continue
             except Exception as e:
                 LOG.multi_env_logger.exception("Error during reset: {}".format(traceback.format_exc()))
                 LOG.multi_env_logger.error("reset(): Retry #: {}/{}".format(retry + 1, RETRIES_ON_ERROR))
@@ -1008,6 +1016,14 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
             CarlaConnector.server_process = None
             self._clear_server_state()
             raise e
+        except AttributeError as e:
+            LOG.multi_env_logger.exception(e.args)
+            if e.args.find("'NoneType' object has no attribute") == -1:
+                raise e
+            else:
+                CarlaConnector.server_process = None
+                self._clear_server_state()
+                raise CarlaError("Carla failed, restart carla!") from e
         except Exception as e:
             LOG.multi_env_logger.exception(f"Error during step, terminating episode early."
                              f"{traceback.format_exc()}")

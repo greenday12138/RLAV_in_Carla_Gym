@@ -17,7 +17,7 @@ from main.util.process import kill_process
 from main.util.utils import get_gpu_info, get_gpu_mem_info
 from macad_gym import LOG_PATH
 from macad_gym.viz.logger import LOG
-from macad_gym.core.simulator.carla_provider import CarlaError, CarlaConnector
+from macad_gym.core.simulator.carla_provider import CarlaError
 from macad_gym.core.utils.wrapper import (SpeedState, Truncated)
 from algs.sac_multi_lane import SACContinuous
 os.environ['PYTHONWARNINGS'] = 'ignore:semaphore_tracker:UserWarning'
@@ -72,7 +72,7 @@ def main():
         worker = SACContinuous(param["s_dim"], param["a_dim"], param["a_bound"], param["gamma"],
                                param["tau"], param["buffer_size"], param["batch_size"], 
                                param["lr_alpha"], param["lr_actor"], param["lr_critic"], 
-                               param["per_flag"], param["device"])
+                               param["per_flag"], torch.device('cpu'))
         if TRAIN and os.path.exists(MODEL_PATH):
             worker.load_net(MODEL_PATH, map_location=worker.device)
 
@@ -126,7 +126,7 @@ def main():
                                     lock.release()
                                     worker.learn_time=learn_time
                                     if q_loss is not None:
-                                        LOG.rl_trainer_logger.info(f"LEARN TIME:{learn_time}, Q_loss:{q_loss}")
+                                        LOG.rl_trainer_logger.info(f"SAC LEARN TIME:{learn_time}, Q_loss:{q_loss}")
                                         losses_episode.append(q_loss)
 
                                 for actor_id in states.keys():
@@ -153,12 +153,13 @@ def main():
                                         throttle_brake = -info["control_info"]["brake"] if info["control_info"]["brake"] > 0 else info["control_info"]["throttle"]
                                         action = [[info["control_info"]["steer"], throttle_brake]]
                                         LOG.rl_trainer_logger.debug(
-                                            f"\nControl In Replay Buffer: actor_id: {actor_id} action: {action}")
+                                            f"\nSAC Control In Replay Buffer: actor_id: {actor_id} action: {action}")
 
                                         traj_q.put((state, next_state, action,
                                             reward, done, truncated, info ), block=True, timeout=None)
                                         
                                         LOG.rl_trainer_logger.debug(
+                                            f"SAC\n"
                                             f"actor_id: {actor_id} time_steps: {info['step']}\n"
                                             f"state -- vehicle_info: {state['vehicle_info']}\n"
                                             #f"waypoints:{state['left_waypoints']}, \n"
@@ -189,8 +190,9 @@ def main():
                                 truncated = False
 
                             # record episode results
+                            episodes = 2000 * i + i_episode
                             if env.unwrapped._rl_switch:
-                                episode_writer.add_scalars("Total_Reward", total_reward, i* 2000 +i_episode)
+                                episode_writer.add_scalars("Total_Reward", total_reward, episodes)
                                 for actor_id in total_reward.keys():
                                     avg_reward[actor_id] = total_reward[actor_id] / (env.unwrapped._time_steps[actor_id] + 1) 
                                     ttc[actor_id] /= env.unwrapped._time_steps[actor_id] + 1
@@ -198,13 +200,13 @@ def main():
                                     comfort[actor_id] /= env.unwrapped._time_steps[actor_id] + 1
                                     lcen[actor_id] /= env.unwrapped._time_steps[actor_id] + 1
                                     lane_change_reward[actor_id] /= env.unwrapped._time_steps[actor_id] + 1
-                                episode_writer.add_scalars('Avg_Reward', avg_reward, i * 2000+i_episode)
-                                episode_writer.add_scalars('Time_Steps', env.unwrapped._time_steps, i *  2000 + i_episode)
-                                episode_writer.add_scalars('TTC', ttc, i * 2000 + i_episode)
-                                episode_writer.add_scalars('Efficiency', efficiency, i * 2000 + i_episode)
-                                episode_writer.add_scalars('Comfort', comfort, i * 2000 + i_episode)
-                                episode_writer.add_scalars('Lcen', lcen, i * 2000 + i_episode)
-                                episode_writer.add_scalars('Lane_change_reward', lane_change_reward, i * 2000 + i_episode)
+                                episode_writer.add_scalars('Avg_Reward', avg_reward, episodes)
+                                episode_writer.add_scalars('Time_Steps', env.unwrapped._time_steps, episodes)
+                                episode_writer.add_scalars('TTC', ttc, episodes)
+                                episode_writer.add_scalars('Efficiency', efficiency, episodes)
+                                episode_writer.add_scalars('Comfort', comfort, episodes)
+                                episode_writer.add_scalars('Lcen', lcen, episodes)
+                                episode_writer.add_scalars('Lane_change_reward', lane_change_reward, episodes)
                                 
                                 # score_safe.append(ttc)
                                 # score_efficiency.append(efficiency)
@@ -212,7 +214,7 @@ def main():
                                 # rolling_score.append(np.mean(episode_score[max]))
                                 # cum_collision_num.append(collision_train)
 
-                            LOG.rl_trainer_logger.info(f"Total_steps:{env.unwrapped._total_steps} RL_control_steps:{env.unwrapped._rl_control_steps}")
+                            LOG.rl_trainer_logger.info(f"SAC Total_steps:{env.unwrapped._total_steps} RL_control_steps:{env.unwrapped._rl_control_steps}")
 
                             """ if rolling_score[rolling_score.__len__-1]>max_rolling_score:
                                 max_rolling_score=rolling_score[rolling_score.__len__-1]
@@ -220,7 +222,7 @@ def main():
 
 
                             pbar.set_postfix({
-                                "episodes": f"{2000 * i + i_episode + 1}"
+                                "episodes": f"{episodes + 1}"
                             })
                             #if (i_episode + 1) % 10 == 0:
                             # pbar.set_postfix({
@@ -229,17 +231,12 @@ def main():
                             # })
                             pbar.update(1)
                             worker.save_net(os.path.join(SAVE_PATH, 'isac_final.pth'))
+                            if TRAIN and episodes % 500 == 0:
+                                worker.save_net(os.path.join(SAVE_PATH, f'isac_{episodes}_net_params.pth'))
                             # if i_episode % 2 == 0:
                             #     env.close()
-                        except AttributeError as e:
-                            if e.args.find("'NoneType' object has no attribute") == -1:
-                                raise e
-                            else:
-                                CarlaConnector.server_process = None
-                                continue
                         except CarlaError as e:
-                            LOG.rl_trainer_logger.exception("Carla Failed, restart carla!")
-                            CarlaConnector.server_process = None
+                            LOG.rl_trainer_logger.exception("SAC Carla Failed, restart carla!")
                             continue
            
                 # restart carla to clear garbage
@@ -294,7 +291,7 @@ def reload_agent(agent, gpu_id=0):
         return False
     gpu_mem_total, gpu_mem_used, gpu_mem_free = get_gpu_mem_info(gpu_id=gpu_id)
     if gpu_mem_total > 0 and gpu_mem_free > 2000:
-        LOG.rl_trainer_logger.info(f"Reload agent of process {os.getpid()}")
+        LOG.rl_trainer_logger.info(f"SAC Reload agent of process {os.getpid()}")
         return True
 
     return False
