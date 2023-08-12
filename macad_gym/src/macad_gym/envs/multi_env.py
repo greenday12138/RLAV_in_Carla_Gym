@@ -383,6 +383,7 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
         LOG.multi_env_logger.info("Clearing Carla server state")
         try:
             if self._carla:
+                self._carla.disconnect()
                 del self._carla
                 self._carla = None
                 Render.quit()

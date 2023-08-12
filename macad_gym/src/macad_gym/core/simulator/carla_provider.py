@@ -82,7 +82,7 @@ class CarlaConnector(object):
         self._world.apply_settings(world_settings)
         self.tick(LOG.multi_env_logger)
 
-    def __del__(self):
+    def disconnect(self):
         # XXX: traffic_manager.shut_donw() is critical in carla server restart procedure.
         # Without such code, you cannot clear local client cache and world cache, so you'll still be connecting to previous carla server port 
         # even if you start another carla server and call carla.Client("localhost", new_carla_port).

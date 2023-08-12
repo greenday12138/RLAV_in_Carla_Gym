@@ -100,9 +100,9 @@ def main():
         ttc, efficiency, comfort, lcen, lane_change_reward = {}, {}, {}, {}, {}  # part objective scores
 
         try:
-            for i in range(TOTAL_EPISODE//2000):
-                with tqdm(total=2000, desc="Iteration %d" % i) as pbar:
-                    for i_episode in range(2000):
+            for i in range(TOTAL_EPISODE//500):
+                with tqdm(total=500, desc="Iteration %d" % i) as pbar:
+                    for i_episode in range(500):
                         try:
                             states, _ = env.reset()
                             # if i_episode > 2 and reload_agent(worker):
@@ -190,7 +190,7 @@ def main():
                                 truncated = False
 
                             # record episode results
-                            episodes = 2000 * i + i_episode
+                            episodes = 500 * i + i_episode
                             if env.unwrapped._rl_switch:
                                 episode_writer.add_scalars("Total_Reward", total_reward, episodes)
                                 for actor_id in total_reward.keys():
@@ -226,7 +226,7 @@ def main():
                             })
                             #if (i_episode + 1) % 10 == 0:
                             # pbar.set_postfix({
-                            #     'episodes': '%d' % (2000 * i + i_episode),
+                            #     'episodes': '%d' % (500 * i + i_episode),
                             #     'score': '%.2f' % total_reward
                             # })
                             pbar.update(1)
