@@ -59,6 +59,7 @@ if not os.path.exists(SAVE_PATH):
 def main():
     random.seed(0)
     torch.manual_seed(16)
+    episode_writer = SummaryWriter(SAVE_PATH)
 
     param = deepcopy(AGENT_PARAM)
     learner = SACContinuous(param["s_dim"], param["a_dim"], param["a_bound"], param["gamma"],
@@ -75,7 +76,8 @@ def main():
     traj_q = Queue(maxsize=param["minimal_size"])
     worker_agent_q = Queue(maxsize=1)
     eval_agent_q = Queue(maxsize=1)
-    worker_proc = mp.Process(target=worker_mp, args=(worker_lock, traj_q, worker_agent_q, AGENT_PARAM, 0))
+    worker_proc = mp.Process(target=worker_mp, args=
+                             (worker_lock, traj_q, worker_agent_q, AGENT_PARAM, 0, episode_writer, deepcopy(SAVE_PATH)))
     process.append(worker_proc)
     [p.start() for p in process]
 
@@ -89,7 +91,8 @@ def main():
                 process.remove(worker_proc)
                 if worker_agent_q.full():
                     worker_agent_q.get(block=True, timeout=None)
-                worker_proc = mp.Process(target=worker_mp, args=(worker_lock, traj_q, worker_agent_q, AGENT_PARAM, episode_offset))
+                worker_proc = mp.Process(target=worker_mp, args=
+                                         (worker_lock, traj_q, worker_agent_q, AGENT_PARAM, episode_offset, episode_writer, deepcopy(SAVE_PATH)))
                 worker_proc.start()
                 process.append(worker_proc)
 
@@ -136,12 +139,12 @@ def main():
         logging.info("Premature Terminated")
     finally:
         [p.join() for p in process]
+        episode_writer.close()
         learner.save_net(os.path.join(SAVE_PATH, 'isac_final.pth'))
         logging.info('\nDone.')
 
-def worker_mp(lock:Lock, traj_q:Queue, agent_q:Queue, agent_param:dict, episode_offset:int):
+def worker_mp(lock:Lock, traj_q:Queue, agent_q:Queue, agent_param:dict, episode_offset:int, episode_writer, save_path):
     env = gym.make("HomoNcomIndePoHiwaySAFR2CTWN5-v0")
-    episode_writer = SummaryWriter(SAVE_PATH)
     TOTAL_EPISODE = 50000
 
     param = deepcopy(AGENT_PARAM)
@@ -189,7 +192,7 @@ def worker_mp(lock:Lock, traj_q:Queue, agent_q:Queue, agent_param:dict, episode_
                             actions = {}
                             if TRAIN and not agent_q.empty():
                                 lock.acquire()
-                                worker.load_net(os.path.join(SAVE_PATH, 'learner.pth'), map_location=worker.device)
+                                worker.load_net(os.path.join(save_path, 'worker.pth'), map_location=worker.device)
                                 learn_time, q_loss = agent_q.get()
                                 lock.release()
                                 worker.learn_time=learn_time
@@ -250,7 +253,7 @@ def worker_mp(lock:Lock, traj_q:Queue, agent_q:Queue, agent_param:dict, episode_
                             
                             #only record the first vehicle reward
                             if env.unwrapped._total_steps == env.unwrapped.pre_train_steps:
-                                worker.save_net(os.path.join(SAVE_PATH, 'isac_pre_trained.pth'))
+                                worker.save_net(os.path.join(save_path, 'isac_pre_trained.pth'))
                         
                         if done or truncated:
                             # restart the training
@@ -297,7 +300,6 @@ def worker_mp(lock:Lock, traj_q:Queue, agent_q:Queue, agent_param:dict, episode_
         logging.info("Premature Terminated")
     finally:
         env.close()
-        episode_writer.close()
         logging.info('\nDone.')
 
 def reload_agent(agent, gpu_id=0):
