@@ -59,7 +59,6 @@ if not os.path.exists(SAVE_PATH):
 def main():
     random.seed(0)
     torch.manual_seed(16)
-    episode_writer = SummaryWriter(SAVE_PATH)
 
     param = deepcopy(AGENT_PARAM)
     learner = SACContinuous(param["s_dim"], param["a_dim"], param["a_bound"], param["gamma"],
@@ -77,7 +76,7 @@ def main():
     worker_agent_q = Queue(maxsize=1)
     eval_agent_q = Queue(maxsize=1)
     worker_proc = mp.Process(target=worker_mp, args=
-                             (worker_lock, traj_q, worker_agent_q, AGENT_PARAM, 0, episode_writer, deepcopy(SAVE_PATH)))
+                             (worker_lock, traj_q, worker_agent_q, AGENT_PARAM, 0, deepcopy(SAVE_PATH)))
     process.append(worker_proc)
     [p.start() for p in process]
 
@@ -92,7 +91,7 @@ def main():
                 if worker_agent_q.full():
                     worker_agent_q.get(block=True, timeout=None)
                 worker_proc = mp.Process(target=worker_mp, args=
-                                         (worker_lock, traj_q, worker_agent_q, AGENT_PARAM, episode_offset, episode_writer, deepcopy(SAVE_PATH)))
+                                         (worker_lock, traj_q, worker_agent_q, AGENT_PARAM, episode_offset, deepcopy(SAVE_PATH)))
                 worker_proc.start()
                 process.append(worker_proc)
 
@@ -139,15 +138,15 @@ def main():
         logging.info("Premature Terminated")
     finally:
         [p.join() for p in process]
-        episode_writer.close()
         learner.save_net(os.path.join(SAVE_PATH, 'isac_final.pth'))
         logging.info('\nDone.')
 
-def worker_mp(lock:Lock, traj_q:Queue, agent_q:Queue, agent_param:dict, episode_offset:int, episode_writer, save_path):
+def worker_mp(lock:Lock, traj_q:Queue, agent_q:Queue, agent_param:dict, episode_offset:int, save_path):
     env = gym.make("HomoNcomIndePoHiwaySAFR2CTWN5-v0")
     TOTAL_EPISODE = 50000
+    episode_writer = SummaryWriter(save_path)
 
-    param = deepcopy(AGENT_PARAM)
+    param = deepcopy(agent_param)
     worker = SACContinuous(param["s_dim"], param["a_dim"], param["a_bound"], param["gamma"],
                             param["tau"], param["buffer_size"], param["batch_size"], 
                             param["lr_alpha"], param["lr_actor"], param["lr_critic"], 
@@ -300,6 +299,7 @@ def worker_mp(lock:Lock, traj_q:Queue, agent_q:Queue, agent_param:dict, episode_
         logging.info("Premature Terminated")
     finally:
         env.close()
+        episode_writer.close()
         logging.info('\nDone.')
 
 def reload_agent(agent, gpu_id=0):
