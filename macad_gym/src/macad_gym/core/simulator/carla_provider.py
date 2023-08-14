@@ -280,7 +280,8 @@ class CarlaConnector(object):
                               "-fps={}".format(1/env_config["fixed_delta_seconds"]),
                               "-carla-server",
                               "-carla-rpc-port={}".format(server_port),
-                              "-carla-streaming-port=0"]
+                              "-carla-streaming-port=0"
+                              "-StompMAlloc"]
                 if not env_config["render"]:
                     parameters.append("-RenderOffScreen")
 
