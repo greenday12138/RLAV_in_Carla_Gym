@@ -81,7 +81,9 @@ if __name__=='__main__':
     # # 画图
     # sns.lineplot(data=df, x="Step", y="Value")
     # plt.show()
-    b = torch.tensor([[1], [2]], dtype=torch.float32)
-    a = torch.tensor([[1, 2], [3, 4]], dtype=torch.float32)
-    print(a.sum(-1, keepdim=False))
-    print(b.sum(-1, keepdim=False))
+    try:
+        temp = None
+    except AttributeError as e:
+        print()
+    finally:
+        pass

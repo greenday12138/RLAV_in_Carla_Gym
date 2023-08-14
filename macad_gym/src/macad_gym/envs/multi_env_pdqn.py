@@ -414,7 +414,7 @@ class PDQNMultiCarlaEnv(*MultiAgentEnvBases):
                 continue
             except AttributeError as e:
                 LOG.multi_env_logger.exception(e.args)
-                if e.args.find("'NoneType' object has no attribute") == -1:
+                if e.args[0].find("'NoneType' object has no attribute") == -1:
                     raise e
                 else:
                     CarlaConnector.server_process = None
@@ -1019,7 +1019,7 @@ class PDQNMultiCarlaEnv(*MultiAgentEnvBases):
             raise e
         except AttributeError as e:
             LOG.multi_env_logger.exception(e.args)
-            if e.args.find("'NoneType' object has no attribute") == -1:
+            if e.args[0].find("'NoneType' object has no attribute") == -1:
                 raise e
             else:
                 CarlaConnector.server_process = None
