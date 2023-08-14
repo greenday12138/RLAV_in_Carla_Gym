@@ -51,12 +51,12 @@ AGENT_PARAM = {
 TRAIN = True
 UPDATE_FREQ = 100
 MODEL_PATH = os.path.join(os.getcwd(), 'out', 'model_params', 'sac_ma_net_params.pth')
-SAVE_PATH = os.path.join(os.getcwd(), 'out', 'multi_agent', 'sac', 
-                         datetime.datetime.today().strftime('%Y-%m-%d_%H-%M'))
-if not os.path.exists(SAVE_PATH):
-    os.makedirs(SAVE_PATH)
 
 def main():
+    SAVE_PATH = os.path.join(os.getcwd(), 'out', 'multi_agent', 'sac', 
+                         datetime.datetime.today().strftime('%Y-%m-%d_%H-%M'))
+    if not os.path.exists(SAVE_PATH):
+        os.makedirs(SAVE_PATH)
     random.seed(0)
     torch.manual_seed(16)
 
@@ -297,6 +297,8 @@ def worker_mp(lock:Lock, traj_q:Queue, agent_q:Queue, agent_param:dict, episode_
             env.close()
     except KeyboardInterrupt:
         logging.info("Premature Terminated")
+    except BaseException:
+        logging.exception(traceback.format_exc())
     finally:
         env.close()
         episode_writer.close()
