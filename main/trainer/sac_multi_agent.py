@@ -57,6 +57,7 @@ def main():
                          datetime.datetime.today().strftime('%Y-%m-%d_%H-%M'))
     if not os.path.exists(SAVE_PATH):
         os.makedirs(SAVE_PATH)
+    episode_writer = SummaryWriter(SAVE_PATH)
     random.seed(0)
     torch.manual_seed(16)
 
@@ -79,6 +80,8 @@ def main():
                              (worker_lock, traj_q, worker_agent_q, AGENT_PARAM, 0, deepcopy(SAVE_PATH)))
     process.append(worker_proc)
     [p.start() for p in process]
+    with open(os.path.join(SAVE_PATH, 'log_file.txt'),'a') as file:
+        file.write(datetime.datetime.today().strftime('%Y-%m-%d_%H-%M') + '\n')
 
     worker_update_count = 0
     evaluator_update_count = 0
@@ -93,6 +96,8 @@ def main():
                 worker_proc = mp.Process(target=worker_mp, args=
                                          (worker_lock, traj_q, worker_agent_q, AGENT_PARAM, episode_offset, deepcopy(SAVE_PATH)))
                 worker_proc.start()
+                with open(os.path.join(SAVE_PATH, 'log_file.txt'),'a') as file:
+                    file.write(datetime.datetime.today().strftime('%Y-%m-%d_%H-%M') + '\n')
                 process.append(worker_proc)
 
             #alter the batch_size and update times according to the replay buffer size:
@@ -131,6 +136,7 @@ def main():
                     learner.save_net(os.path.join(SAVE_PATH, 'isac_50000_net_params.pth'))
                 elif learner.learn_time > 20000:
                     learner.save_net(os.path.join(SAVE_PATH, 'isac_20000_net_params.pth'))
+                episode_writer.add_scalar('Q_loss', q_loss, learner.learn_time)
     except Exception as e:
         logging.exception(e.args)
         logging.exception(traceback.format_exc())
@@ -138,6 +144,7 @@ def main():
         logging.info("Premature Terminated")
     finally:
         [p.join() for p in process]
+        episode_writer.close()
         learner.save_net(os.path.join(SAVE_PATH, 'isac_final.pth'))
         logging.info('\nDone.')
 
@@ -169,11 +176,11 @@ def worker_mp(lock:Lock, traj_q:Queue, agent_q:Queue, agent_param:dict, episode_
     ttc, efficiency, comfort, lcen, lane_change_reward = {}, {}, {}, {}, {}  # part objective scores
 
     try:
-        for i in range(TOTAL_EPISODE//500):
-            with tqdm(total=500, desc="Iteration %d" % i) as pbar:
-                for i_episode in range(500):
+        for i in range(TOTAL_EPISODE//1000):
+            with tqdm(total=1000, desc="Iteration %d" % i) as pbar:
+                for i_episode in range(1000):
                     try:
-                        episodes = 500 * i + i_episode + episode_offset
+                        episodes = 1000 * i + i_episode + episode_offset
                         states, _ = env.reset()
                         # if i_episode > 2 and reload_agent(worker):
                         #     param = deepcopy(AGENT_PARAM)
@@ -185,7 +192,7 @@ def worker_mp(lock:Lock, traj_q:Queue, agent_q:Queue, agent_param:dict, episode_
                         for actor_id in states.keys():
                             ttc[actor_id], efficiency[actor_id], comfort[actor_id], lcen[actor_id],\
                                 lane_change_reward[actor_id], total_reward[actor_id], avg_reward[actor_id] = \
-                                -1, -1, -1, -1, 0, -4, -4
+                                -1, -1, -1, -1, 0, 0, -4
                     
                         while not done and not truncated:
                             actions = {}
@@ -205,7 +212,7 @@ def worker_mp(lock:Lock, traj_q:Queue, agent_q:Queue, agent_param:dict, episode_
                             next_states, rewards, dones, truncateds, infos = env.step(actions)
                             for actor_id in next_states.keys():
                                 if infos[actor_id]["speed_state"] == str(SpeedState.RUNNING):
-                                    total_reward[actor_id] = infos[actor_id]["total_reward"]
+                                    total_reward[actor_id] += infos[actor_id]["reward"]
                                     if truncateds[actor_id] == Truncated.FALSE:
                                         info = infos[actor_id]["reward_info"]
                                         ttc[actor_id] += info["ttc_reward"]
