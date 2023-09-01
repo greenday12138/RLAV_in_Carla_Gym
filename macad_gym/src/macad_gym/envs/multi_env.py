@@ -1453,7 +1453,7 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
                 if len(self._vel_buffer[actor_id]) == self._vel_buffer[actor_id].maxlen:
                     avg_vel=0
                     for vel in self._vel_buffer[actor_id]:
-                        avg_vel += abs(vel) / self._vel_buffer[actor_id].maxlen
+                        avg_vel += vel / self._vel_buffer[actor_id].maxlen
                     if avg_vel*3.6 < self._actor_configs[actor_id]["speed_min"]:
                         LOG.multi_env_logger.warn(actor_id + ' vehicle speed too low')
                         return Truncated.SPEED_LOW
