@@ -196,6 +196,7 @@ def worker_mp(lock:Lock, traj_q:Queue, agent_q:Queue, agent_param:dict, episode_
                         episodes = 1000 * i + i_episode + episode_offset
                         states, _ = env.reset()
                         done, truncated = False, False
+                        worker.reset_noise()
                         for actor_id in states.keys():
                             ttc[actor_id], efficiency[actor_id], comfort[actor_id], lcen[actor_id],\
                                 lane_change_reward[actor_id], total_reward[actor_id], avg_reward[actor_id] = \
