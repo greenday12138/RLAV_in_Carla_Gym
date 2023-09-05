@@ -93,8 +93,11 @@ def main():
     worker_proc = mp.Process(target=worker_mp, args=
                              (worker_lock, traj_q, worker_agent_q, deepcopy(AGENT_PARAM), 0, deepcopy(SAVE_PATH), False))
     process.append(worker_proc)
+    eval_proc.start()
+    time.sleep(20)
     process.append(eval_proc)
-    [p.start() for p in process]
+    worker_proc.start()
+    #[p.start() for p in process]
     with open(os.path.join(SAVE_PATH, 'log_file.txt'),'a') as file:
         file.write(datetime.datetime.today().strftime('%Y-%m-%d_%H-%M') + '\n')
 
@@ -113,6 +116,7 @@ def main():
                 with open(os.path.join(SAVE_PATH, 'log_file.txt'),'a') as file:
                     file.write(datetime.datetime.today().strftime('%Y-%m-%d_%H-%M') + '\n')
                 process.append(worker_proc)
+                time.sleep(20)
 
             if not eval_proc.is_alive():
                 process.remove(eval_proc)
