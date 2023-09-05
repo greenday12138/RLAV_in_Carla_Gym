@@ -116,7 +116,6 @@ def main():
                 with open(os.path.join(SAVE_PATH, 'log_file.txt'),'a') as file:
                     file.write(datetime.datetime.today().strftime('%Y-%m-%d_%H-%M') + '\n')
                 process.append(worker_proc)
-                time.sleep(20)
 
             if not eval_proc.is_alive():
                 process.remove(eval_proc)
@@ -188,6 +187,7 @@ def main():
 
 def worker_mp(lock:Lock, traj_q:Queue, agent_q:Queue, agent_param:dict, episode_offset:int, save_path:str, eval:bool):
     env = gym.make("PDQNHomoNcomIndePoHiwaySAFR2CTWN5-v0")
+    time.sleep(20)
     TOTAL_EPISODE = 5000
     eval = eval
     if eval:
