@@ -162,7 +162,7 @@ def main():
 
 def worker_mp(lock:Lock, traj_q:Queue, agent_q:Queue, agent_param:dict, episode_offset:int, save_path):
     env = gym.make("PDQNHomoNcomIndePoHiwaySAFR2CTWN5-v0")
-    TOTAL_EPISODE = 50000
+    TOTAL_EPISODE = 5000
     episode_writer = SummaryWriter(save_path)
 
     param = deepcopy(agent_param)
