@@ -74,17 +74,22 @@ def main():
     worker_lock = Lock()
     eval_lock = Lock()
     traj_q = Queue(maxsize=param["minimal_size"])
-    worker_agent_q = Queue(maxsize=1)
     eval_agent_q = Queue(maxsize=1)
+    worker_agent_q = Queue(maxsize=1)
+    eval_proc = mp.Process(target=worker_mp, args=
+                             (eval_lock, traj_q, eval_agent_q, deepcopy(AGENT_PARAM), 0, deepcopy(SAVE_PATH), True))
     worker_proc = mp.Process(target=worker_mp, args=
-                             (worker_lock, traj_q, worker_agent_q, AGENT_PARAM, 0, deepcopy(SAVE_PATH)))
+                             (worker_lock, traj_q, worker_agent_q, deepcopy(AGENT_PARAM), 0, deepcopy(SAVE_PATH), False))
     process.append(worker_proc)
-    [p.start() for p in process]
+    eval_proc.start()
+    time.sleep(20)
+    process.append(eval_proc)
+    worker_proc.start()
+    #[p.start() for p in process]
     with open(os.path.join(SAVE_PATH, 'log_file.txt'),'a') as file:
         file.write(datetime.datetime.today().strftime('%Y-%m-%d_%H-%M') + '\n')
 
-    worker_update_count = 0
-    evaluator_update_count = 0
+    worker_update_count, eval_update_count = 0, 0
     episode_offset = 0
     try:
         while(True):
@@ -94,11 +99,22 @@ def main():
                 if worker_agent_q.full():
                     worker_agent_q.get(block=True, timeout=None)
                 worker_proc = mp.Process(target=worker_mp, args=
-                                         (worker_lock, traj_q, worker_agent_q, AGENT_PARAM, episode_offset, deepcopy(SAVE_PATH)))
+                                         (worker_lock, traj_q, worker_agent_q, deepcopy(AGENT_PARAM), 0, deepcopy(SAVE_PATH), False))
                 worker_proc.start()
                 with open(os.path.join(SAVE_PATH, 'log_file.txt'),'a') as file:
                     file.write(datetime.datetime.today().strftime('%Y-%m-%d_%H-%M') + '\n')
                 process.append(worker_proc)
+
+            if not eval_proc.is_alive():
+                process.remove(eval_proc)
+                if eval_agent_q.full():
+                    eval_agent_q.get(block=True, timeout=None)
+                eval_proc = mp.Process(target=worker_mp, args=
+                                        (eval_lock, traj_q, eval_agent_q, deepcopy(AGENT_PARAM), episode_offset, deepcopy(SAVE_PATH), True))
+                eval_proc.start()
+                with open(os.path.join(SAVE_PATH, 'log_file.txt'),'a') as file:
+                    file.write(datetime.datetime.today().strftime('%Y-%m-%d_%H-%M') + '\n')
+                process.append(eval_proc)
 
             #alter the batch_size and update times according to the replay buffer size:
             #reference: https://zhuanlan.zhihu.com/p/345353294, https://arxiv.org/abs/1711.00489
@@ -107,22 +123,31 @@ def main():
             if traj_q.qsize() >= k:
                 for _ in range(k):
                     trajectory=traj_q.get(block=True,timeout=None)
-                    state, next_state, action, reward, done, truncated, info, episode_offset= \
+                    state, next_state, action, reward, done, truncated, info, offset, eval= \
                         trajectory[0], trajectory[1], trajectory[2], trajectory[3], \
-                        trajectory[4], trajectory[5], trajectory[6], trajectory[7]
+                        trajectory[4], trajectory[5], trajectory[6], trajectory[7], trajectory[8]
+                    if eval:
+                        episode_offset = offset
 
                     learner.store_transition(state, action, reward, next_state,
                                             truncated, done, info)       
             if TRAIN and learner.replay_buffer.size()>=param["minimal_size"]:
                 q_loss = learner.learn()
                 worker_update_count += 1
-                evaluator_update_count += 1
+                eval_update_count += 1
                 if not worker_agent_q.full() and worker_update_count//UPDATE_FREQ > 0:
                     worker_lock.acquire()
                     worker_agent_q.put((deepcopy(learner.learn_time), deepcopy(q_loss)), block=True, timeout=None)
                     learner.save_net(os.path.join(SAVE_PATH, 'worker.pth'))
                     worker_lock.release()
                     worker_update_count %= UPDATE_FREQ
+
+                if not eval_agent_q.full() and eval_update_count//(UPDATE_FREQ * 2) > 0:
+                    eval_lock.acquire()
+                    eval_agent_q.put((deepcopy(learner.learn_time), deepcopy(q_loss)), block=True, timeout=None)
+                    learner.save_net(os.path.join(SAVE_PATH, 'eval.pth'))
+                    eval_lock.release()
+                    eval_update_count %= UPDATE_FREQ * 2
 
                 if learner.learn_time > 250000:
                     learner.save_net(os.path.join(SAVE_PATH, 'isac_250000_net_params.pth'))
@@ -148,16 +173,19 @@ def main():
         learner.save_net(os.path.join(SAVE_PATH, 'isac_final.pth'))
         logging.info('\nDone.')
 
-def worker_mp(lock:Lock, traj_q:Queue, agent_q:Queue, agent_param:dict, episode_offset:int, save_path):
+def worker_mp(lock:Lock, traj_q:Queue, agent_q:Queue, agent_param:dict, episode_offset:int, save_path:str, eval:bool):
     env = gym.make("HomoNcomIndePoHiwaySAFR2CTWN5-v0")
+    time.sleep(20)
     TOTAL_EPISODE = 5000
-    episode_writer = SummaryWriter(save_path)
+    eval = eval
+    if eval:
+        episode_writer = SummaryWriter(save_path)
 
     param = deepcopy(agent_param)
     worker = SACContinuous(param["s_dim"], param["a_dim"], param["a_bound"], param["gamma"],
                             param["tau"], param["buffer_size"], param["batch_size"], 
                             param["lr_alpha"], param["lr_actor"], param["lr_critic"], 
-                            param["per_flag"], torch.device('cpu'))
+                            param["per_flag"], param["device"])
     if TRAIN and os.path.exists(MODEL_PATH):
         worker.load_net(MODEL_PATH, map_location=worker.device)
 
@@ -182,12 +210,6 @@ def worker_mp(lock:Lock, traj_q:Queue, agent_q:Queue, agent_param:dict, episode_
                     try:
                         episodes = 1000 * i + i_episode + episode_offset
                         states, _ = env.reset()
-                        # if i_episode > 2 and reload_agent(worker):
-                        #     param = deepcopy(AGENT_PARAM)
-                        #     worker = SACContinuous(param["s_dim"], param["a_dim"], param["a_bound"], param["gamma"],
-                        #                         param["tau"], param["buffer_size"], param["batch_size"], 
-                        #                         param["lr_alpha"], param["lr_actor"], param["lr_critic"], 
-                        #                         param["per_flag"], param["device"])
                         done, truncated = False, False
                         for actor_id in states.keys():
                             ttc[actor_id], efficiency[actor_id], comfort[actor_id], lcen[actor_id],\
@@ -233,7 +255,7 @@ def worker_mp(lock:Lock, traj_q:Queue, agent_q:Queue, agent_param:dict, episode_
                                         f"\nSAC Control In Replay Buffer: actor_id: {actor_id} action: {action}")
 
                                     traj_q.put((state, next_state, action,
-                                        reward, done, truncated, info, episodes), block=True, timeout=None)
+                                        reward, done, truncated, info, episodes, eval), block=True, timeout=None)
                                     
                                     LOG.rl_trainer_logger.debug(
                                         f"SAC\n"
@@ -267,7 +289,7 @@ def worker_mp(lock:Lock, traj_q:Queue, agent_q:Queue, agent_param:dict, episode_
                             truncated = False
 
                         # record episode results
-                        if env.unwrapped._rl_switch:
+                        if env.unwrapped._rl_switch and eval:
                             episode_writer.add_scalars("Total_Reward", total_reward, episodes)
                             for actor_id in total_reward.keys():
                                 avg_reward[actor_id] = total_reward[actor_id] / (env.unwrapped._time_steps[actor_id] + 1) 
@@ -293,7 +315,8 @@ def worker_mp(lock:Lock, traj_q:Queue, agent_q:Queue, agent_param:dict, episode_
                         LOG.rl_trainer_logger.info(f"SAC Total_steps:{env.unwrapped._total_steps} RL_control_steps:{env.unwrapped._rl_control_steps}")
 
                         pbar.set_postfix({
-                            "episodes": f"{episodes + 1}"
+                            "episodes": f"{episodes + 1}",
+                            "evaluator": f"{eval}"
                         })
                         pbar.update(1)
                     except CarlaError as e:
@@ -308,7 +331,8 @@ def worker_mp(lock:Lock, traj_q:Queue, agent_q:Queue, agent_param:dict, episode_
         logging.exception(traceback.format_exc())
     finally:
         env.close()
-        episode_writer.close()
+        if eval:
+            episode_writer.close()
         logging.info('\nDone.')
 
 def reload_agent(agent, gpu_id=0):
