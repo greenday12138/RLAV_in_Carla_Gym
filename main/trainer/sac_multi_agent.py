@@ -220,7 +220,10 @@ def worker_mp(lock:Lock, traj_q:Queue, agent_q:Queue, agent_param:dict, episode_
                             actions = {}
                             if TRAIN and not agent_q.empty():
                                 lock.acquire()
-                                worker.load_net(os.path.join(save_path, 'worker.pth'), map_location=worker.device)
+                                if eval:
+                                    worker.load_net(os.path.join(save_path, 'eval.pth'), map_location=worker.device)
+                                else:
+                                    worker.load_net(os.path.join(save_path, 'worker.pth'), map_location=worker.device)
                                 learn_time, q_loss = agent_q.get()
                                 lock.release()
                                 worker.learn_time=learn_time
