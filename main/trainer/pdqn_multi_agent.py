@@ -41,7 +41,7 @@ AGENT_PARAM = {
     "Kaiming_normal": False,
     "buffer_size": 160000,
     "minimal_size": 10000,
-    "batch_size": 256,
+    "batch_size": 128,
     "per_flag": True,
     "device": torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu'),
     "sigma": 0.5,
@@ -85,7 +85,7 @@ def main():
     process = list()
     worker_lock = Lock()
     eval_lock = Lock()
-    traj_q = Queue(maxsize=param["minimal_size"])
+    traj_q = Queue(maxsize=param["buffer_size"]//2)
     eval_agent_q = Queue(maxsize=1)
     worker_agent_q = Queue(maxsize=1)
     eval_proc = mp.Process(target=worker_mp, args=
@@ -132,8 +132,8 @@ def main():
             #reference: https://zhuanlan.zhihu.com/p/345353294, https://arxiv.org/abs/1711.00489
             k = max(learner.replay_buffer.size()// param["minimal_size"], 1)
             learner.batch_size = k * param["batch_size"]
-            if traj_q.qsize() >= k:
-                for _ in range(k):
+            if traj_q.qsize() >= learner.batch_size // 5:
+                for _ in range(learner.batch_size // 5):
                     trajectory=traj_q.get(block=True,timeout=None)
                     state, next_state, action, saved_action_param, reward, done, truncated, info, offset, eval \
                         = trajectory[0], trajectory[1], trajectory[2], trajectory[3], trajectory[4], \

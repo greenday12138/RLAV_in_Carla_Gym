@@ -175,8 +175,7 @@ class SACContinuous:
                             state_center_wps, state_veh_front, state_veh_rear, state_light,
                             state_right_wps, state_veh_right_front, state_veh_right_rear, state_light, state_ev), dim=1)
         # print(state_.shape)
-        action = self.actor(state_)
-        action = action[0]
+        action, log_prob = self.actor(state_)
         if (action[0, 0].is_cuda):
             action = np.array([action[:, 0].detach().cpu().numpy(), action[:, 1].detach().cpu().numpy()]).reshape((-1, 2))
         else:

@@ -396,7 +396,7 @@ class P_DQN:
                             state_center_wps, state_veh_front, state_veh_rear, state_light,
                             state_right_wps, state_veh_right_front, state_veh_right_rear, state_light, state_ev), dim=1)
         # print(state_.shape) 
-        all_action_param = self.actor(state_)
+        all_action_param, log_prob = self.actor(state_)
         if not self.td3:
             q1 = self.critic1(state_, all_action_param)
             q2 = self.critic2(state_, all_action_param)
@@ -508,16 +508,19 @@ class P_DQN:
             q_prime = torch.max(q_target_values, 1, keepdim=True)[0].squeeze()
             q_targets = batch_r + self.gamma * q_prime * (1 - batch_t) * (1 - batch_d)
         if not self.td3:
-            q_values = self.critic(batch_s, batch_a_param)
-            q = q_values.gather(1, batch_a.view(-1, 1)).squeeze()
+            q1_values = self.critic1(batch_s, batch_a_param)
+            q2_values = self.critic2(batch_a, batch_a_param)
+            q1 = q1_values.gather(1, batch_a.view(-1, 1)).squeeze()
+            q2 = q2_values.gather(1, batch_a.view(-1, 1)).squeeze()
             if not self.per_flag:
                 loss_q = self.loss(q, q_targets)
             else:
-                loss1=self.loss(q,q_targets)
-                abs_loss=torch.abs(q-q_targets)
-                abs_loss=np.array(abs_loss.detach().cpu().numpy())
-                loss_q1=torch.mean(loss*self.ISWeights)
-                self.replay_buffer.batch_update(b_idx,abs_loss)
+                abs_loss = torch.abs(torch.min(q1, q2) - q_targets)
+                abs_loss = np.array(abs_loss.detach().cpu().numpy())
+                self.replay_buffer.batch_update(b_idx, abs_loss)
+
+                critic_1_loss = torch.mean(self.loss(q1, q_targets) * self.ISWeights)
+                critic_2_loss = torch.mean(self.loss(q2, q_targets) * self.ISWeights)
         else:
             q_values1, q_values2 = self.critic(batch_s, batch_a_param)
             q_values = torch.min(q_values1, q_values2)
@@ -526,8 +529,8 @@ class P_DQN:
 
         self.critic1_optimizer.zero_grad()
         self.critic2_optimizer.zero_grad()
-        loss_q1.backward()
-        loss_q2.backward()
+        critic_1_loss.backward()
+        critic_2_loss.backward()
         if self.clip_grad > 0:
             torch.nn.utils.clip_grad_norm_(self.critic1.parameters(), self.clip_grad)
             torch.nn.utils.clip_grad_norm_(self.critic2.parameters(), self.clip_grad)
@@ -567,9 +570,18 @@ class P_DQN:
             if self.clip_grad > 0:
                 torch.nn.utils.clip_grad_norm_(self.actor.parameters(), self.clip_grad)
             self.actor_optimizer.step()
-            self.soft_update(self.critic, self.critic_target)
 
-        return loss_q.detach().cpu().numpy()
+        # update alpha value
+        alpha_loss = torch.mean(
+            (entropy - self.target_entropy).detach() * self.log_alpha.exp())
+        self.log_alpha_optimizer.zero_grad()
+        alpha_loss.backward()
+        self.log_alpha_optimizer.step()
+
+        self.soft_update(self.critic1, self.critic1_target)
+        self.soft_update(self.critic2, self.critic2_target)
+
+        return np.mean([critic_1_loss.detach().cpu().numpy(), critic_2_loss.detach().cpu().numpy()])
 
     def _print_grad(self, model):
         '''Print the grad of each layer'''

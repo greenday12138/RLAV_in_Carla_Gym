@@ -18,8 +18,9 @@ from main.util.utils import get_gpu_info, get_gpu_mem_info
 from macad_gym import LOG_PATH
 from macad_gym.viz.logger import LOG
 from macad_gym.core.simulator.carla_provider import CarlaError
-from macad_gym.core.utils.wrapper import (SpeedState, Truncated)
-from algs.sac_multi_lane import SACContinuous
+from macad_gym.core.utils.wrapper import (fill_action_param, recover_steer, Action, 
+    SpeedState, Truncated)
+from algs.pdqn import P_DQN
 os.environ['PYTHONWARNINGS'] = 'ignore:semaphore_tracker:UserWarning'
 
 # neural network hyper parameters
@@ -36,6 +37,7 @@ AGENT_PARAM = {
         'throttle': 1.0, 
         'brake': 1.0
     },
+    "acc3": True,
     "Kaiming_normal": False,
     "buffer_size": 160000,
     "minimal_size": 10000,
@@ -47,13 +49,17 @@ AGENT_PARAM = {
     "lr_alpha": 0.00002,
     "gamma": 0.9,   # q值更新系数
     "tau": 0.01,    # 软更新参数
+    "clip_grad": 10,
+    "zero_index_gradients": True,
+    "inverting_gradients": True,
 }
 TRAIN = True
 UPDATE_FREQ = 100
-MODEL_PATH = os.path.join(os.getcwd(), 'out', 'model_params', 'sac_ma_net_params.pth')
+modify_change_steer=False
+MODEL_PATH = os.path.join(os.getcwd(), 'out', 'model_params', 'psac_ma_net_params.pth')
 
 def main():
-    SAVE_PATH = os.path.join(os.getcwd(), 'out', 'multi_agent', 'sac', 
+    SAVE_PATH = os.path.join(os.getcwd(), 'out', 'multi_agent', 'psac', 
                          datetime.datetime.today().strftime('%Y-%m-%d_%H-%M'))
     if not os.path.exists(SAVE_PATH):
         os.makedirs(SAVE_PATH)
@@ -62,10 +68,11 @@ def main():
     torch.manual_seed(16)
 
     param = deepcopy(AGENT_PARAM)
-    learner = SACContinuous(param["s_dim"], param["a_dim"], param["a_bound"], param["gamma"],
-                            param["tau"], param["buffer_size"], param["batch_size"], 
-                            param["lr_alpha"], param["lr_actor"], param["lr_critic"], 
-                            param["per_flag"], param["device"])
+    learner = P_DQN(param["s_dim"], param["a_dim"], param["a_bound"], param["gamma"],
+                        param["tau"], param["sigma_steer"], param["sigma"], param["sigma_acc"], 
+                        param["theta"], param["epsilon"], param["buffer_size"], param["batch_size"], 
+                        param["lr_actor"], param["lr_critic"], param["clip_grad"], param["zero_index_gradients"],
+                        param["inverting_gradients"], param["per_flag"], param["device"])
     if TRAIN and os.path.exists(MODEL_PATH):
         # load pre-trained model
         learner.load_net(MODEL_PATH, map_location=learner.device)
@@ -123,14 +130,14 @@ def main():
             if traj_q.qsize() >= learner.batch_size // 5:
                 for _ in range(learner.batch_size // 5):
                     trajectory=traj_q.get(block=True,timeout=None)
-                    state, next_state, action, reward, done, truncated, info, offset, eval= \
-                        trajectory[0], trajectory[1], trajectory[2], trajectory[3], \
-                        trajectory[4], trajectory[5], trajectory[6], trajectory[7], trajectory[8]
+                    state, next_state, action, saved_action_param, reward, done, truncated, info, offset, eval \
+                        = trajectory[0], trajectory[1], trajectory[2], trajectory[3], trajectory[4], \
+                        trajectory[5], trajectory[6], trajectory[7], trajectory[8], trajectory[9]
                     if eval:
                         episode_offset = offset
 
-                    learner.store_transition(state, action, reward, next_state,
-                                            truncated, done, info)       
+                    learner.store_transition(state, action, saved_action_param, reward, next_state,
+                                            truncated, done, info)   
             if TRAIN and learner.replay_buffer.size()>=param["minimal_size"]:
                 q_loss = learner.learn()
                 worker_update_count += 1
@@ -150,17 +157,17 @@ def main():
                     eval_update_count %= UPDATE_FREQ * 2
 
                 if learner.learn_time > 250000:
-                    learner.save_net(os.path.join(SAVE_PATH, 'isac_250000_net_params.pth'))
+                    learner.save_net(os.path.join(SAVE_PATH, 'ipdqn_250000_net_params.pth'))
                 elif learner.learn_time > 200000:
-                    learner.save_net(os.path.join(SAVE_PATH, 'isac_200000_net_params.pth'))
+                    learner.save_net(os.path.join(SAVE_PATH, 'ipdqn_200000_net_params.pth'))
                 elif learner.learn_time > 150000:
-                    learner.save_net(os.path.join(SAVE_PATH, 'isac_150000_net_params.pth'))
+                    learner.save_net(os.path.join(SAVE_PATH, 'ipdqn_150000_net_params.pth'))
                 elif learner.learn_time > 100000:
-                    learner.save_net(os.path.join(SAVE_PATH, 'isac_100000_net_params.pth'))
+                    learner.save_net(os.path.join(SAVE_PATH, 'ipdqn_100000_net_params.pth'))
                 elif learner.learn_time > 50000:
-                    learner.save_net(os.path.join(SAVE_PATH, 'isac_50000_net_params.pth'))
+                    learner.save_net(os.path.join(SAVE_PATH, 'ipdqn_50000_net_params.pth'))
                 elif learner.learn_time > 20000:
-                    learner.save_net(os.path.join(SAVE_PATH, 'isac_20000_net_params.pth'))
+                    learner.save_net(os.path.join(SAVE_PATH, 'ipdqn_20000_net_params.pth'))
                 episode_writer.add_scalar('Q_loss', q_loss, learner.learn_time)
     except Exception as e:
         logging.exception(e.args)
@@ -170,11 +177,11 @@ def main():
     finally:
         [p.join() for p in process]
         episode_writer.close()
-        learner.save_net(os.path.join(SAVE_PATH, 'isac_final.pth'))
+        learner.save_net(os.path.join(SAVE_PATH, 'ipdqn_final.pth'))
         logging.info('\nDone.')
 
 def worker_mp(lock:Lock, traj_q:Queue, agent_q:Queue, agent_param:dict, episode_offset:int, save_path:str, eval:bool):
-    env = gym.make("HomoNcomIndePoHiwaySAFR2CTWN5-v0")
+    env = gym.make("PDQNHomoNcomIndePoHiwaySAFR2CTWN5-v0")
     time.sleep(20)
     TOTAL_EPISODE = 5000
     eval = eval
@@ -182,10 +189,11 @@ def worker_mp(lock:Lock, traj_q:Queue, agent_q:Queue, agent_param:dict, episode_
         episode_writer = SummaryWriter(save_path)
 
     param = deepcopy(agent_param)
-    worker = SACContinuous(param["s_dim"], param["a_dim"], param["a_bound"], param["gamma"],
-                            param["tau"], param["buffer_size"], param["batch_size"], 
-                            param["lr_alpha"], param["lr_actor"], param["lr_critic"], 
-                            param["per_flag"], param["device"])
+    worker = P_DQN(param["s_dim"], param["a_dim"], param["a_bound"], param["gamma"],
+                        param["tau"], param["sigma_steer"], param["sigma"], param["sigma_acc"], 
+                        param["theta"], param["epsilon"], param["buffer_size"], param["batch_size"], 
+                        param["lr_actor"], param["lr_critic"], param["clip_grad"], param["zero_index_gradients"],
+                        param["inverting_gradients"], param["per_flag"], param["device"])
     if TRAIN and os.path.exists(MODEL_PATH):
         worker.load_net(MODEL_PATH, map_location=worker.device)
 
@@ -211,13 +219,14 @@ def worker_mp(lock:Lock, traj_q:Queue, agent_q:Queue, agent_param:dict, episode_
                         episodes = 1000 * i + i_episode + episode_offset
                         states, _ = env.reset()
                         done, truncated = False, False
+                        worker.reset_noise()
                         for actor_id in states.keys():
                             ttc[actor_id], efficiency[actor_id], comfort[actor_id], lcen[actor_id],\
                                 lane_change_reward[actor_id], total_reward[actor_id], avg_reward[actor_id] = \
                                 -1, -1, -1, -1, 0, 0, -4
                     
                         while not done and not truncated:
-                            actions = {}
+                            action_dict, actions, action_params, all_action_params={}, {}, {}, {}
                             if TRAIN and not agent_q.empty():
                                 lock.acquire()
                                 if eval:
@@ -228,13 +237,16 @@ def worker_mp(lock:Lock, traj_q:Queue, agent_q:Queue, agent_param:dict, episode_
                                 lock.release()
                                 worker.learn_time=learn_time
                                 if q_loss is not None:
-                                    LOG.rl_trainer_logger.info(f"SAC LEARN TIME:{learn_time}, Q_loss:{q_loss}")
+                                    LOG.rl_trainer_logger.info(f"PDQN LEARN TIME:{learn_time}, Q_loss:{q_loss}")
                                     losses_episode.append(q_loss)
 
                             for actor_id in states.keys():
-                                actions[actor_id] = worker.take_action(states[actor_id][1])
+                                actions[actor_id], action_params[actor_id], all_action_params[actor_id
+                                                        ] = worker.take_action(states[actor_id][1])
+                                action_dict[actor_id]={
+                                    "action_index": actions[actor_id], "action_param": action_params[actor_id]}
                                 
-                            next_states, rewards, dones, truncateds, infos = env.step(actions)
+                            next_states, rewards, dones, truncateds, infos = env.step(action_dict)
                             for actor_id in next_states.keys():
                                 if infos[actor_id]["speed_state"] == str(SpeedState.RUNNING):
                                     total_reward[actor_id] += infos[actor_id]["reward"]
@@ -253,15 +265,22 @@ def worker_mp(lock:Lock, traj_q:Queue, agent_q:Queue, agent_param:dict, episode_
                                         deepcopy(truncateds[actor_id]!=Truncated.FALSE), deepcopy(infos[actor_id])
                                         
                                     throttle_brake = -info["control_info"]["brake"] if info["control_info"]["brake"] > 0 else info["control_info"]["throttle"]
-                                    action = [[info["control_info"]["steer"], throttle_brake]]
+                                    if info['current_action']==str(Action.LANE_FOLLOW):
+                                        action=1
+                                    elif info['current_action']==str(Action.LANE_CHANGE_LEFT):
+                                        action=0
+                                    elif info['current_action']==str(Action.LANE_CHANGE_RIGHT):
+                                        action=2
+                                    saved_action_param = fill_action_param(action, info["control_info"]["steer"], throttle_brake,
+                                                                        all_action_params[actor_id], modify_change_steer)
                                     LOG.rl_trainer_logger.debug(
-                                        f"\nSAC Control In Replay Buffer: actor_id: {actor_id} action: {action}")
+                                        f"\nPDQN Control In Replay Buffer: actor_id: {actor_id} action: {action}, action_parameter: {saved_action_param}")
 
-                                    traj_q.put((state, next_state, action,
-                                        reward, done, truncated, info, episodes, eval), block=True, timeout=None)
+                                    traj_q.put((state, next_state, action, saved_action_param,
+                                            reward, done, truncated, info, episodes, eval), block=True, timeout=None)
                                     
                                     LOG.rl_trainer_logger.debug(
-                                        f"SAC\n"
+                                        f"PDQN\n"
                                         f"actor_id: {actor_id} time_steps: {info['step']}\n"
                                         f"state -- vehicle_info: {state['vehicle_info']}\n"
                                         #f"waypoints:{state['left_waypoints']}, \n"
@@ -275,16 +294,26 @@ def worker_mp(lock:Lock, traj_q:Queue, agent_q:Queue, agent_param:dict, episode_
                                         #f"waypoints:{next_state['right_waypoints']}, \n"
                                         f"hero_vehicle: {next_state['hero_vehicle']}\n"
                                         f"light info: {next_state['light']}\n"
-                                        f"network_action: {actions[actor_id]}, saved_actions: {action} \n"
+                                        f"action: {actions[actor_id]}, action_param: {action_params[actor_id]} \n"
+                                        f"all_action_param: {all_action_params[actor_id]},\n"
+                                        f"saved_action_param: {saved_action_param}\n"
                                         f"reward: {reward}, truncated: {truncated}, done: {done}, ")
-        
+    
                             done = dones["__all__"]
                             truncated = truncateds["__all__"]!=Truncated.FALSE
                             states = next_states
                             
                             #only record the first vehicle reward
                             if env.unwrapped._total_steps == env.unwrapped.pre_train_steps:
-                                worker.save_net(os.path.join(save_path, 'isac_pre_trained.pth'))
+                                worker.save_net(os.path.join(save_path, 'ipdqn_pre_trained.pth'))
+                        
+                            if env.unwrapped._rl_control_steps > 10000 and param["sigma_acc"] > 0.01:
+                                param["sigma"] *= param["sigma_decay"]
+                                param["sigma_steer"] *= param["sigma_decay"]
+                                param["sigma_acc"] *= param["sigma_decay"]
+                                worker.set_sigma(param["sigma_steer"], param["sigma_acc"])
+                                LOG.rl_trainer_logger.info(f"PDQN Agent Sigma {param['sigma_steer']} {param['sigma_acc']}")
+                        
                         
                         if done or truncated:
                             # restart the training
@@ -315,7 +344,7 @@ def worker_mp(lock:Lock, traj_q:Queue, agent_q:Queue, agent_param:dict, episode_
                             # rolling_score.append(np.mean(episode_score[max]))
                             # cum_collision_num.append(collision_train)
 
-                        LOG.rl_trainer_logger.info(f"SAC Total_steps:{env.unwrapped._total_steps} RL_control_steps:{env.unwrapped._rl_control_steps}")
+                        LOG.rl_trainer_logger.info(f"PDQN Total_steps:{env.unwrapped._total_steps} RL_control_steps:{env.unwrapped._rl_control_steps}")
 
                         pbar.set_postfix({
                             "episodes": f"{episodes + 1}",
@@ -323,7 +352,7 @@ def worker_mp(lock:Lock, traj_q:Queue, agent_q:Queue, agent_param:dict, episode_
                         })
                         pbar.update(1)
                     except CarlaError as e:
-                        LOG.rl_trainer_logger.exception("SAC Carla Failed, restart carla!")
+                        LOG.rl_trainer_logger.exception("PDQN Carla Failed, restart carla!")
                         continue
         
             # restart carla to clear garbage
@@ -343,7 +372,7 @@ def reload_agent(agent, gpu_id=0):
         return False
     gpu_mem_total, gpu_mem_used, gpu_mem_free = get_gpu_mem_info(gpu_id=gpu_id)
     if gpu_mem_total > 0 and gpu_mem_free > 2000:
-        LOG.rl_trainer_logger.info(f"SAC Reload agent of process {os.getpid()}")
+        LOG.rl_trainer_logger.info(f"PDQN Reload agent of process {os.getpid()}")
         return True
 
     return False
