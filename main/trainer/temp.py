@@ -81,9 +81,5 @@ if __name__=='__main__':
     # # 画图
     # sns.lineplot(data=df, x="Step", y="Value")
     # plt.show()
-    try:
-        temp = None
-    except AttributeError as e:
-        print()
-    finally:
-        pass
+    temp = np.array([2, 2, 2])
+    print(temp.size)

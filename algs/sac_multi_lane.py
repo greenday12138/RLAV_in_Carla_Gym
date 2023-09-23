@@ -221,8 +221,19 @@ class SACContinuous:
         
         # update both Q network
         td_target = self.calc_target(batch_r, batch_ns, batch_d, batch_t)
-        critic_1_loss = torch.mean(self.loss(self.critic_1(batch_s, batch_a), td_target.detach()))
-        critic_2_loss = torch.mean(self.loss(self.critic_2(batch_s, batch_a), td_target.detach()))
+        q1 = self.critic_1(batch_s, batch_a)
+        q2 = self.critic_2(batch_s, batch_a)
+        if not self.per_flag:
+            critic_1_loss = torch.mean(self.loss(q1, td_target.detach()))
+            critic_2_loss = torch.mean(self.loss(q2, td_target.detach()))
+        else:
+            abs_loss = torch.abs(torch.min(q1, q2) - td_target)
+            abs_loss = np.array(abs_loss.detach().cpu().numpy())
+            self.replay_buffer.batch_update(b_idx, abs_loss)
+
+            critic_1_loss = torch.mean(self.loss(q1, td_target.detach()) * self.ISWeights)
+            critic_2_loss = torch.mean(self.loss(q2, td_target.detach()) * self.ISWeights)
+            
         self.critic_1_optimizer.zero_grad()
         critic_1_loss.backward()
         self.critic_1_optimizer.step()

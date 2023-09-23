@@ -76,6 +76,7 @@ class LOG(object):
     reward_logger = None
     multi_env_logger = None
     pdqn_logger = None
+    psac_logger = None
     hud_logger = None
     basic_agent_logger = None
     rl_trainer_logger = None
@@ -104,6 +105,7 @@ class LOG(object):
             LOG.reward_logger = Logger('reward.py', LOG.log_file, logging.DEBUG, logging.ERROR)
             LOG.multi_env_logger = Logger('multi_env.py', LOG.log_file, logging.DEBUG, logging.ERROR)
             LOG.pdqn_logger = Logger('pdqn.py', LOG.log_file, logging.DEBUG, logging.ERROR)
+            LOG.psac_logger = Logger('psac.py', LOG.log_file, logging.DEBUG, logging.ERROR)
             LOG.hud_logger = Logger('hud.py', LOG.log_file, logging.DEBUG, logging.ERROR)
             LOG.basic_agent_logger = Logger('basic_agent.py', LOG.log_file, logging.DEBUG, logging.ERROR)
             LOG.rl_trainer_logger = Logger('rl_trainer.py', LOG.log_file, logging.DEBUG, logging.ERROR)
