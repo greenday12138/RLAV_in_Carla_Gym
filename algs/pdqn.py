@@ -473,7 +473,7 @@ class P_DQN:
                 q_target_values1, q_target_values2 = self.critic_target(batch_ns, action_param_target)
                 q_target_values = torch.min(q_target_values1, q_target_values2)
             q_prime = torch.max(q_target_values, 1, keepdim=True)[0].squeeze()
-            q_targets = batch_r + self.gamma * q_prime * (1 - batch_t)
+            q_targets = batch_r + self.gamma * q_prime * (1 - batch_t) * (1-batch_d)
         if not self.td3:
             q_values = self.critic(batch_s, batch_a_param)
             q = q_values.gather(1, batch_a.view(-1, 1)).squeeze()

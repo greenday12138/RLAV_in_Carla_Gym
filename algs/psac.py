@@ -304,17 +304,12 @@ class P_SAC:
         self.pointer = 0  # serve as updating the memory data
         self.train = True
         self.actor = PolicyNet_multi(self.s_dim, self.action_parameter_size, self.a_bound).to(self.device)
-        self.critic1 = QValueNet_multi(self.s_dim, self.action_parameter_size, self.num_actions).to(self.device)
-        self.critic2 = QValueNet_multi(self.s_dim, self.action_parameter_size, self.num_actions).to(self.device)
-        self.critic1_target = QValueNet_multi(self.s_dim, self.action_parameter_size, self.num_actions).to(self.device)
-        self.critic2_target = QValueNet_multi(self.s_dim, self.action_parameter_size, self.num_actions).to(self.device)
-
-        self.critic1_target.load_state_dict(self.critic1.state_dict())
-        self.critic2_target.load_state_dict(self.critic2.state_dict())
+        self.critic = QValueNet_multi_td3(self.s_dim, self.action_parameter_size, self.num_actions).to(self.device)
+        self.critic_target = QValueNet_multi_td3(self.s_dim, self.action_parameter_size, self.num_actions).to(self.device)
+        self.critic_target.load_state_dict(self.critic.state_dict())
 
         self.actor_optimizer = torch.optim.Adam(self.actor.parameters(), lr=actor_lr)
-        self.critic1_optimizer = torch.optim.Adam(self.critic1.parameters(), lr=critic_lr)
-        self.critic2_optimizer = torch.optim.Adam(self.critic2.parameters(), lr=critic_lr)
+        self.critic_optimizer = torch.optim.Adam(self.critic.parameters(), lr=critic_lr)
 
         # 使用alpha的log值,可以使训练结果比较稳定
         self.log_alpha = torch.zeros(1, dtype=torch.float32, requires_grad=True, device=device)
@@ -339,8 +334,7 @@ class P_SAC:
                             state_right_wps, state_veh_right_front, state_veh_right_rear, state_light, state_ev), dim=1)
         # print(state_.shape) 
         all_action_param, log_prob = self.actor(state_)
-        q1 = self.critic1(state_, all_action_param)
-        q2 = self.critic2(state_, all_action_param)
+        q1, q2 = self.critic(state_, all_action_param)
         q = torch.min(q1,  q2)
 
         q_a = torch.squeeze(q)
@@ -444,50 +438,40 @@ class P_SAC:
             q_prime = torch.max(q_target_values, 1, keepdim=True)[0].squeeze()
             q_targets = batch_r + self.gamma * q_prime * (1 - batch_t) * (1 - batch_d)
 
-        q1_values = self.critic1(batch_s, batch_a_param)
-        q2_values = self.critic2(batch_s, batch_a_param)
+        q1_values, q2_values = self.critic(batch_s, batch_a_param)
         q1 = q1_values.gather(1, batch_a.view(-1, 1)).squeeze()
         q2 = q2_values.gather(1, batch_a.view(-1, 1)).squeeze()
+
         if not self.per_flag:
-            loss_q = self.loss(q, q_targets)
+            loss_q = self.loss(q1, q_targets) + self.loss(q2, q_targets)
         else:
-            abs_loss = torch.abs(torch.min(q1, q2) - q_targets)
+            loss = self.loss(q1, q_targets) + self.loss(q2, q_targets)
+            abs_loss = torch.abs(q1 - q_targets) + torch.abs(q1 - q_targets)
             abs_loss = np.array(abs_loss.detach().cpu().numpy())
+            loss_q = torch.mean(loss * self.ISWeights)
             self.replay_buffer.batch_update(b_idx, abs_loss)
 
-            critic_1_loss = torch.mean(self.loss(q1, q_targets) * self.ISWeights)
-            critic_2_loss = torch.mean(self.loss(q2, q_targets) * self.ISWeights)
-
-        self.critic1_optimizer.zero_grad()
-        self.critic2_optimizer.zero_grad()
-        critic_1_loss.backward()
-        critic_2_loss.backward()
+        self.critic_optimizer.zero_grad()
+        loss_q.backward()
         if self.clip_grad > 0:
-            torch.nn.utils.clip_grad_norm_(self.critic1.parameters(), self.clip_grad)
-            torch.nn.utils.clip_grad_norm_(self.critic2.parameters(), self.clip_grad)
-        self.critic1_optimizer.step()
-        self.critic2_optimizer.step()
+            torch.nn.utils.clip_grad_norm_(self.critic.parameters(), self.clip_grad)
+        self.critic_optimizer.step()
 
         if self.learn_time % self.policy_freq == 0:
             with torch.no_grad():
                 action_param, log_prob= self.actor(batch_s)
             action_param.requires_grad = True
 
-            Q1_values = self.critic1(batch_s, action_param)
-            Q2_values = self.critic2(batch_s, action_param)
+            Q1, Q2 = self.critic(batch_s, action_param)
+            Q_value = torch.min(Q1, Q2)
             if self.indexd:
-                Q1_indexed = Q1_values.gather(1, batch_a.view(-1, 1))
-                Q2_indexed = Q2_values.gather(1, batch_a.view(-1, 1))
-                Q1_loss = torch.mean(Q1_indexed)
-                Q2_loss = torch.mean(Q2_indexed)
+                Q_indexed = Q_value.gather(1, batch_a.view(-1, 1))
+                Q_loss = torch.mean(Q_indexed)
             else:
-                pass
-                #Q_loss = torch.mean(torch.sum(Q_val, 1))
+                Q_loss = torch.mean(torch.sum(Q_value, 1))
 
-            self.critic1.zero_grad()
-            self.critic2.zero_grad()
-            Q1_loss.backward()
-            Q2_loss.backward()
+            self.critic.zero_grad()
+            Q_loss.backward()
             from copy import deepcopy
             # print('check batch_s whether has grad: ', batch_s.grad_fn)
             delta_a = deepcopy(action_param.grad.data)
@@ -497,7 +481,7 @@ class P_SAC:
             if self.zero_index_gradients:
                 delta_a[:] = self._zero_index_gradients(delta_a, batch_action_indices=batch_a, inplace=True)
 
-            out = -torch.mul(delta_a, action_param)
+            out = torch.mean(-torch.mul(delta_a, action_param) - self.log_alpha.exp() * entropy)
             self.actor.zero_grad()
             out.backward(torch.ones(out.shape).to(self.device))
             if self.clip_grad > 0:
@@ -511,25 +495,14 @@ class P_SAC:
         alpha_loss.backward()
         self.log_alpha_optimizer.step()
 
-        self.soft_update(self.critic1, self.critic1_target)
-        self.soft_update(self.critic2, self.critic2_target)
+        self.soft_update(self.critic, self.critic_target)
 
-        return np.mean([critic_1_loss.detach().cpu().numpy(), critic_2_loss.detach().cpu().numpy()])
+        return loss_q.detach().cpu().numpy()
 
     def _print_grad(self, model):
         '''Print the grad of each layer'''
         for name, parms in model.named_parameters():
             LOG.psac_logger.debug(f"-->name:{name}, -->grad_requires:{parms.requires_grad}, -->grad_value:{parms.grad}")
-
-    def set_sigma(self, sigma_steer, sigma_acc):
-        # self.sigma = sigma
-        self.steer_noise = sigma_steer
-        self.tb_noise = sigma_acc
-
-    def reset_noise(self):
-        pass
-        # self.steer_noise.reset()
-        # self.tb_noise.reset()
 
     def soft_update(self, net, target_net):
         for param_target, param in zip(target_net.parameters(), net.parameters()):
@@ -580,13 +553,10 @@ class P_SAC:
     def save_net(self,file = None):
         state = {
             'actor': self.actor.state_dict(),
-            'critic1': self.critic1.state_dict(),
-            'critic2': self.critic2.state_dict(),
-            'critic1_target': self.critic1_target.state_dict(),
-            'critic2_target': self.critic2_target.state_dict(),
+            'critic': self.critic.state_dict(),
+            'critic_target': self.critic_target.state_dict(),
             'actor_optimizer': self.actor_optimizer.state_dict(),
-            'critic1_optimizer': self.critic1_optimizer.state_dict(),
-            'critic2_optimizer': self.critic2_optimizer.state_dict(),
+            'critic_optimizer': self.critic_optimizer.state_dict(),
             'log_alpha': self.log_alpha.clone().detach(),
             'log_alpha_optimizer': self.log_alpha_optimizer.state_dict()
         }
@@ -597,21 +567,12 @@ class P_SAC:
             state = torch.load(file, map_location=map_location)
             if 'actor' in state:
                 self.actor.load_state_dict(state['actor'])
-            if 'actor_optimizer' in state:
-                self.actor_optimizer.load_state_dict(state['actor_optimizer'])
-            if 'critic1' in state:
-                self.critic1.load_state_dict(state['critic1'])
-            if 'critic2' in state:
-                self.critic2.load_state_dict(state['critic2'])
-            if 'critic1_target' in state:
-                self.critic1_target.load_state_dict(state['critic1_target'])
-            if 'critic2_target' in state:
-                self.critic2_target.load_state_dict(state['critic2_target'])
-            if 'critic1_optimizer' in state:
-                self.critic1_optimizer.load_state_dict(state['critic1_optimizer'])
-            if 'critic2_optimizer' in state:
-                self.critic2_optimizer.load_state_dict(state['critic2_optimizer'])
+                self.actor_optimizer = torch.optim.Adam(self.actor.parameters(), lr=self.actor_lr)
+            if 'critic' in state:
+                self.critic.load_state_dict(state['critic'])
+                self.critic_optimizer = torch.optim.Adam(self.critic.parameters(), lr=self.critic_lr)
+            if 'critic_target' in state:
+                self.critic_target.load_state_dict(state['critic_target'])
             if 'log_alpha' in state:
                 self.log_alpha = state['log_alpha'].clone().detach().requires_grad_(True).to(map_location)
-            if 'log_alpha_optimizer' in state:
-                self.log_alpha_optimizer.load_state_dict(state['log_alpha_optimizer'])
+                self.log_alpha_optimizer = torch.optim.Adam([self.log_alpha], lr=self.alpha_lr)
