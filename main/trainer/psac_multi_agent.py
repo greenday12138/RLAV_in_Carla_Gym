@@ -20,7 +20,7 @@ from macad_gym.viz.logger import LOG
 from macad_gym.core.simulator.carla_provider import CarlaError
 from macad_gym.core.utils.wrapper import (fill_action_param, recover_steer, Action, 
     SpeedState, Truncated)
-from algs.pdqn import P_DQN
+from algs.psac import P_SAC
 os.environ['PYTHONWARNINGS'] = 'ignore:semaphore_tracker:UserWarning'
 
 # neural network hyper parameters
@@ -68,10 +68,10 @@ def main():
     torch.manual_seed(16)
 
     param = deepcopy(AGENT_PARAM)
-    learner = P_DQN(param["s_dim"], param["a_dim"], param["a_bound"], param["gamma"],
-                        param["tau"], param["sigma_steer"], param["sigma"], param["sigma_acc"], 
-                        param["theta"], param["epsilon"], param["buffer_size"], param["batch_size"], 
-                        param["lr_actor"], param["lr_critic"], param["clip_grad"], param["zero_index_gradients"],
+    learner = P_SAC(param["s_dim"], param["a_dim"], param["a_bound"], param["gamma"],
+                        param["tau"], param["buffer_size"], param["batch_size"], 
+                        param["lr_actor"], param["lr_critic"], param["lr_alpha"],
+                        param["clip_grad"], param["zero_index_gradients"],
                         param["inverting_gradients"], param["per_flag"], param["device"])
     if TRAIN and os.path.exists(MODEL_PATH):
         # load pre-trained model
@@ -157,17 +157,17 @@ def main():
                     eval_update_count %= UPDATE_FREQ * 2
 
                 if learner.learn_time > 250000:
-                    learner.save_net(os.path.join(SAVE_PATH, 'ipdqn_250000_net_params.pth'))
+                    learner.save_net(os.path.join(SAVE_PATH, 'ipsac_250000_net_params.pth'))
                 elif learner.learn_time > 200000:
-                    learner.save_net(os.path.join(SAVE_PATH, 'ipdqn_200000_net_params.pth'))
+                    learner.save_net(os.path.join(SAVE_PATH, 'ipsac_200000_net_params.pth'))
                 elif learner.learn_time > 150000:
-                    learner.save_net(os.path.join(SAVE_PATH, 'ipdqn_150000_net_params.pth'))
+                    learner.save_net(os.path.join(SAVE_PATH, 'ipsac_150000_net_params.pth'))
                 elif learner.learn_time > 100000:
-                    learner.save_net(os.path.join(SAVE_PATH, 'ipdqn_100000_net_params.pth'))
+                    learner.save_net(os.path.join(SAVE_PATH, 'ipsac_100000_net_params.pth'))
                 elif learner.learn_time > 50000:
-                    learner.save_net(os.path.join(SAVE_PATH, 'ipdqn_50000_net_params.pth'))
+                    learner.save_net(os.path.join(SAVE_PATH, 'ipsac_50000_net_params.pth'))
                 elif learner.learn_time > 20000:
-                    learner.save_net(os.path.join(SAVE_PATH, 'ipdqn_20000_net_params.pth'))
+                    learner.save_net(os.path.join(SAVE_PATH, 'ipsac_20000_net_params.pth'))
                 episode_writer.add_scalar('Q_loss', q_loss, learner.learn_time)
     except Exception as e:
         logging.exception(e.args)
@@ -177,7 +177,7 @@ def main():
     finally:
         [p.join() for p in process]
         episode_writer.close()
-        learner.save_net(os.path.join(SAVE_PATH, 'ipdqn_final.pth'))
+        learner.save_net(os.path.join(SAVE_PATH, 'ipsac_final.pth'))
         logging.info('\nDone.')
 
 def worker_mp(lock:Lock, traj_q:Queue, agent_q:Queue, agent_param:dict, episode_offset:int, save_path:str, eval:bool):
@@ -189,10 +189,10 @@ def worker_mp(lock:Lock, traj_q:Queue, agent_q:Queue, agent_param:dict, episode_
         episode_writer = SummaryWriter(save_path)
 
     param = deepcopy(agent_param)
-    worker = P_DQN(param["s_dim"], param["a_dim"], param["a_bound"], param["gamma"],
-                        param["tau"], param["sigma_steer"], param["sigma"], param["sigma_acc"], 
-                        param["theta"], param["epsilon"], param["buffer_size"], param["batch_size"], 
-                        param["lr_actor"], param["lr_critic"], param["clip_grad"], param["zero_index_gradients"],
+    worker = P_SAC(param["s_dim"], param["a_dim"], param["a_bound"], param["gamma"],
+                        param["tau"], param["buffer_size"], param["batch_size"], 
+                        param["lr_actor"], param["lr_critic"], param["lr_alpha"],
+                        param["clip_grad"], param["zero_index_gradients"],
                         param["inverting_gradients"], param["per_flag"], param["device"])
     if TRAIN and os.path.exists(MODEL_PATH):
         worker.load_net(MODEL_PATH, map_location=worker.device)
@@ -237,7 +237,7 @@ def worker_mp(lock:Lock, traj_q:Queue, agent_q:Queue, agent_param:dict, episode_
                                 lock.release()
                                 worker.learn_time=learn_time
                                 if q_loss is not None:
-                                    LOG.rl_trainer_logger.info(f"PDQN LEARN TIME:{learn_time}, Q_loss:{q_loss}")
+                                    LOG.rl_trainer_logger.info(f"PSAC LEARN TIME:{learn_time}, Q_loss:{q_loss}")
                                     losses_episode.append(q_loss)
 
                             for actor_id in states.keys():
@@ -274,13 +274,13 @@ def worker_mp(lock:Lock, traj_q:Queue, agent_q:Queue, agent_param:dict, episode_
                                     saved_action_param = fill_action_param(action, info["control_info"]["steer"], throttle_brake,
                                                                         all_action_params[actor_id], modify_change_steer)
                                     LOG.rl_trainer_logger.debug(
-                                        f"\nPDQN Control In Replay Buffer: actor_id: {actor_id} action: {action}, action_parameter: {saved_action_param}")
+                                        f"\nPSAC Control In Replay Buffer: actor_id: {actor_id} action: {action}, action_parameter: {saved_action_param}")
 
                                     traj_q.put((state, next_state, action, saved_action_param,
                                             reward, done, truncated, info, episodes, eval), block=True, timeout=None)
                                     
                                     LOG.rl_trainer_logger.debug(
-                                        f"PDQN\n"
+                                        f"PSAC\n"
                                         f"actor_id: {actor_id} time_steps: {info['step']}\n"
                                         f"state -- vehicle_info: {state['vehicle_info']}\n"
                                         #f"waypoints:{state['left_waypoints']}, \n"
@@ -312,7 +312,7 @@ def worker_mp(lock:Lock, traj_q:Queue, agent_q:Queue, agent_param:dict, episode_
                                 param["sigma_steer"] *= param["sigma_decay"]
                                 param["sigma_acc"] *= param["sigma_decay"]
                                 worker.set_sigma(param["sigma_steer"], param["sigma_acc"])
-                                LOG.rl_trainer_logger.info(f"PDQN Agent Sigma {param['sigma_steer']} {param['sigma_acc']}")
+                                LOG.rl_trainer_logger.info(f"PSAC Agent Sigma {param['sigma_steer']} {param['sigma_acc']}")
                         
                         
                         if done or truncated:
@@ -344,7 +344,7 @@ def worker_mp(lock:Lock, traj_q:Queue, agent_q:Queue, agent_param:dict, episode_
                             # rolling_score.append(np.mean(episode_score[max]))
                             # cum_collision_num.append(collision_train)
 
-                        LOG.rl_trainer_logger.info(f"PDQN Total_steps:{env.unwrapped._total_steps} RL_control_steps:{env.unwrapped._rl_control_steps}")
+                        LOG.rl_trainer_logger.info(f"PSAC Total_steps:{env.unwrapped._total_steps} RL_control_steps:{env.unwrapped._rl_control_steps}")
 
                         pbar.set_postfix({
                             "episodes": f"{episodes + 1}",
@@ -352,7 +352,7 @@ def worker_mp(lock:Lock, traj_q:Queue, agent_q:Queue, agent_param:dict, episode_
                         })
                         pbar.update(1)
                     except CarlaError as e:
-                        LOG.rl_trainer_logger.exception("PDQN Carla Failed, restart carla!")
+                        LOG.rl_trainer_logger.exception("PSAC Carla Failed, restart carla!")
                         continue
         
             # restart carla to clear garbage
@@ -372,7 +372,7 @@ def reload_agent(agent, gpu_id=0):
         return False
     gpu_mem_total, gpu_mem_used, gpu_mem_free = get_gpu_mem_info(gpu_id=gpu_id)
     if gpu_mem_total > 0 and gpu_mem_free > 2000:
-        LOG.rl_trainer_logger.info(f"PDQN Reload agent of process {os.getpid()}")
+        LOG.rl_trainer_logger.info(f"PSAC Reload agent of process {os.getpid()}")
         return True
 
     return False

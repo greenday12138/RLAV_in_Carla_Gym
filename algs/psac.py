@@ -314,7 +314,7 @@ class QValueNet_multi_td3(torch.nn.Module):
         return out, out2
 
 
-class P_DQN:
+class P_SAC:
     def __init__(self, state_dim, action_dim, action_bound, gamma, tau,
                  buffer_size, batch_size, actor_lr, critic_lr, alpha_lr,
                  clip_grad, zero_index_gradients, inverting_gradients, per_flag, device) -> None:
@@ -647,23 +647,32 @@ class P_DQN:
     def save_net(self,file = None):
         state = {
             'actor': self.actor.state_dict(),
-            'critic': self.critic.state_dict(),
-            'critic_target':self.critic_target.state_dict(),
+            'critic1': self.critic1.state_dict(),
+            'critic2': self.critic2.state_dict(),
+            'critic1_target': self.critic1_target.state_dict(),
+            'critic2_target': self.critic2_target.state_dict(),
             'actor_optimizer': self.actor_optimizer.state_dict(),
-            'critic_optimizer': self.critic_optimizer.state_dict()
+            'critic1_optimizer': self.critic1_optimizer.state_dict(),
+            'critic2_optimizer': self.critic2_optimizer.state_dict()
         }
         torch.save(state, file)
 
     def load_net(self, file = None, map_location = torch.device('cpu')):
         if file is not None:
             state = torch.load(file, map_location=map_location)
-            if 'critic' in state:
-                self.critic.load_state_dict(state['critic'])
-            if 'critic_target' in state:
-                self.critic_target.load_state_dict(state['critic_target'])
             if 'actor' in state:
                 self.actor.load_state_dict(state['actor'])
             if 'actor_optimizer' in state:
                 self.actor_optimizer.load_state_dict(state['actor_optimizer'])
-            if 'critic_optimizer' in state:
-                self.critic_optimizer.load_state_dict(state['critic_optimizer'])
+            if 'critic1' in state:
+                self.critic1.load_state_dict(state['critic1'])
+            if 'critic2' in state:
+                self.critic2.load_state_dict(state['critic2'])
+            if 'critic1_target' in state:
+                self.critic1_target.load_state_dict(state['critic1_target'])
+            if 'critic2_target' in state:
+                self.critic2_target.load_state_dict(state['critic2_target'])
+            if 'critic1_optimizer' in state:
+                self.critic1_optimizer.load_state_dict(state['critic1_optimizer'])
+            if 'critic2_optimizer' in state:
+                self.critic2_target.load_state_dict(state['critic2_optimizer'])

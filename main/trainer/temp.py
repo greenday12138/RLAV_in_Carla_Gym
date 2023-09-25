@@ -81,5 +81,6 @@ if __name__=='__main__':
     # # 画图
     # sns.lineplot(data=df, x="Step", y="Value")
     # plt.show()
-    temp = np.array([2, 2, 2])
-    print(temp.size)
+    a = np.array([[2, 2], [2, 2]])
+    b = np.array([[1, 1], [2, 3]])
+    print(np.mean([a, b]))
