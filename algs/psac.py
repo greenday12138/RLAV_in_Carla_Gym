@@ -176,58 +176,6 @@ class PolicyNet_multi(torch.nn.Module):
         log_prob = log_prob.sum(-1, keepdim=True)
         return action, log_prob
 
-class PolicyNet_multi(torch.nn.Module):
-    def __init__(self, state_dim, action_parameter_size, action_bound, train=True) -> None:
-        # the action bound and state_dim here are dicts
-        super().__init__()
-        self.state_dim = state_dim
-        self.action_bound = action_bound
-        self.action_parameter_size = action_parameter_size
-        self.train = train
-        self.left_encoder = lane_wise_cross_attention_encoder(self.state_dim)
-        self.center_encoder = lane_wise_cross_attention_encoder(self.state_dim)
-        self.right_encoder = lane_wise_cross_attention_encoder(self.state_dim)
-        self.ego_encoder = nn.Linear(self.state_dim['hero_vehicle'], 64)
-        self.fc = nn.Linear(256, 256)
-        self.fc_out = nn.Linear(256, self.action_parameter_size)
-        # torch.nn.init.normal_(self.fc1_1.weight.data,0,0.01)
-        # torch.nn.init.normal_(self.fc1_2.weight.data,0,0.01)
-        # torch.nn.init.normal_(self.fc_out.weight.data,0,0.01)
-        # torch.nn.init.normal_(self.fc_out.weight.data,0,0.01)
-        # torch.nn.init.xavier_normal_(self.fc1_1.weight.data)
-        # torch.nn.init.xavier_normal_(self.fc1_2.weight.data)
-        # torch.nn.init.xavier_normal_(self.fc_out.weight.data)
-
-    def forward(self, state):
-        # state: (waypoints + 2 * companion_vehicle * 3
-        one_state_dim = self.state_dim['waypoints'] + self.state_dim['companion_vehicle'] * 2 + self.state_dim['light']
-        # print(state.shape, one_state_dim)
-        ego_info = state[:, 3*one_state_dim:]
-        # print(ego_info.shape)
-        left_enc = self.left_encoder(state[:, :one_state_dim], ego_info)
-        center_enc = self.center_encoder(state[:, one_state_dim:2*one_state_dim], ego_info)
-        right_enc = self.right_encoder(state[:, 2*one_state_dim:3*one_state_dim], ego_info)
-        ego_enc = self.ego_encoder(ego_info)
-        state_ = torch.cat((left_enc, center_enc, right_enc, ego_enc), dim=1)
-        hidden = F.relu(self.fc(state_))
-        action = torch.tanh(self.fc_out(hidden))
-        # steer,throttle_brake=torch.split(out,split_size_or_sections=[1,1],dim=1)
-        # steer=steer.clone()
-        # throttle_brake=throttle_brake.clone()
-        # steer*=self.action_bound['steer']
-        # throttle=throttle_brake.clone()
-        # brake=throttle_brake.clone()
-        # for i in range(throttle.shape[0]):
-        #     if throttle[i][0]<0:
-        #         throttle[i][0]=0
-        #     if brake[i][0]>0:
-        #         brake[i][0]=0
-        # throttle*=self.action_bound['throttle']
-        # brake*=self.action_bound['brake']
-
-        return action
-
-
 class QValueNet_multi(torch.nn.Module):
     def __init__(self, state_dim, action_param_dim, num_actions) -> None:
         # parameter state_dim here is a dict
@@ -339,7 +287,6 @@ class P_SAC:
         self.indexd = zero_index_gradients
         self.zero_index_gradients = zero_index_gradients
         self.inverting_gradients = inverting_gradients
-        self.td3 = False
         self.policy_freq = 2
         self.per_flag=per_flag
         self.learn_time=0
@@ -357,16 +304,11 @@ class P_SAC:
         self.pointer = 0  # serve as updating the memory data
         self.train = True
         self.actor = PolicyNet_multi(self.s_dim, self.action_parameter_size, self.a_bound).to(self.device)
-        if not self.td3:
-            self.critic1 = QValueNet_multi(self.s_dim, self.action_parameter_size, self.num_actions).to(self.device)
-            self.critic2 = QValueNet_multi(self.s_dim, self.action_parameter_size, self.num_actions).to(self.device)
-            self.critic1_target = QValueNet_multi(self.s_dim, self.action_parameter_size, self.num_actions).to(self.device)
-            self.critic2_target = QValueNet_multi(self.s_dim, self.action_parameter_size, self.num_actions).to(self.device)
-        else:
-            self.critic1 = QValueNet_multi_td3(self.s_dim, self.action_parameter_size, self.num_actions).to(self.device)
-            self.critic2 = QValueNet_multi_td3(self.s_dim, self.action_parameter_size, self.num_actions).to(self.device)
-            self.critic1_target = QValueNet_multi_td3(self.s_dim, self.action_parameter_size, self.num_actions).to(self.device)
-            self.critic2_target = QValueNet_multi_td3(self.s_dim, self.action_parameter_size, self.num_actions).to(self.device)
+        self.critic1 = QValueNet_multi(self.s_dim, self.action_parameter_size, self.num_actions).to(self.device)
+        self.critic2 = QValueNet_multi(self.s_dim, self.action_parameter_size, self.num_actions).to(self.device)
+        self.critic1_target = QValueNet_multi(self.s_dim, self.action_parameter_size, self.num_actions).to(self.device)
+        self.critic2_target = QValueNet_multi(self.s_dim, self.action_parameter_size, self.num_actions).to(self.device)
+
         self.critic1_target.load_state_dict(self.critic1.state_dict())
         self.critic2_target.load_state_dict(self.critic2.state_dict())
 
@@ -397,13 +339,10 @@ class P_SAC:
                             state_right_wps, state_veh_right_front, state_veh_right_rear, state_light, state_ev), dim=1)
         # print(state_.shape) 
         all_action_param, log_prob = self.actor(state_)
-        if not self.td3:
-            q1 = self.critic1(state_, all_action_param)
-            q2 = self.critic2(state_, all_action_param)
-            q = torch.min(q1,  q2)
-        else:
-            q1, q2 = self.critic(state_, all_action_param)
-            q = torch.min(q1, q2)
+        q1 = self.critic1(state_, all_action_param)
+        q2 = self.critic2(state_, all_action_param)
+        q = torch.min(q1,  q2)
+
         q_a = torch.squeeze(q)
         q_a = q_a.detach().cpu().numpy()
         if action_mask:
@@ -498,34 +437,26 @@ class P_SAC:
         with torch.no_grad():
             action_param_target, log_prob = self.actor(batch_ns)
             entropy = -log_prob
-            if not self.td3:
-                q_target_values1 = self.critic1_target(batch_ns, action_param_target)
-                q_target_values2 = self.critic2_target(batch_ns, action_param)
-                q_target_values = torch.min(q_target_values1, q_target_values2) + self.log_alpha.exp() * entropy
-            else:
-                q_target_values1, q_target_values2 = self.critic_target(batch_ns, action_param_target)
-                q_target_values = torch.min(q_target_values1, q_target_values2)
+            q_target_values1 = self.critic1_target(batch_ns, action_param_target)
+            q_target_values2 = self.critic2_target(batch_ns, action_param_target)
+            q_target_values = torch.min(q_target_values1, q_target_values2) + self.log_alpha.exp() * entropy
+
             q_prime = torch.max(q_target_values, 1, keepdim=True)[0].squeeze()
             q_targets = batch_r + self.gamma * q_prime * (1 - batch_t) * (1 - batch_d)
-        if not self.td3:
-            q1_values = self.critic1(batch_s, batch_a_param)
-            q2_values = self.critic2(batch_a, batch_a_param)
-            q1 = q1_values.gather(1, batch_a.view(-1, 1)).squeeze()
-            q2 = q2_values.gather(1, batch_a.view(-1, 1)).squeeze()
-            if not self.per_flag:
-                loss_q = self.loss(q, q_targets)
-            else:
-                abs_loss = torch.abs(torch.min(q1, q2) - q_targets)
-                abs_loss = np.array(abs_loss.detach().cpu().numpy())
-                self.replay_buffer.batch_update(b_idx, abs_loss)
 
-                critic_1_loss = torch.mean(self.loss(q1, q_targets) * self.ISWeights)
-                critic_2_loss = torch.mean(self.loss(q2, q_targets) * self.ISWeights)
+        q1_values = self.critic1(batch_s, batch_a_param)
+        q2_values = self.critic2(batch_s, batch_a_param)
+        q1 = q1_values.gather(1, batch_a.view(-1, 1)).squeeze()
+        q2 = q2_values.gather(1, batch_a.view(-1, 1)).squeeze()
+        if not self.per_flag:
+            loss_q = self.loss(q, q_targets)
         else:
-            q_values1, q_values2 = self.critic(batch_s, batch_a_param)
-            q_values = torch.min(q_values1, q_values2)
-            q = q_values.gather(1, batch_a.view(-1, 1)).squeeze()
-            loss_q = self.loss(q, q_values1) + self.loss(q, q_values2)
+            abs_loss = torch.abs(torch.min(q1, q2) - q_targets)
+            abs_loss = np.array(abs_loss.detach().cpu().numpy())
+            self.replay_buffer.batch_update(b_idx, abs_loss)
+
+            critic_1_loss = torch.mean(self.loss(q1, q_targets) * self.ISWeights)
+            critic_2_loss = torch.mean(self.loss(q2, q_targets) * self.ISWeights)
 
         self.critic1_optimizer.zero_grad()
         self.critic2_optimizer.zero_grad()
@@ -539,27 +470,29 @@ class P_SAC:
 
         if self.learn_time % self.policy_freq == 0:
             with torch.no_grad():
-                action_param = self.actor(batch_s)
+                action_param, log_prob= self.actor(batch_s)
             action_param.requires_grad = True
-            if not self.td3:
-                Q = self.critic(batch_s, action_param)
-                Q_val = Q
-            else:
-                Q1, Q2 = self.critic(batch_s, action_param)
-                Q_val = torch.min(Q1, Q2)
-            if self.indexd:
-                Q_indexed = Q_val.gather(1, batch_a.view(-1, 1))
-                Q_loss = torch.mean(Q_indexed)
-            else:
-                Q_loss = torch.mean(torch.sum(Q_val, 1))
 
-            self.critic.zero_grad()
-            Q_loss.backward()
+            Q1_values = self.critic1(batch_s, action_param)
+            Q2_values = self.critic2(batch_s, action_param)
+            if self.indexd:
+                Q1_indexed = Q1_values.gather(1, batch_a.view(-1, 1))
+                Q2_indexed = Q2_values.gather(1, batch_a.view(-1, 1))
+                Q1_loss = torch.mean(Q1_indexed)
+                Q2_loss = torch.mean(Q2_indexed)
+            else:
+                pass
+                #Q_loss = torch.mean(torch.sum(Q_val, 1))
+
+            self.critic1.zero_grad()
+            self.critic2.zero_grad()
+            Q1_loss.backward()
+            Q2_loss.backward()
             from copy import deepcopy
             # print('check batch_s whether has grad: ', batch_s.grad_fn)
             delta_a = deepcopy(action_param.grad.data)
 
-            action_param = self.actor(Variable(batch_s))
+            action_param, log_prob = self.actor(Variable(batch_s))
             delta_a[:] = self._invert_gradients(delta_a, action_param, grad_type="action_parameters", inplace=True)
             if self.zero_index_gradients:
                 delta_a[:] = self._zero_index_gradients(delta_a, batch_action_indices=batch_a, inplace=True)
@@ -653,7 +586,9 @@ class P_SAC:
             'critic2_target': self.critic2_target.state_dict(),
             'actor_optimizer': self.actor_optimizer.state_dict(),
             'critic1_optimizer': self.critic1_optimizer.state_dict(),
-            'critic2_optimizer': self.critic2_optimizer.state_dict()
+            'critic2_optimizer': self.critic2_optimizer.state_dict(),
+            'log_alpha': self.log_alpha.clone().detach(),
+            'log_alpha_optimizer': self.log_alpha_optimizer.state_dict()
         }
         torch.save(state, file)
 
@@ -675,4 +610,8 @@ class P_SAC:
             if 'critic1_optimizer' in state:
                 self.critic1_optimizer.load_state_dict(state['critic1_optimizer'])
             if 'critic2_optimizer' in state:
-                self.critic2_target.load_state_dict(state['critic2_optimizer'])
+                self.critic2_optimizer.load_state_dict(state['critic2_optimizer'])
+            if 'log_alpha' in state:
+                self.log_alpha = state['log_alpha'].clone().detach().requires_grad_(True).to(map_location)
+            if 'log_alpha_optimizer' in state:
+                self.log_alpha_optimizer.load_state_dict(state['log_alpha_optimizer'])

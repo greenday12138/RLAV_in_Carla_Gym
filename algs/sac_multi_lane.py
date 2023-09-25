@@ -132,7 +132,7 @@ class SACContinuous:
         self.a_dim, self.a_bound = action_dim, action_bound
         self.gamma, self.tau = gamma, tau
         self.batch_size, self.device = batch_size, device
-        self.actor_lr, self.critic_lr = actor_lr, critic_lr
+        self.actor_lr, self.critic_lr, self.alpha_lr = actor_lr, critic_lr, alpha_lr
         self.per_flag=per_flag
         self.train = True
         # adjust different types of replay buffer
@@ -307,24 +307,29 @@ class SACContinuous:
     def load_net(self, file = None, map_location = torch.device('cpu')):
         if file is not None:
             state = torch.load(file, map_location=map_location)
+            if 'log_alpha' in state:
+                self.log_alpha = state['log_alpha'].clone().detach().requires_grad_(True).to(map_location)
+                self.log_alpha_optimizer = torch.optim.Adam([self.log_alpha], lr=self.alpha_lr)
+                # self.log_alpha = torch.tensor(state['log_alpha'], requires_grad=True, device=map_location)
             if 'actor' in state:
                 self.actor.load_state_dict(state['actor'])
+                self.actor_optimizer = torch.optim.Adam(self.actor.parameters(), lr=self.actor_lr)
             if 'critic_1' in state:
                 self.critic_1.load_state_dict(state['critic_1'])
+                self.critic_1_optimizer = torch.optim.Adam(self.critic_1.parameters(), lr=self.critic_lr)
             if 'critic_2' in state:
                 self.critic_2.load_state_dict(state['critic_2'])
+                self.critic_2_optimizer = torch.optim.Adam(self.critic_2.parameters(), lr=self.critic_lr)
             if 'target_critic_1' in state:
                 self.target_critic_1.load_state_dict(state['target_critic_1'])
             if 'target_critic_2' in state:
                 self.target_critic_2.load_state_dict(state['target_critic_2'])
-            if 'actor_optimizer' in state:
-                self.actor_optimizer.load_state_dict(state['actor_optimizer'])
-            if 'critic_1_optimizer' in state:
-                self.critic_1_optimizer.load_state_dict(state['critic_1_optimizer'])
-            if 'critic_2_optimizer' in state:
-                self.critic_2_optimizer.load_state_dict(state['critic_2_optimizer'])
-            if 'log_alpha_optimizer' in state:
-                self.log_alpha_optimizer.load_state_dict(state['log_alpha_optimizer'])
-            if 'log_alpha' in state:
-                self.log_alpha = state['log_alpha'].clone().detach().requires_grad_(True).to(map_location)
-                # self.log_alpha = torch.tensor(state['log_alpha'], requires_grad=True, device=map_location)
+            # if 'actor_optimizer' in state:
+            #     self.actor_optimizer.load_state_dict(state['actor_optimizer'])
+            # if 'critic_1_optimizer' in state:
+            #     self.critic_1_optimizer.load_state_dict(state['critic_1_optimizer'])
+            # if 'critic_2_optimizer' in state:
+            #     self.critic_2_optimizer.load_state_dict(state['critic_2_optimizer'])
+            # if 'log_alpha_optimizer' in state:
+            #     self.log_alpha_optimizer.load_state_dict(state['log_alpha_optimizer'])
+           

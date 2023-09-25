@@ -40,7 +40,7 @@ AGENT_PARAM = {
     "acc3": True,
     "Kaiming_normal": False,
     "buffer_size": 160000,
-    "minimal_size": 10000,
+    "minimal_size": 1000,
     "batch_size": 128,
     "per_flag": True,
     "device": torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu'),
@@ -78,20 +78,20 @@ def main():
         learner.load_net(MODEL_PATH, map_location=learner.device)
 
     process = list()
-    worker_lock = Lock()
+    #worker_lock = Lock()
     eval_lock = Lock()
     traj_q = Queue(maxsize=param["buffer_size"]//2)
     eval_agent_q = Queue(maxsize=1)
-    worker_agent_q = Queue(maxsize=1)
+    #worker_agent_q = Queue(maxsize=1)
     eval_proc = mp.Process(target=worker_mp, args=
                              (eval_lock, traj_q, eval_agent_q, deepcopy(AGENT_PARAM), 0, deepcopy(SAVE_PATH), True))
-    worker_proc = mp.Process(target=worker_mp, args=
-                             (worker_lock, traj_q, worker_agent_q, deepcopy(AGENT_PARAM), 0, deepcopy(SAVE_PATH), False))
-    process.append(worker_proc)
+    # worker_proc = mp.Process(target=worker_mp, args=
+    #                          (worker_lock, traj_q, worker_agent_q, deepcopy(AGENT_PARAM), 0, deepcopy(SAVE_PATH), False))
+    #process.append(worker_proc)
     eval_proc.start()
     time.sleep(20)
     process.append(eval_proc)
-    worker_proc.start()
+    #worker_proc.start()
     #[p.start() for p in process]
     with open(os.path.join(SAVE_PATH, 'log_file.txt'),'a') as file:
         file.write(datetime.datetime.today().strftime('%Y-%m-%d_%H-%M') + '\n')
@@ -101,16 +101,16 @@ def main():
     try:
         while(True):
             # Restart worker process and evaluator process if carla failed
-            if not worker_proc.is_alive():
-                process.remove(worker_proc)
-                if worker_agent_q.full():
-                    worker_agent_q.get(block=True, timeout=None)
-                worker_proc = mp.Process(target=worker_mp, args=
-                                         (worker_lock, traj_q, worker_agent_q, deepcopy(AGENT_PARAM), 0, deepcopy(SAVE_PATH), False))
-                worker_proc.start()
-                with open(os.path.join(SAVE_PATH, 'log_file.txt'),'a') as file:
-                    file.write(datetime.datetime.today().strftime('%Y-%m-%d_%H-%M') + '\n')
-                process.append(worker_proc)
+            # if not worker_proc.is_alive():
+            #     process.remove(worker_proc)
+            #     if worker_agent_q.full():
+            #         worker_agent_q.get(block=True, timeout=None)
+            #     worker_proc = mp.Process(target=worker_mp, args=
+            #                              (worker_lock, traj_q, worker_agent_q, deepcopy(AGENT_PARAM), 0, deepcopy(SAVE_PATH), False))
+            #     worker_proc.start()
+            #     with open(os.path.join(SAVE_PATH, 'log_file.txt'),'a') as file:
+            #         file.write(datetime.datetime.today().strftime('%Y-%m-%d_%H-%M') + '\n')
+            #     process.append(worker_proc)
 
             if not eval_proc.is_alive():
                 process.remove(eval_proc)
@@ -127,8 +127,8 @@ def main():
             #reference: https://zhuanlan.zhihu.com/p/345353294, https://arxiv.org/abs/1711.00489
             k = max(learner.replay_buffer.size()// param["minimal_size"], 1)
             learner.batch_size = k * param["batch_size"]
-            if traj_q.qsize() >= learner.batch_size // 5:
-                for _ in range(learner.batch_size // 5):
+            if traj_q.qsize() >= learner.batch_size // 10:
+                for _ in range(learner.batch_size // 10):
                     trajectory=traj_q.get(block=True,timeout=None)
                     state, next_state, action, saved_action_param, reward, done, truncated, info, offset, eval \
                         = trajectory[0], trajectory[1], trajectory[2], trajectory[3], trajectory[4], \
@@ -142,12 +142,12 @@ def main():
                 q_loss = learner.learn()
                 worker_update_count += 1
                 eval_update_count += 1
-                if not worker_agent_q.full() and worker_update_count//UPDATE_FREQ > 0:
-                    worker_lock.acquire()
-                    worker_agent_q.put((deepcopy(learner.learn_time), deepcopy(q_loss)), block=True, timeout=None)
-                    learner.save_net(os.path.join(SAVE_PATH, 'worker.pth'))
-                    worker_lock.release()
-                    worker_update_count %= UPDATE_FREQ
+                # if not worker_agent_q.full() and worker_update_count//UPDATE_FREQ > 0:
+                #     worker_lock.acquire()
+                #     worker_agent_q.put((deepcopy(learner.learn_time), deepcopy(q_loss)), block=True, timeout=None)
+                #     learner.save_net(os.path.join(SAVE_PATH, 'worker.pth'))
+                #     worker_lock.release()
+                #     worker_update_count %= UPDATE_FREQ
 
                 if not eval_agent_q.full() and eval_update_count//(UPDATE_FREQ * 2) > 0:
                     eval_lock.acquire()
@@ -306,15 +306,7 @@ def worker_mp(lock:Lock, traj_q:Queue, agent_q:Queue, agent_param:dict, episode_
                             #only record the first vehicle reward
                             if env.unwrapped._total_steps == env.unwrapped.pre_train_steps:
                                 worker.save_net(os.path.join(save_path, 'ipdqn_pre_trained.pth'))
-                        
-                            if env.unwrapped._rl_control_steps > 10000 and param["sigma_acc"] > 0.01:
-                                param["sigma"] *= param["sigma_decay"]
-                                param["sigma_steer"] *= param["sigma_decay"]
-                                param["sigma_acc"] *= param["sigma_decay"]
-                                worker.set_sigma(param["sigma_steer"], param["sigma_acc"])
-                                LOG.rl_trainer_logger.info(f"PSAC Agent Sigma {param['sigma_steer']} {param['sigma_acc']}")
-                        
-                        
+                                            
                         if done or truncated:
                             # restart the training
                             done = False
