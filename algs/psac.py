@@ -431,8 +431,7 @@ class P_SAC:
         with torch.no_grad():
             action_param_target, log_prob = self.actor(batch_ns)
             entropy = -log_prob
-            q_target_values1 = self.critic1_target(batch_ns, action_param_target)
-            q_target_values2 = self.critic2_target(batch_ns, action_param_target)
+            q_target_values1, q_target_values2 = self.critic_target(batch_ns, action_param_target)
             q_target_values = torch.min(q_target_values1, q_target_values2) + self.log_alpha.exp() * entropy
 
             q_prime = torch.max(q_target_values, 1, keepdim=True)[0].squeeze()

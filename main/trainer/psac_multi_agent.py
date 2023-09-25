@@ -40,7 +40,7 @@ AGENT_PARAM = {
     "acc3": True,
     "Kaiming_normal": False,
     "buffer_size": 160000,
-    "minimal_size": 1000,
+    "minimal_size": 10000,
     "batch_size": 128,
     "per_flag": True,
     "device": torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu'),
@@ -219,7 +219,6 @@ def worker_mp(lock:Lock, traj_q:Queue, agent_q:Queue, agent_param:dict, episode_
                         episodes = 1000 * i + i_episode + episode_offset
                         states, _ = env.reset()
                         done, truncated = False, False
-                        worker.reset_noise()
                         for actor_id in states.keys():
                             ttc[actor_id], efficiency[actor_id], comfort[actor_id], lcen[actor_id],\
                                 lane_change_reward[actor_id], total_reward[actor_id], avg_reward[actor_id] = \
