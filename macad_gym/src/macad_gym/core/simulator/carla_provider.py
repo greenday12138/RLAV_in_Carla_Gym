@@ -25,7 +25,6 @@ class CarlaError(Exception):
 
 class CarlaConnector(object):
     live_carla_processes = set()
-    server_process = None
 
     def __init__(self, server_map, env_config) -> None:
         super().__init__()
@@ -33,16 +32,17 @@ class CarlaConnector(object):
         self._world = None
         self._map = None
         self._traffic_manager = None
+        self.server_process = None
 
         # Create a new server process and start the client.
         # self._connected_carla.append(CarlaConnector(self._server_port, self._server_map, self._env_config))
         # self._carla = weakref.proxy(self._connected_carla[-1])
-        self._server_port, CarlaConnector.server_process =  CarlaConnector.connect(LOG.multi_env_logger, env_config)
+        self._server_port, self.server_process =  CarlaConnector.connect(LOG.multi_env_logger, env_config)
 
         if IS_WINDOWS_PLATFORM:
-            CarlaConnector.live_carla_processes.add(CarlaConnector.server_process.pid)
+            CarlaConnector.live_carla_processes.add(self.server_process.pid)
         else:
-            CarlaConnector.live_carla_processes.add(os.getpgid(CarlaConnector.server_process.pid))
+            CarlaConnector.live_carla_processes.add(os.getpgid(self.server_process.pid))
 
         while self._client is None:
             try:
@@ -94,19 +94,19 @@ class CarlaConnector(object):
         del self._client
         self._client, self._map, self._world, self._traffic_manager = None, None, None, None
 
-        if CarlaConnector.server_process:
+        if self.server_process:
             if IS_WINDOWS_PLATFORM:
                 subprocess.call(
-                    ["taskkill", "/F", "/T", "/PID", str(CarlaConnector.server_process.pid)]
+                    ["taskkill", "/F", "/T", "/PID", str(self.server_process.pid)]
                 )
-                CarlaConnector.live_carla_processes.remove(CarlaConnector.server_process.pid)
+                CarlaConnector.live_carla_processes.remove(self.server_process.pid)
             else:
-                pgid = os.getpgid(CarlaConnector.server_process.pid)
+                pgid = os.getpgid(self.server_process.pid)
                 os.killpg(pgid, signal.SIGKILL)
                 CarlaConnector.live_carla_processes.remove(pgid)
 
         self._server_port = None
-        CarlaConnector.server_process = None
+        self.server_process = None
 
     def set_weather(self, weather, logger):
         try:

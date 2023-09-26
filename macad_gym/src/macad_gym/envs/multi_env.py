@@ -403,7 +403,7 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
 
         for retry in range(RETRIES_ON_ERROR):
             try:
-                if not self._carla or not CarlaConnector.server_process:
+                if not self._carla:
                     self._init_server()
                     self._reset(clean_world=False)
                 else:
@@ -411,7 +411,6 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
                 break
             except CarlaError as e:
                 LOG.multi_env_logger.exception(e.args)
-                CarlaConnector.server_process = None
                 self._clear_server_state()
                 continue
             except AttributeError as e:
@@ -419,7 +418,6 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
                 if e.args[0].find("'NoneType' object has no attribute") == -1:
                     raise e
                 else:
-                    CarlaConnector.server_process = None
                     self._clear_server_state()
                     continue
             except Exception as e:
@@ -903,7 +901,7 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
             ValueError: If `action_dict` contains actions for nonexistent actor
         """
 
-        if not self._carla or not CarlaConnector.server_process:
+        if not self._carla:
             raise RuntimeError("Cannot call step(...) before calling reset()")
 
         assert len(self._actors), (
@@ -1014,7 +1012,6 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
             return obs_dict, reward_dict, self._done_dict, self._truncated_dict, info_dict
         except CarlaError as e:
             LOG.multi_env_logger.exception(e.args)
-            CarlaConnector.server_process = None
             self._clear_server_state()
             raise e
         except AttributeError as e:
@@ -1022,7 +1019,6 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
             if e.args[0].find("'NoneType' object has no attribute") == -1:
                 raise e
             else:
-                CarlaConnector.server_process = None
                 self._clear_server_state()
                 raise CarlaError("Carla failed, restart carla!") from e
         except Exception as e:
