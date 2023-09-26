@@ -80,7 +80,7 @@ def main():
     process = list()
     #worker_lock = Lock()
     eval_lock = Lock()
-    traj_q = Queue(maxsize=param["buffer_size"]//2)
+    traj_q = Queue(maxsize=param["minimal_size"])
     eval_agent_q = Queue(maxsize=1)
     #worker_agent_q = Queue(maxsize=1)
     eval_proc = mp.Process(target=worker_mp, args=
