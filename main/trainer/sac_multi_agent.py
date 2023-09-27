@@ -333,9 +333,11 @@ def worker_mp(lock:Lock, traj_q:Queue, agent_q:Queue, agent_param:dict, episode_
     except BaseException:
         logging.exception(traceback.format_exc())
     finally:
-        env.close()
         if eval:
             episode_writer.close()
+        traj_q.close()
+        traj_q.join_thread()
+        env.close()
         logging.info('\nDone.')
 
 def reload_agent(agent, gpu_id=0):
