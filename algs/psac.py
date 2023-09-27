@@ -432,7 +432,8 @@ class P_SAC:
             action_param_target, log_prob = self.actor(batch_ns)
             entropy = -log_prob
             q_target_values1, q_target_values2 = self.critic_target(batch_ns, action_param_target)
-            q_target_values = torch.min(q_target_values1, q_target_values2) + self.log_alpha.exp() * entropy
+            # q_target_values = torch.min(q_target_values1, q_target_values2) + self.log_alpha.exp() * entropy
+            q_target_values = torch.min(q_target_values1, q_target_values2)
 
             q_prime = torch.max(q_target_values, 1, keepdim=True)[0].squeeze()
             q_targets = batch_r + self.gamma * q_prime * (1 - batch_t) * (1 - batch_d)
@@ -480,7 +481,8 @@ class P_SAC:
             if self.zero_index_gradients:
                 delta_a[:] = self._zero_index_gradients(delta_a, batch_action_indices=batch_a, inplace=True)
 
-            out = torch.mean(-torch.mul(delta_a, action_param) - self.log_alpha.exp() * entropy)
+            out = torch.mean(-torch.mul(delta_a, action_param))
+            #out = torch.mean(-torch.mul(delta_a, action_param) - self.log_alpha.exp() * entropy)
             self.actor.zero_grad()
             out.backward(torch.ones(out.shape).to(self.device))
             if self.clip_grad > 0:
