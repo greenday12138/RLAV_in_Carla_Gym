@@ -265,7 +265,6 @@ def main():
                                 worker.save_net(os.path.join(SAVE_PATH, f'pdqn_{episodes}_net_params.pth'))
                         except CarlaError as e:
                             LOG.rl_trainer_logger.exception("PDQN Carla Failed, restart carla!")
-                            continue
            
                 # restart carla to clear garbage
                 env.close()

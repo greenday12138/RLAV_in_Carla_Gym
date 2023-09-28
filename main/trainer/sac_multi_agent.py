@@ -324,7 +324,6 @@ def worker_mp(lock:Lock, traj_q:Queue, agent_q:Queue, agent_param:dict, episode_
                         pbar.update(1)
                     except CarlaError as e:
                         LOG.rl_trainer_logger.exception("SAC Carla Failed, restart carla!")
-                        continue
         
             # restart carla to clear garbage
             env.close()

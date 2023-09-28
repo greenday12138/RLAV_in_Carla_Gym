@@ -235,7 +235,6 @@ def main():
                             #     env.close()
                         except CarlaError as e:
                             LOG.rl_trainer_logger.exception("SAC Carla Failed, restart carla!")
-                            continue
            
                 # restart carla to clear garbage
                 env.close()
