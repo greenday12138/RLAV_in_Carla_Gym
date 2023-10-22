@@ -42,9 +42,12 @@ class CarlaConnector(object):
         self.server_pid = server_process.pid
 
         if IS_WINDOWS_PLATFORM:
-            CarlaConnector.live_carla_processes.add(self.server_pid)
+            self.server_pid = server_process.pid
         else:
-            CarlaConnector.live_carla_processes.add(os.getpgid(self.server_pid))
+            # The carla setup procedure start a process group in Linux.
+            self.server_pid = os.getpid(server_process.pid)
+
+        CarlaConnector.live_carla_processes.add(self.server_pid)
 
         while self._client is None:
             try:
@@ -102,12 +105,11 @@ class CarlaConnector(object):
                     subprocess.call(
                         ["taskkill", "/F", "/T", "/PID", str(self.server_pid)]
                     )
-                CarlaConnector.live_carla_processes.remove(self.server_pid)
             else:
-                pgid = os.getpgid(self.server_pid)
-                if psutil.pid_exists(pgid):
-                    os.killpg(pgid, signal.SIGKILL)
-                CarlaConnector.live_carla_processes.remove(pgid)
+                if psutil.pid_exists(self.server_pid):
+                    os.killpg(self.server_pid, signal.SIGKILL)
+
+            CarlaConnector.live_carla_processes.remove(self.server_pid)
 
         self._server_port = None
         self.server_pid = None
