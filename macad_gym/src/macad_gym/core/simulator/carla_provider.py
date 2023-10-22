@@ -45,7 +45,8 @@ class CarlaConnector(object):
             self.server_pid = server_process.pid
         else:
             # The carla setup procedure start a process group in Linux.
-            self.server_pid = os.getpid(server_process.pid)
+            os.getpd
+            self.server_pid = os.getpgid(server_process.pid)
 
         CarlaConnector.live_carla_processes.add(self.server_pid)
 
