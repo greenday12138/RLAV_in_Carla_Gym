@@ -71,61 +71,76 @@ def main():
         learner.load_net(MODEL_PATH, map_location=learner.device)
 
     process = list()
-    worker_lock = Lock()
-    eval_lock = Lock()
-    eval_traj_q = Queue(maxsize=param["minimal_size"])
-    worker_traj_q = Queue(maxsize=param["minimal_size"])
-    eval_agent_q = Queue(maxsize=1)
-    worker_agent_q = Queue(maxsize=1)
-    eval_proc = mp.Process(target=worker_mp, args=
-                             (eval_lock, eval_traj_q, eval_agent_q, deepcopy(AGENT_PARAM), 0, deepcopy(SAVE_PATH), True))
-    worker_proc = mp.Process(target=worker_mp, args=
-                             (worker_lock, worker_traj_q, worker_agent_q, deepcopy(AGENT_PARAM), 0, deepcopy(SAVE_PATH), False))
-    process.append(worker_proc)
-    eval_proc.start()
-    time.sleep(20)
-    process.append(eval_proc)
-    worker_proc.start()
+    worker_proc, eval_proc = None, None
+
+    #worker_lock = Lock()
+    # eval_lock = Lock()
+    # eval_traj_q = Queue(maxsize=param["minimal_size"])
+    #worker_traj_q = Queue(maxsize=param["minimal_size"])
+    # eval_agent_q = Queue(maxsize=1)
+    #worker_agent_q = Queue(maxsize=1)
+    # eval_proc = mp.Process(target=worker_mp, args=
+    #                          (eval_lock, eval_traj_q, eval_agent_q, deepcopy(AGENT_PARAM), 0, deepcopy(SAVE_PATH), True))
+    #worker_proc = mp.Process(target=worker_mp, args=
+    #                         (worker_lock, worker_traj_q, worker_agent_q, deepcopy(AGENT_PARAM), 0, deepcopy(SAVE_PATH), False))
+    #worker_proc.start()
+    # eval_proc.start()
+    #time.sleep(20)
+    #process.append(worker_proc)
+    # process.append(eval_proc)
     #[p.start() for p in process]
-    with open(os.path.join(SAVE_PATH, 'log_file.txt'),'a') as file:
-        file.write(datetime.datetime.today().strftime('%Y-%m-%d_%H-%M') + '\n')
+    # with open(os.path.join(SAVE_PATH, 'log_file.txt'),'a') as file:
+    #     file.write(datetime.datetime.today().strftime('%Y-%m-%d_%H-%M') + '\n')
 
     worker_update_count, eval_update_count = 0, 0
     episode_offset = 0
-    traj_q = eval_traj_q
+    traj_q = None
     try:
         while(True):
             # Restart worker process and evaluator process if carla failed
-            if not worker_proc.is_alive():
-                process.remove(worker_proc)
-                if worker_agent_q.full():
-                    worker_agent_q.get(block=True, timeout=None)
+            if not worker_proc or not worker_proc.is_alive():
+                if worker_proc:
+                    process.remove(worker_proc)
+                worker_agent_q = Queue(maxsize=1)
+                worker_traj_q = Queue(maxsize=param["minimal_size"])
+                worker_lock = Lock()
+                # if worker_agent_q.full():
+                #     worker_agent_q.get(block=True, timeout=None)
                 worker_proc = mp.Process(target=worker_mp, args=
                                          (worker_lock, worker_traj_q, worker_agent_q, deepcopy(AGENT_PARAM), 0, deepcopy(SAVE_PATH), False))
                 worker_proc.start()
                 with open(os.path.join(SAVE_PATH, 'log_file.txt'),'a') as file:
                     file.write(datetime.datetime.today().strftime('%Y-%m-%d_%H-%M') + '\n')
                 process.append(worker_proc)
+                time.sleep(20)
 
-            if not eval_proc.is_alive():
-                process.remove(eval_proc)
-                if eval_agent_q.full():
-                    eval_agent_q.get(block=True, timeout=None)
+            if not eval_proc or not eval_proc.is_alive():
+                if eval_proc:
+                    process.remove(eval_proc)
+                eval_agent_q = Queue(maxsize=1)
+                eval_traj_q = Queue(maxsize=param["minimal_size"])
+                eval_lock = Lock()
+                # if eval_agent_q.full():
+                #     eval_agent_q.get(block=True, timeout=None)
                 eval_proc = mp.Process(target=worker_mp, args=
                                         (eval_lock, eval_traj_q, eval_agent_q, deepcopy(AGENT_PARAM), episode_offset, deepcopy(SAVE_PATH), True))
                 eval_proc.start()
                 with open(os.path.join(SAVE_PATH, 'log_file.txt'),'a') as file:
                     file.write(datetime.datetime.today().strftime('%Y-%m-%d_%H-%M') + '\n')
                 process.append(eval_proc)
+                time.sleep(20)
 
             #alter the batch_size and update times according to the replay buffer size:
             #reference: https://zhuanlan.zhihu.com/p/345353294, https://arxiv.org/abs/1711.00489
             k = max(learner.replay_buffer.size()// param["minimal_size"], 1)
             learner.batch_size = k * param["batch_size"]
-            if traj_q is eval_traj_q:
-                traj_q = worker_traj_q
-            else:
+            if not traj_q:
                 traj_q = eval_traj_q
+            else:
+                if traj_q is eval_traj_q:
+                    traj_q = worker_traj_q
+                else:
+                    traj_q = eval_traj_q
             if traj_q.qsize() >= learner.batch_size // 10:
                 for _ in range(learner.batch_size // 10):
                     trajectory=traj_q.get(block=True,timeout=None)
@@ -181,7 +196,6 @@ def main():
 
 def worker_mp(lock:Lock, traj_q:Queue, agent_q:Queue, agent_param:dict, episode_offset:int, save_path:str, eval:bool):
     env = gym.make("HomoNcomIndePoHiwaySAFR2CTWN5-v0")
-    time.sleep(20)
     TOTAL_EPISODE = 5000
     eval = eval
     if eval:
@@ -342,8 +356,9 @@ def worker_mp(lock:Lock, traj_q:Queue, agent_q:Queue, agent_param:dict, episode_
             episode_writer.close()
         # traj_q.close()
         # traj_q.join_thread()
-        env.close()
+        # env.close()
         logging.info('\nDone.')
+        sys.exit(1)
 
 def reload_agent(agent, gpu_id=0):
     if agent.device != torch.device('cpu'):
