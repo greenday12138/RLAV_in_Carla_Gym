@@ -41,7 +41,7 @@ AGENT_PARAM = {
     "Kaiming_normal": False,
     "buffer_size": 160000,
     "minimal_size": 10000,
-    "batch_size": 128,
+    "batch_size": 256,
     "per_flag": True,
     "device": torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu'),
     "sigma": 0.5,
@@ -59,7 +59,8 @@ AGENT_PARAM = {
     "inverting_gradients": True,
 }
 TRAIN = True
-UPDATE_FREQ = 100
+UPDATE_FREQ = 500
+WORKER_NUMBER = 4
 modify_change_steer=False
 MODEL_PATH = os.path.join(os.getcwd(), 'out', 'model_params', 'pdqn_ma_net_params.pth')
 
@@ -83,7 +84,12 @@ def main():
         learner.load_net(MODEL_PATH, map_location=learner.device)
 
     process = list()
-    worker_proc, eval_proc = None, None
+    worker_proc, eval_proc = [None for i in range(WORKER_NUMBER)], None
+    worker_lock, eval_lock = [None for i in range(WORKER_NUMBER)], None
+    traj_q = Queue(maxsize=param["buffer_size"])
+    worker_agent_q = [Queue(maxsize=1) for i in range(WORKER_NUMBER)]
+    worker_update_count, eval_update_count = 0, 0
+    episode_offset = 0
 
     #worker_lock = Lock()
     # eval_lock = Lock()
@@ -103,10 +109,6 @@ def main():
     #[p.start() for p in process]
     # with open(os.path.join(SAVE_PATH, 'log_file.txt'),'a') as file:
     #     file.write(datetime.datetime.today().strftime('%Y-%m-%d_%H-%M') + '\n')
-
-    worker_update_count, eval_update_count = 0, 0
-    episode_offset = 0
-    traj_q = None
     try:
         while(True):
             # Restart worker process and evaluator process if carla failed
@@ -114,47 +116,48 @@ def main():
                 if eval_proc:
                     process.remove(eval_proc)
                 eval_agent_q = Queue(maxsize=1)
-                eval_traj_q = Queue(maxsize=param["minimal_size"])
+                #eval_traj_q = Queue(maxsize=param["minimal_size"])
                 eval_lock = Lock()
                 # if eval_agent_q.full():
                 #     eval_agent_q.get(block=True, timeout=None)
                 eval_proc = mp.Process(target=worker_mp, args=
-                                        (eval_lock, eval_traj_q, eval_agent_q, deepcopy(AGENT_PARAM), episode_offset, deepcopy(SAVE_PATH), True))
+                                        (eval_lock, traj_q, eval_agent_q, deepcopy(AGENT_PARAM), episode_offset, deepcopy(SAVE_PATH), -1))
                 eval_proc.start()
                 with open(os.path.join(SAVE_PATH, 'log_file.txt'),'a') as file:
-                    file.write(datetime.datetime.today().strftime('%Y-%m-%d_%H-%M') + '\n')
+                    file.write(f"{datetime.datetime.today().strftime('%Y-%m-%d_%H-%M')} evaluator \n")
                 process.append(eval_proc)
                 time.sleep(20)
 
-            if not worker_proc or not worker_proc.is_alive():
-                if worker_proc:
-                    process.remove(worker_proc)
-                worker_agent_q = Queue(maxsize=1)
-                worker_traj_q = Queue(maxsize=param["minimal_size"])
-                worker_lock = Lock()
-                # if worker_agent_q.full():
-                #     worker_agent_q.get(block=True, timeout=None)
-                worker_proc = mp.Process(target=worker_mp, args=
-                                         (worker_lock, worker_traj_q, worker_agent_q, deepcopy(AGENT_PARAM), 0, deepcopy(SAVE_PATH), False))
-                worker_proc.start()
-                with open(os.path.join(SAVE_PATH, 'log_file.txt'),'a') as file:
-                    file.write(datetime.datetime.today().strftime('%Y-%m-%d_%H-%M') + '\n')
-                process.append(worker_proc)
-                time.sleep(20)
+            for i in range(WORKER_NUMBER):
+                if not worker_proc[i] or not worker_proc[i].is_alive():
+                    if worker_proc[i]:
+                        process.remove(worker_proc[i])
+                    worker_agent_q[i] = Queue(maxsize=1)
+                    #worker_traj_q = Queue(maxsize=param["minimal_size"])
+                    worker_lock[i] = Lock()
+                    # if worker_agent_q.full():
+                    #     worker_agent_q.get(block=True, timeout=None)
+                    worker_proc[i] = mp.Process(target=worker_mp, args=
+                                            (worker_lock[i], traj_q, worker_agent_q[i], deepcopy(AGENT_PARAM), 0, deepcopy(SAVE_PATH), i))
+                    worker_proc[i].start()
+                    with open(os.path.join(SAVE_PATH, 'log_file.txt'),'a') as file:
+                        file.write(f"{datetime.datetime.today().strftime('%Y-%m-%d_%H-%M')} worker_{i} \n")
+                    process.append(worker_proc[i])
+                    time.sleep(20)
 
             #alter the batch_size and update times according to the replay buffer size:
             #reference: https://zhuanlan.zhihu.com/p/345353294, https://arxiv.org/abs/1711.00489
             k = max(learner.replay_buffer.size()// param["minimal_size"], 1)
             learner.batch_size = k * param["batch_size"]
-            if not traj_q:
-                traj_q = eval_traj_q
-            else:
-                if traj_q is eval_traj_q:
-                    traj_q = worker_traj_q
-                else:
-                    traj_q = eval_traj_q
-            if traj_q.qsize() >= learner.batch_size // 10:
-                for _ in range(learner.batch_size // 10):
+            # if not traj_q:
+            #     traj_q = eval_traj_q
+            # else:
+            #     if traj_q is eval_traj_q:
+            #         traj_q = worker_traj_q
+            #     else:
+            #         traj_q = eval_traj_q
+            if traj_q.qsize() >= learner.batch_size // 4:
+                for _ in range(learner.batch_size // 4):
                     trajectory=traj_q.get(block=True,timeout=None)
                     state, next_state, action, saved_action_param, reward, done, truncated, info, offset, eval \
                         = trajectory[0], trajectory[1], trajectory[2], trajectory[3], trajectory[4], \
@@ -168,19 +171,23 @@ def main():
                 q_loss = learner.learn()
                 worker_update_count += 1
                 eval_update_count += 1
-                if not worker_agent_q.full() and worker_update_count//UPDATE_FREQ > 0:
-                    worker_lock.acquire()
-                    worker_agent_q.put((deepcopy(learner.learn_time), deepcopy(q_loss)), block=True, timeout=None)
-                    learner.save_net(os.path.join(SAVE_PATH, 'worker.pth'))
-                    worker_lock.release()
-                    worker_update_count %= UPDATE_FREQ
 
-                if not eval_agent_q.full() and eval_update_count//(UPDATE_FREQ * 2) > 0:
+                if not eval_agent_q.full() and eval_update_count // UPDATE_FREQ > 0:
                     eval_lock.acquire()
                     eval_agent_q.put((deepcopy(learner.learn_time), deepcopy(q_loss)), block=True, timeout=None)
                     learner.save_net(os.path.join(SAVE_PATH, 'eval.pth'))
                     eval_lock.release()
-                    eval_update_count %= UPDATE_FREQ * 2
+                    eval_update_count %= UPDATE_FREQ
+
+                if worker_update_count // (UPDATE_FREQ * 2)> 0:
+                    for i in range(WORKER_NUMBER):
+                        if not worker_agent_q[i].full():
+                            worker_lock[i].acquire()
+                            worker_agent_q[i].put((deepcopy(learner.learn_time), deepcopy(q_loss)), block=True, timeout=None)
+                            learner.save_net(os.path.join(SAVE_PATH, f'worker_{i}.pth'))
+                            worker_lock[i].release()
+                    
+                    worker_update_count %= UPDATE_FREQ * 2
 
                 if learner.learn_time > 250000:
                     learner.save_net(os.path.join(SAVE_PATH, 'ipdqn_250000_net_params.pth'))
@@ -206,14 +213,18 @@ def main():
         learner.save_net(os.path.join(SAVE_PATH, 'ipdqn_final.pth'))
         logging.info('\nDone.')
 
-def worker_mp(lock:Lock, traj_q:Queue, agent_q:Queue, agent_param:dict, episode_offset:int, save_path:str, eval:bool):
+def worker_mp(lock:Lock, traj_q:Queue, agent_q:Queue, agent_param:dict, episode_offset:int, save_path:str, index:int):
     env = gym.make("PDQNHomoNcomIndePoHiwaySAFR2CTWN5-v0")
-    TOTAL_EPISODE = 5000
-    eval = eval
-    if eval:
-        episode_writer = SummaryWriter(save_path)
-
     param = deepcopy(agent_param)
+    TOTAL_EPISODE = 5000
+    if index == -1:
+        # This process is evaluator
+        eval = True
+        episode_writer = SummaryWriter(save_path)
+    else:
+        eval = False
+        param["device"] = torch.device('cpu')
+
     worker = P_DQN(param["s_dim"], param["a_dim"], param["a_bound"], param["gamma"],
                         param["tau"], param["sigma_steer"], param["sigma"], param["sigma_acc"], 
                         param["theta"], param["epsilon"], param["buffer_size"], param["batch_size"], 
@@ -256,7 +267,7 @@ def worker_mp(lock:Lock, traj_q:Queue, agent_q:Queue, agent_param:dict, episode_
                             if eval:
                                 worker.load_net(os.path.join(save_path, 'eval.pth'), map_location=worker.device)
                             else:
-                                worker.load_net(os.path.join(save_path, 'worker.pth'), map_location=worker.device)
+                                worker.load_net(os.path.join(save_path, f'worker_{index}.pth'), map_location=worker.device)
                             learn_time, q_loss = agent_q.get()
                             lock.release()
                             worker.learn_time=learn_time
@@ -372,9 +383,9 @@ def worker_mp(lock:Lock, traj_q:Queue, agent_q:Queue, agent_param:dict, episode_
 
                     pbar.set_postfix({
                         "episodes": f"{episodes + 1}",
-                        "evaluator": f"{eval}"
+                        "evaluator": f"{True if eval else 'worker_'+str(index)}"
                     })
-                    pbar.update(1)
+                    pbar.update(1)      
         
             # restart carla to clear garbage
             env.close()
@@ -388,7 +399,9 @@ def worker_mp(lock:Lock, traj_q:Queue, agent_q:Queue, agent_param:dict, episode_
         if eval:
             episode_writer.close()
         traj_q.close()
+        agent_q.close()
         traj_q.join_thread()
+        agent_q.join_thread()
         logging.info('\nDone.')
         sys.exit(1)
 
