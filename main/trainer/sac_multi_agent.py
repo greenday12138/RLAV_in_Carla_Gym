@@ -85,8 +85,7 @@ def main():
     manager = SyncManager()
     manager.start()
     traj_q = manager.Queue(maxsize=param["buffer_size"])
-    eval_agent_q = manager.Queue(maxsize=1)
-    worker_agent_q = [manager.Queue(maxsize=1) for i in range(WORKER_NUMBER)]
+    worker_agent_q, eval_agent_q = [None for i in range(WORKER_NUMBER)], None
 
     #worker_lock = Lock()
     # eval_lock = Lock()
@@ -112,6 +111,7 @@ def main():
             if not eval_proc or not eval_proc.is_alive():
                 if eval_proc:
                     process.remove(eval_proc)
+                eval_agent_q = manager.Queue(maxsize=1)
                 #eval_agent_q = Queue(maxsize=1)
                 #eval_traj_q = Queue(maxsize=param["minimal_size"])
                 eval_lock = Lock()
@@ -129,6 +129,7 @@ def main():
                 if not worker_proc[i] or not worker_proc[i].is_alive():
                     if worker_proc[i]:
                         process.remove(worker_proc[i])
+                    worker_agent_q[i] = manager.Queue(maxsize=1)
                     #worker_agent_q[i] = Queue(maxsize=1)
                     #worker_traj_q = Queue(maxsize=param["minimal_size"])
                     worker_lock[i] = Lock()
@@ -383,10 +384,6 @@ def worker_mp(lock:Lock, traj_q:Queue, agent_q:Queue, agent_param:dict, episode_
     finally:
         if eval:
             episode_writer.close()
-        traj_q.close()
-        agent_q.close()
-        traj_q.join_thread()
-        agent_q.join_thread()
         print(f"SAC Exit {'evaluator' if eval else 'worker_'+str(index)} process")
         sys.exit(1)
 
