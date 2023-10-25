@@ -2,6 +2,7 @@ import torch
 import logging
 import datetime,time, os
 import gym, macad_gym
+import queue
 import random, sys
 import traceback
 import numpy as np
@@ -60,7 +61,7 @@ AGENT_PARAM = {
 }
 TRAIN = True
 UPDATE_FREQ = 500
-WORKER_NUMBER = 4
+WORKER_NUMBER = 3
 modify_change_steer=False
 MODEL_PATH = os.path.join(os.getcwd(), 'out', 'model_params', 'pdqn_ma_net_params.pth')
 
@@ -173,19 +174,27 @@ def main():
                 eval_update_count += 1
 
                 if not eval_agent_q.full() and eval_update_count // UPDATE_FREQ > 0:
-                    eval_lock.acquire()
-                    eval_agent_q.put((deepcopy(learner.learn_time), deepcopy(q_loss)), block=True, timeout=None)
+                    #eval_lock.acquire()
                     learner.save_net(os.path.join(SAVE_PATH, 'eval.pth'))
-                    eval_lock.release()
+                    try:
+                        eval_agent_q.put((deepcopy(learner.learn_time), deepcopy(q_loss)), block=True, timeout=20)
+                    except queue.Full as e:
+                        LOG.rl_trainer_logger.exception(f"PDQN Worker process crashed, {e.args}")
+                        continue
+                    #eval_lock.release()
                     eval_update_count %= UPDATE_FREQ
 
                 if worker_update_count // (UPDATE_FREQ * 2)> 0:
                     for i in range(WORKER_NUMBER):
                         if not worker_agent_q[i].full():
-                            worker_lock[i].acquire()
-                            worker_agent_q[i].put((deepcopy(learner.learn_time), deepcopy(q_loss)), block=True, timeout=None)
+                            #worker_lock[i].acquire()
                             learner.save_net(os.path.join(SAVE_PATH, f'worker_{i}.pth'))
-                            worker_lock[i].release()
+                            try:
+                                worker_agent_q[i].put((deepcopy(learner.learn_time), deepcopy(q_loss)), block=True, timeout=20)
+                            except queue.Full as e:
+                                LOG.rl_trainer_logger.exception(f"PDQN Worker process crashed, {e.args}")
+                                continue
+                            #worker_lock[i].release()
                     
                     worker_update_count %= UPDATE_FREQ * 2
 
@@ -263,13 +272,13 @@ def worker_mp(lock:Lock, traj_q:Queue, agent_q:Queue, agent_param:dict, episode_
                     while not done and not truncated:
                         action_dict, actions, action_params, all_action_params={}, {}, {}, {}
                         if TRAIN and not agent_q.empty():
-                            lock.acquire()
+                            #lock.acquire()
                             if eval:
                                 worker.load_net(os.path.join(save_path, 'eval.pth'), map_location=worker.device)
                             else:
                                 worker.load_net(os.path.join(save_path, f'worker_{index}.pth'), map_location=worker.device)
                             learn_time, q_loss = agent_q.get()
-                            lock.release()
+                            #lock.release()
                             worker.learn_time=learn_time
                             if q_loss is not None:
                                 LOG.rl_trainer_logger.info(f"PDQN LEARN TIME:{learn_time}, Q_loss:{q_loss}")
@@ -390,11 +399,11 @@ def worker_mp(lock:Lock, traj_q:Queue, agent_q:Queue, agent_param:dict, episode_
             # restart carla to clear garbage
             env.close()
     except KeyboardInterrupt:
-        logging.info("Premature Terminated")
+        LOG.rl_trainer_logger.info("PDQN Premature Terminated")
     except CarlaError as e:
-        LOG.rl_trainer_logger.exception(f"SAC {'evaluator' if eval else 'worker'} error due to Carla failure, terminate process!")
+        LOG.rl_trainer_logger.exception(f"PDQN {'evaluator' if eval else 'worker'} error due to Carla failure, terminate process!")
     except BaseException:
-        logging.exception(traceback.format_exc())
+        LOG.rl_trainer_logger.exception(f"PDQN {traceback.format_exc()}")
     finally:
         if eval:
             episode_writer.close()
@@ -402,7 +411,7 @@ def worker_mp(lock:Lock, traj_q:Queue, agent_q:Queue, agent_param:dict, episode_
         agent_q.close()
         traj_q.join_thread()
         agent_q.join_thread()
-        logging.info('\nDone.')
+        print(f"PDQN Exit {'evaluator' if eval else 'worker_'+str(index)} process")
         sys.exit(1)
 
 def reload_agent(agent, gpu_id=0):

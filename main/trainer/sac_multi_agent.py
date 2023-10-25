@@ -2,6 +2,7 @@ import torch
 import logging
 import datetime,time, os
 import gym, macad_gym
+import queue
 import random, sys
 import traceback
 import numpy as np
@@ -163,7 +164,11 @@ def main():
                 if not eval_agent_q.full() and eval_update_count // UPDATE_FREQ > 0:
                     #eval_lock.acquire()
                     learner.save_net(os.path.join(SAVE_PATH, 'eval.pth'))
-                    eval_agent_q.put((deepcopy(learner.learn_time), deepcopy(q_loss)), block=True, timeout=None)
+                    try:
+                        eval_agent_q.put((deepcopy(learner.learn_time), deepcopy(q_loss)), block=True, timeout=20)
+                    except queue.Full as e:
+                        LOG.rl_trainer_logger.exception(f"SAC Worker process crashed, {e.args}")
+                        continue
                     #eval_lock.release()
                     eval_update_count %= UPDATE_FREQ
 
@@ -172,7 +177,11 @@ def main():
                         if not worker_agent_q[i].full():
                             #worker_lock[i].acquire()
                             learner.save_net(os.path.join(SAVE_PATH, f'worker_{i}.pth'))
-                            worker_agent_q[i].put((deepcopy(learner.learn_time), deepcopy(q_loss)), block=True, timeout=None)
+                            try:
+                                worker_agent_q[i].put((deepcopy(learner.learn_time), deepcopy(q_loss)), block=True, timeout=20)
+                            except queue.Full as e:
+                                LOG.rl_trainer_logger.exception(f"SAC Worker process crashed, {e.args}")
+                                continue
                             #worker_lock[i].release()
                     
                     worker_update_count %= UPDATE_FREQ * 2
@@ -357,11 +366,11 @@ def worker_mp(lock:Lock, traj_q:Queue, agent_q:Queue, agent_param:dict, episode_
             # restart carla to clear garbage
             env.close()
     except KeyboardInterrupt:
-        logging.info("Premature Terminated")
+        LOG.rl_trainer_logger.info("SAC Premature Terminated")
     except CarlaError as e:
         LOG.rl_trainer_logger.exception(f"SAC {'evaluator' if eval else 'worker'} error due to Carla failure, terminate process!")
     except BaseException:
-        logging.exception(traceback.format_exc())
+        LOG.rl_trainer_logger.exception(f"SAC {traceback.format_exc()}")
     finally:
         if eval:
             episode_writer.close()
@@ -369,7 +378,7 @@ def worker_mp(lock:Lock, traj_q:Queue, agent_q:Queue, agent_param:dict, episode_
         agent_q.close()
         traj_q.join_thread()
         agent_q.join_thread()
-        logging.info('\nDone.')
+        print(f"SAC Exit {'evaluator' if eval else 'worker_'+str(index)} process")
         sys.exit(1)
 
 def reload_agent(agent, gpu_id=0):
