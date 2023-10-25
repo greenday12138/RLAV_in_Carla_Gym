@@ -83,10 +83,10 @@ def main():
 
     # start a manager for multiprocess value sharing
     manager = SyncManager()
+    manager.start()
     traj_q = manager.Queue(maxsize=param["buffer_size"])
     eval_agent_q = manager.Queue(maxsize=1)
     worker_agent_q = [manager.Queue(maxsize=1) for i in range(WORKER_NUMBER)]
-
 
     #worker_lock = Lock()
     # eval_lock = Lock()
@@ -215,6 +215,7 @@ def main():
     finally:
         [p.join() for p in process]
         episode_writer.close()
+        manager.shutdown()
         learner.save_net(os.path.join(SAVE_PATH, 'isac_final.pth'))
         logging.info('\nDone.')
 
