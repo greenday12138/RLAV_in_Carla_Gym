@@ -13,6 +13,7 @@ from copy import deepcopy
 from collections import deque
 from tensorboardX import SummaryWriter
 from multiprocessing import Process, Queue, Lock
+from multiprocessing.managers import SyncManager
 sys.path.append(os.getcwd())
 from main.util.process import kill_process
 from main.util.utils import get_gpu_info, get_gpu_mem_info
@@ -80,6 +81,13 @@ def main():
     worker_update_count, eval_update_count = 0, 0
     episode_offset = 0
 
+    # start a manager for multiprocess value sharing
+    manager = SyncManager()
+    traj_q = manager.Queue(maxsize=param["buffer_size"])
+    eval_agent_q = manager.Queue(maxsize=1)
+    worker_agent_q = [manager.Queue(maxsize=1) for i in range(WORKER_NUMBER)]
+
+
     #worker_lock = Lock()
     # eval_lock = Lock()
     # eval_traj_q = Queue(maxsize=param["minimal_size"])
@@ -104,7 +112,7 @@ def main():
             if not eval_proc or not eval_proc.is_alive():
                 if eval_proc:
                     process.remove(eval_proc)
-                eval_agent_q = Queue(maxsize=1)
+                #eval_agent_q = Queue(maxsize=1)
                 #eval_traj_q = Queue(maxsize=param["minimal_size"])
                 eval_lock = Lock()
                 # if eval_agent_q.full():
@@ -121,7 +129,7 @@ def main():
                 if not worker_proc[i] or not worker_proc[i].is_alive():
                     if worker_proc[i]:
                         process.remove(worker_proc[i])
-                    worker_agent_q[i] = Queue(maxsize=1)
+                    #worker_agent_q[i] = Queue(maxsize=1)
                     #worker_traj_q = Queue(maxsize=param["minimal_size"])
                     worker_lock[i] = Lock()
                     # if worker_agent_q.full():
@@ -167,7 +175,7 @@ def main():
                     try:
                         eval_agent_q.put((deepcopy(learner.learn_time), deepcopy(q_loss)), block=True, timeout=20)
                     except queue.Full as e:
-                        LOG.rl_trainer_logger.exception(f"SAC Worker process crashed, {e.args}")
+                        LOG.rl_trainer_logger.error(f"SAC Worker process crashed, {e.args}")
                         continue
                     #eval_lock.release()
                     eval_update_count %= UPDATE_FREQ
@@ -180,7 +188,7 @@ def main():
                             try:
                                 worker_agent_q[i].put((deepcopy(learner.learn_time), deepcopy(q_loss)), block=True, timeout=20)
                             except queue.Full as e:
-                                LOG.rl_trainer_logger.exception(f"SAC Worker process crashed, {e.args}")
+                                LOG.rl_trainer_logger.error(f"SAC Worker process crashed, {e.args}")
                                 continue
                             #worker_lock[i].release()
                     
