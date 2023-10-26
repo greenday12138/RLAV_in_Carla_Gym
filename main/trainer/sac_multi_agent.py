@@ -75,9 +75,9 @@ def main():
 
     process = list()
     worker_proc, eval_proc = [None for i in range(WORKER_NUMBER)], None
-    worker_lock, eval_lock = [None for i in range(WORKER_NUMBER)], None
-    traj_q = Queue(maxsize=param["buffer_size"])
-    worker_agent_q = [Queue(maxsize=1) for i in range(WORKER_NUMBER)]
+    # worker_lock, eval_lock = [None for i in range(WORKER_NUMBER)], None
+    # traj_q = Queue(maxsize=param["buffer_size"])
+    # worker_agent_q = [Queue(maxsize=1) for i in range(WORKER_NUMBER)]
     worker_update_count, eval_update_count = 0, 0
     episode_offset = 0
 
@@ -114,11 +114,11 @@ def main():
                 eval_agent_q = manager.Queue(maxsize=1)
                 #eval_agent_q = Queue(maxsize=1)
                 #eval_traj_q = Queue(maxsize=param["minimal_size"])
-                eval_lock = Lock()
+                #eval_lock = Lock()
                 # if eval_agent_q.full():
                 #     eval_agent_q.get(block=True, timeout=None)
                 eval_proc = mp.Process(target=worker_mp, args=
-                                        (eval_lock, traj_q, eval_agent_q, deepcopy(AGENT_PARAM), episode_offset, deepcopy(SAVE_PATH), -1))
+                                        (traj_q, eval_agent_q, deepcopy(AGENT_PARAM), episode_offset, deepcopy(SAVE_PATH), -1))
                 eval_proc.start()
                 with open(os.path.join(SAVE_PATH, 'log_file.txt'),'a') as file:
                     file.write(f"{datetime.datetime.today().strftime('%Y-%m-%d_%H-%M')} evaluator \n")
@@ -132,11 +132,11 @@ def main():
                     worker_agent_q[i] = manager.Queue(maxsize=1)
                     #worker_agent_q[i] = Queue(maxsize=1)
                     #worker_traj_q = Queue(maxsize=param["minimal_size"])
-                    worker_lock[i] = Lock()
+                    #worker_lock[i] = Lock()
                     # if worker_agent_q.full():
                     #     worker_agent_q.get(block=True, timeout=None)
                     worker_proc[i] = mp.Process(target=worker_mp, args=
-                                            (worker_lock[i], traj_q, worker_agent_q[i], deepcopy(AGENT_PARAM), 0, deepcopy(SAVE_PATH), i))
+                                            (traj_q, worker_agent_q[i], deepcopy(AGENT_PARAM), 0, deepcopy(SAVE_PATH), i))
                     worker_proc[i].start()
                     with open(os.path.join(SAVE_PATH, 'log_file.txt'),'a') as file:
                         file.write(f"{datetime.datetime.today().strftime('%Y-%m-%d_%H-%M')} worker_{i} \n")
@@ -176,7 +176,7 @@ def main():
                     try:
                         eval_agent_q.put((deepcopy(learner.learn_time), deepcopy(q_loss)), block=True, timeout=20)
                     except queue.Full as e:
-                        LOG.rl_trainer_logger.error(f"SAC Worker process crashed, {e.args}")
+                        LOG.rl_trainer_logger.error(f"SAC put to full agent_q of evaluator, {e.args}")
                         continue
                     #eval_lock.release()
                     eval_update_count %= UPDATE_FREQ
@@ -189,7 +189,7 @@ def main():
                             try:
                                 worker_agent_q[i].put((deepcopy(learner.learn_time), deepcopy(q_loss)), block=True, timeout=20)
                             except queue.Full as e:
-                                LOG.rl_trainer_logger.error(f"SAC Worker process crashed, {e.args}")
+                                LOG.rl_trainer_logger.error(f"SAC put to full agnet_q of worker_{i}, {e.args}")
                                 continue
                             #worker_lock[i].release()
                     
@@ -220,9 +220,8 @@ def main():
         learner.save_net(os.path.join(SAVE_PATH, 'isac_final.pth'))
         logging.info('\nDone.')
 
-def worker_mp(lock:Lock, traj_q:Queue, agent_q:Queue, agent_param:dict, episode_offset:int, save_path:str, index:int):
+def worker_mp(traj_q:Queue, agent_q:Queue, param:dict, episode_offset:int, save_path:str, index:int):
     env = gym.make("HomoNcomIndePoHiwaySAFR2CTWN5-v0")
-    param = deepcopy(agent_param)
     TOTAL_EPISODE = 5000
     if index == -1:
         # This process is evaluator
@@ -274,7 +273,11 @@ def worker_mp(lock:Lock, traj_q:Queue, agent_q:Queue, agent_param:dict, episode_
                                 worker.load_net(os.path.join(save_path, 'eval.pth'), map_location=worker.device)
                             else:
                                 worker.load_net(os.path.join(save_path, f'worker_{index}.pth'), map_location=worker.device)
-                            learn_time, q_loss = agent_q.get()
+                            try:
+                                learn_time, q_loss = agent_q.get(block=True, timeout=20)
+                            except queue.Empty as e:
+                                LOG.rl_trainer_logger.error(f"SAC {'evaluator' if eval else 'worker_'+str(index)} get from empty agent_q, {e.args}")
+                                continue
                             #lock.release()
                             worker.learn_time=learn_time
                             if q_loss is not None:
