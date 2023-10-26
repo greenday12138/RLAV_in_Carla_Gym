@@ -84,7 +84,8 @@ def main():
     # start a manager for multiprocess value sharing
     manager = SyncManager()
     manager.start()
-    traj_q = manager.Queue(maxsize=param["buffer_size"])
+    #traj_q = manager.Queue(maxsize=param["buffer_size"])
+    traj_q = [manager.Queue(maxsize=param["buffer_size"]) for i in range(WORKER_NUMBER + 1)]
     worker_agent_q, eval_agent_q = [None for i in range(WORKER_NUMBER)], None
 
     #worker_lock = Lock()
@@ -118,7 +119,7 @@ def main():
                 # if eval_agent_q.full():
                 #     eval_agent_q.get(block=True, timeout=None)
                 eval_proc = mp.Process(target=worker_mp, args=
-                                        (traj_q, eval_agent_q, deepcopy(AGENT_PARAM), episode_offset, deepcopy(SAVE_PATH), -1))
+                                        (traj_q[0], eval_agent_q, deepcopy(AGENT_PARAM), episode_offset, deepcopy(SAVE_PATH), -1))
                 eval_proc.start()
                 with open(os.path.join(SAVE_PATH, 'log_file.txt'),'a') as file:
                     file.write(f"{datetime.datetime.today().strftime('%Y-%m-%d_%H-%M')} evaluator \n")
@@ -136,7 +137,7 @@ def main():
                     # if worker_agent_q.full():
                     #     worker_agent_q.get(block=True, timeout=None)
                     worker_proc[i] = mp.Process(target=worker_mp, args=
-                                            (traj_q, worker_agent_q[i], deepcopy(AGENT_PARAM), 0, deepcopy(SAVE_PATH), i))
+                                            (traj_q[i + 1], worker_agent_q[i], deepcopy(AGENT_PARAM), 0, deepcopy(SAVE_PATH), i))
                     worker_proc[i].start()
                     with open(os.path.join(SAVE_PATH, 'log_file.txt'),'a') as file:
                         file.write(f"{datetime.datetime.today().strftime('%Y-%m-%d_%H-%M')} worker_{i} \n")
@@ -154,17 +155,18 @@ def main():
             #         traj_q = worker_traj_q
             #     else:
             #         traj_q = eval_traj_q
-            if traj_q.qsize() >= learner.batch_size // 4:
-                for _ in range(learner.batch_size // 4):
-                    trajectory=traj_q.get(block=True,timeout=None)
-                    state, next_state, action, reward, done, truncated, info, offset, eval= \
-                        trajectory[0], trajectory[1], trajectory[2], trajectory[3], \
-                        trajectory[4], trajectory[5], trajectory[6], trajectory[7], trajectory[8]
-                    if eval:
-                        episode_offset = offset
+            for i in range(WORKER_NUMBER + 1):
+                if traj_q[i].qsize() >= learner.batch_size // (WORKER_NUMBER * 4):
+                    for _ in range(learner.batch_size // (WORKER_NUMBER * 4)):
+                        trajectory=traj_q[i].get(block=True,timeout=None)
+                        state, next_state, action, reward, done, truncated, info, offset, eval= \
+                            trajectory[0], trajectory[1], trajectory[2], trajectory[3], \
+                            trajectory[4], trajectory[5], trajectory[6], trajectory[7], trajectory[8]
+                        if eval:
+                            episode_offset = offset
 
-                    learner.store_transition(state, action, reward, next_state,
-                                            truncated, done, info)       
+                        learner.store_transition(state, action, reward, next_state,
+                                                truncated, done, info)       
             if TRAIN and learner.replay_buffer.size()>=param["minimal_size"]:
                 q_loss = learner.learn()
                 worker_update_count += 1
@@ -220,7 +222,7 @@ def main():
         learner.save_net(os.path.join(SAVE_PATH, 'isac_final.pth'))
         logging.info('\nDone.')
 
-def worker_mp(traj_q:Queue, agent_q:Queue, param:dict, episode_offset:int, save_path:str, index:int):
+def worker_mp(traj_q:queue.Queue, agent_q:queue.Queue, param:dict, episode_offset:int, save_path:str, index:int):
     env = gym.make("HomoNcomIndePoHiwaySAFR2CTWN5-v0")
     TOTAL_EPISODE = 5000
     if index == -1:
@@ -273,11 +275,12 @@ def worker_mp(traj_q:Queue, agent_q:Queue, param:dict, episode_offset:int, save_
                                 worker.load_net(os.path.join(save_path, 'eval.pth'), map_location=worker.device)
                             else:
                                 worker.load_net(os.path.join(save_path, f'worker_{index}.pth'), map_location=worker.device)
-                            try:
-                                learn_time, q_loss = agent_q.get(block=True, timeout=20)
-                            except queue.Empty as e:
-                                LOG.rl_trainer_logger.error(f"SAC {'evaluator' if eval else 'worker_'+str(index)} get from empty agent_q, {e.args}")
-                                continue
+                            learn_time, q_loss = agent_q.get(block=True, timeout=20)
+                            # try:
+                            #     learn_time, q_loss = agent_q.get(block=True, timeout=20)
+                            # except queue.Empty as e:
+                            #     LOG.rl_trainer_logger.error(f"SAC {'evaluator' if eval else 'worker_'+str(index)} get from empty agent_q, {e.args}")
+                            #     continue
                             #lock.release()
                             worker.learn_time=learn_time
                             if q_loss is not None:
