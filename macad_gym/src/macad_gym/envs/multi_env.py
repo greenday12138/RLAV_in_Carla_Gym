@@ -729,6 +729,7 @@ class MultiCarlaEnv(*MultiAgentEnvBases):
                 self._cameras.update({actor_id: camera_manager})
 
                 # Spawn vehicle velocity recorder
+                # the maxlen is related to traffic_light.get_green_time()
                 self._vel_buffer.update({actor_id: deque(maxlen=10)})
 
                 # Manual Control

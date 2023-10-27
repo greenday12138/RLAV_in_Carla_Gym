@@ -17,8 +17,7 @@ from multiprocessing.managers import SyncManager
 sys.path.append(os.getcwd())
 from main.util.process import kill_process
 from main.util.utils import get_gpu_info, get_gpu_mem_info
-from macad_gym import LOG_PATH
-from macad_gym.viz.logger import LOG
+from macad_gym.viz.logger import Logger
 from macad_gym.core.simulator.carla_provider import CarlaError
 from macad_gym.core.utils.wrapper import (SpeedState, Truncated)
 from algs.sac_multi_lane import SACContinuous
@@ -61,6 +60,7 @@ def main():
     if not os.path.exists(SAVE_PATH):
         os.makedirs(SAVE_PATH)
     episode_writer = SummaryWriter(SAVE_PATH)
+    logger = Logger('SAC trainer', os.path.join(SAVE_PATH, 'logger.txt'), logging.DEBUG, logging.exception)
     random.seed(0)
     torch.manual_seed(16)
 
@@ -84,8 +84,8 @@ def main():
     # start a manager for multiprocess value sharing
     manager = SyncManager()
     manager.start()
-    #traj_q = manager.Queue(maxsize=param["buffer_size"])
-    traj_q = [manager.Queue(maxsize=param["buffer_size"]) for i in range(WORKER_NUMBER + 1)]
+    traj_q = manager.Queue(maxsize=param["buffer_size"])
+    #traj_q = [manager.Queue(maxsize=param["minimal_size"]) for i in range(WORKER_NUMBER + 1)]
     worker_agent_q, eval_agent_q = [None for i in range(WORKER_NUMBER)], None
 
     #worker_lock = Lock()
@@ -119,12 +119,12 @@ def main():
                 # if eval_agent_q.full():
                 #     eval_agent_q.get(block=True, timeout=None)
                 eval_proc = mp.Process(target=worker_mp, args=
-                                        (traj_q[0], eval_agent_q, deepcopy(AGENT_PARAM), episode_offset, deepcopy(SAVE_PATH), -1))
+                                        (traj_q, eval_agent_q, deepcopy(AGENT_PARAM), episode_offset, deepcopy(SAVE_PATH), -1))
                 eval_proc.start()
                 with open(os.path.join(SAVE_PATH, 'log_file.txt'),'a') as file:
                     file.write(f"{datetime.datetime.today().strftime('%Y-%m-%d_%H-%M')} evaluator \n")
                 process.append(eval_proc)
-                time.sleep(20)
+                time.sleep(60)
 
             for i in range(WORKER_NUMBER):
                 if not worker_proc[i] or not worker_proc[i].is_alive():
@@ -137,12 +137,12 @@ def main():
                     # if worker_agent_q.full():
                     #     worker_agent_q.get(block=True, timeout=None)
                     worker_proc[i] = mp.Process(target=worker_mp, args=
-                                            (traj_q[i + 1], worker_agent_q[i], deepcopy(AGENT_PARAM), 0, deepcopy(SAVE_PATH), i))
+                                            (traj_q, worker_agent_q[i], deepcopy(AGENT_PARAM), 0, deepcopy(SAVE_PATH), i))
                     worker_proc[i].start()
                     with open(os.path.join(SAVE_PATH, 'log_file.txt'),'a') as file:
                         file.write(f"{datetime.datetime.today().strftime('%Y-%m-%d_%H-%M')} worker_{i} \n")
                     process.append(worker_proc[i])
-                    time.sleep(20)
+                    time.sleep(60)
 
             #alter the batch_size and update times according to the replay buffer size:
             #reference: https://zhuanlan.zhihu.com/p/345353294, https://arxiv.org/abs/1711.00489
@@ -156,9 +156,9 @@ def main():
             #     else:
             #         traj_q = eval_traj_q
             for i in range(WORKER_NUMBER + 1):
-                if traj_q[i].qsize() >= learner.batch_size // (WORKER_NUMBER * 4):
-                    for _ in range(learner.batch_size // (WORKER_NUMBER * 4)):
-                        trajectory=traj_q[i].get(block=True,timeout=None)
+                if traj_q.qsize() >= learner.batch_size // (WORKER_NUMBER * 2):
+                    for _ in range(learner.batch_size // (WORKER_NUMBER * 2)):
+                        trajectory=traj_q.get(block=True,timeout=None)
                         state, next_state, action, reward, done, truncated, info, offset, eval= \
                             trajectory[0], trajectory[1], trajectory[2], trajectory[3], \
                             trajectory[4], trajectory[5], trajectory[6], trajectory[7], trajectory[8]
@@ -178,7 +178,7 @@ def main():
                     try:
                         eval_agent_q.put((deepcopy(learner.learn_time), deepcopy(q_loss)), block=True, timeout=20)
                     except queue.Full as e:
-                        LOG.rl_trainer_logger.error(f"SAC put to full agent_q of evaluator, {e.args}")
+                        logger.exception(f"SAC put to full agent_q of evaluator, {e.args}")
                         continue
                     #eval_lock.release()
                     eval_update_count %= UPDATE_FREQ
@@ -191,7 +191,7 @@ def main():
                             try:
                                 worker_agent_q[i].put((deepcopy(learner.learn_time), deepcopy(q_loss)), block=True, timeout=20)
                             except queue.Full as e:
-                                LOG.rl_trainer_logger.error(f"SAC put to full agnet_q of worker_{i}, {e.args}")
+                                logger.exception(f"SAC put to full agnet_q of worker_{i}, {e.args}")
                                 continue
                             #worker_lock[i].release()
                     
@@ -233,6 +233,7 @@ def worker_mp(traj_q:queue.Queue, agent_q:queue.Queue, param:dict, episode_offse
         eval = False
         if index != 0:
             param["device"] = torch.device('cpu')
+    logger = Logger(f"SAC {'evaluator' if eval else 'worker_'+str(index)}", os.path.join(save_path, 'logger.txt'), logging.DEBUG, logging.exception)
 
     worker = SACContinuous(param["s_dim"], param["a_dim"], param["a_bound"], param["gamma"],
                             param["tau"], param["buffer_size"], param["batch_size"], 
@@ -275,16 +276,16 @@ def worker_mp(traj_q:queue.Queue, agent_q:queue.Queue, param:dict, episode_offse
                                 worker.load_net(os.path.join(save_path, 'eval.pth'), map_location=worker.device)
                             else:
                                 worker.load_net(os.path.join(save_path, f'worker_{index}.pth'), map_location=worker.device)
-                            learn_time, q_loss = agent_q.get(block=True, timeout=20)
-                            # try:
-                            #     learn_time, q_loss = agent_q.get(block=True, timeout=20)
-                            # except queue.Empty as e:
-                            #     LOG.rl_trainer_logger.error(f"SAC {'evaluator' if eval else 'worker_'+str(index)} get from empty agent_q, {e.args}")
-                            #     continue
+                            # learn_time, q_loss = agent_q.get(block=True, timeout=20)
+                            try:
+                                learn_time, q_loss = agent_q.get(block=True, timeout=20)
+                            except queue.Empty as e:
+                                logger.exception(f"SAC {'evaluator' if eval else 'worker_'+str(index)} get from empty agent_q, {e.args}")
+                                continue
                             #lock.release()
                             worker.learn_time=learn_time
                             if q_loss is not None:
-                                LOG.rl_trainer_logger.info(f"SAC LEARN TIME:{learn_time}, Q_loss:{q_loss}")
+                                logger.exception(f"SAC LEARN TIME:{learn_time}, Q_loss:{q_loss}")
                                 losses_episode.append(q_loss)
 
                         for actor_id in states.keys():
@@ -310,13 +311,18 @@ def worker_mp(traj_q:queue.Queue, agent_q:queue.Queue, param:dict, episode_offse
                                     
                                 throttle_brake = -info["control_info"]["brake"] if info["control_info"]["brake"] > 0 else info["control_info"]["throttle"]
                                 action = [[info["control_info"]["steer"], throttle_brake]]
-                                LOG.rl_trainer_logger.debug(
+                                logger.debug(
                                     f"\nSAC Control In Replay Buffer: actor_id: {actor_id} action: {action}")
-
-                                traj_q.put((state, next_state, action,
-                                    reward, done, truncated, info, episodes, eval), block=True, timeout=None)
                                 
-                                LOG.rl_trainer_logger.debug(
+                                try:
+                                    # XXX Do not set timeout=None here, otherwise the process might end in a perpetual blocked state.
+                                    traj_q.put((state, next_state, action,
+                                        reward, done, truncated, info, episodes, eval), block=True, timeout=20)
+                                except queue.Full as e:
+                                    logger.exception(f"SAC {'evaluator' if eval else 'worker_'+str(index)} put traj to full traj_q, {e.args}")
+                                    continue
+                                
+                                logger.debug(
                                     f"SAC\n"
                                     f"actor_id: {actor_id} time_steps: {info['step']}\n"
                                     f"state -- vehicle_info: {state['vehicle_info']}\n"
@@ -371,7 +377,7 @@ def worker_mp(traj_q:queue.Queue, agent_q:queue.Queue, param:dict, episode_offse
                         # rolling_score.append(np.mean(episode_score[max]))
                         # cum_collision_num.append(collision_train)
 
-                    LOG.rl_trainer_logger.info(f"SAC Total_steps:{env.unwrapped._total_steps} RL_control_steps:{env.unwrapped._rl_control_steps}")
+                    logger.info(f"SAC Total_steps:{env.unwrapped._total_steps} RL_control_steps:{env.unwrapped._rl_control_steps}")
 
                     pbar.set_postfix({
                         "episodes": f"{episodes + 1}",
@@ -382,11 +388,11 @@ def worker_mp(traj_q:queue.Queue, agent_q:queue.Queue, param:dict, episode_offse
             # restart carla to clear garbage
             env.close()
     except KeyboardInterrupt:
-        LOG.rl_trainer_logger.info("SAC Premature Terminated")
+        logger.info("SAC Premature Terminated")
     except CarlaError as e:
-        LOG.rl_trainer_logger.exception(f"SAC {'evaluator' if eval else 'worker'} error due to Carla failure, terminate process!")
+        logger.exception(f"SAC {'evaluator' if eval else 'worker'} error due to Carla failure, terminate process!")
     except BaseException:
-        LOG.rl_trainer_logger.exception(f"SAC {traceback.format_exc()}")
+        logger.exception(f"SAC {traceback.format_exc()}")
     finally:
         if eval:
             episode_writer.close()
@@ -398,7 +404,7 @@ def reload_agent(agent, gpu_id=0):
         return False
     gpu_mem_total, gpu_mem_used, gpu_mem_free = get_gpu_mem_info(gpu_id=gpu_id)
     if gpu_mem_total > 0 and gpu_mem_free > 2000:
-        LOG.rl_trainer_logger.info(f"SAC Reload agent of process {os.getpid()}")
+        print(f"SAC Reload agent of process {os.getpid()}")
         return True
 
     return False
@@ -414,7 +420,6 @@ if __name__ == '__main__':
     except BaseException as e:
         logging.exception(e.args)
         logging.exception(traceback.format_exc())
-        #LOG.rl_trainer_logger.exception(traceback.print_tb(sys.exc_info()[2]))
     finally:
         kill_process()
         del os.environ['PYTHONWARNINGS']

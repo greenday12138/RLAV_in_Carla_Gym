@@ -159,7 +159,7 @@ def apply_traffic(world, traffic_manager, env_config, num_vehicles, num_pedestri
     # -------------
     lights_list=world.get_actors().filter("*traffic_light*")
     for light in lights_list:
-        light.set_green_time(15)
+        light.set_green_time(30)
         light.set_red_time(0)
         light.set_yellow_time(0)
     

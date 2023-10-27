@@ -51,7 +51,7 @@ class Logger(object):
         self.logger.exception(message, *args, **kwargs)
 
     def add_handlers(self, path):        
-        fmt = logging.Formatter('[%(levelname)s] %(name)s [%(asctime)s] %(message)s', '%Y-%m-%d %H:%M:%S')
+        fmt = logging.Formatter('[%(levelname)s] %(name)s [%(process)d %(thread)d] [%(asctime)s] %(message)s', '%Y-%m-%d %H:%M:%S')
         #self.fmt = logging.Formatter('[%(levelname)s] %(name)s [%(process)d %(thread)d] [%(asctime)s] %(message)s', '%Y-%m-%d %H:%M:%S')
         # set command line logging
         if self.Clevel is not None:
