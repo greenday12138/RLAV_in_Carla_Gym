@@ -1571,6 +1571,21 @@ class PDQNMultiCarlaEnv(*MultiAgentEnvBases):
         self._clean_world()
         self._clear_server_state()
 
+    def log(self, msg:str, level:str):
+        level = level.upper
+        if level is "DEBUG":
+            LOG.rl_trainer_logger.debug(msg)
+        elif level is "INFO":
+            LOG.rl_trainer_logger.info(msg)
+        elif level is "WARNING" or "WARN":
+            LOG.rl_trainer_logger.warn(msg)
+        elif level is "EXCEPTION":
+            LOG.rl_trainer_logger.exception(msg)
+        elif level is "ERROR":
+            LOG.rl_trainer_logger.error(msg)
+        elif level is "CRITICAL":
+            LOG.rl_trainer_logger.critical(msg)
+
 
 if __name__ == "__main__":
     argparser = argparse.ArgumentParser(description="CARLA Manual Control Client")

@@ -13,11 +13,11 @@ from copy import deepcopy
 from collections import deque
 from tensorboardX import SummaryWriter
 from multiprocessing import Process, Queue, Lock
+from multiprocessing.managers import SyncManager
 sys.path.append(os.getcwd())
 from main.util.process import kill_process
 from main.util.utils import get_gpu_info, get_gpu_mem_info
-from macad_gym import LOG_PATH
-from macad_gym.viz.logger import LOG
+from macad_gym.viz.logger import Logger
 from macad_gym.core.simulator.carla_provider import CarlaError
 from macad_gym.core.utils.wrapper import (fill_action_param, recover_steer, Action, 
     SpeedState, Truncated)
@@ -71,6 +71,7 @@ def main():
     if not os.path.exists(SAVE_PATH):
         os.makedirs(SAVE_PATH)
     episode_writer = SummaryWriter(SAVE_PATH)
+    logger = Logger('PDQN trainer', os.path.join(SAVE_PATH, 'logger.txt'), logging.DEBUG, logging.WARNING)
     random.seed(0)
     torch.manual_seed(16)
 
@@ -86,11 +87,18 @@ def main():
 
     process = list()
     worker_proc, eval_proc = [None for i in range(WORKER_NUMBER)], None
-    worker_lock, eval_lock = [None for i in range(WORKER_NUMBER)], None
-    traj_q = Queue(maxsize=param["buffer_size"])
-    worker_agent_q = [Queue(maxsize=1) for i in range(WORKER_NUMBER)]
+    # worker_lock, eval_lock = [None for i in range(WORKER_NUMBER)], None
+    # traj_q = Queue(maxsize=param["buffer_size"])
+    # worker_agent_q = [Queue(maxsize=1) for i in range(WORKER_NUMBER)]
     worker_update_count, eval_update_count = 0, 0
     episode_offset = 0
+
+    # start a manager for multiprocess value sharing
+    manager = SyncManager()
+    manager.start()
+    traj_q = manager.Queue(maxsize=param["buffer_size"])
+    #traj_q = [manager.Queue(maxsize=param["minimal_size"]) for i in range(WORKER_NUMBER + 1)]
+    worker_agent_q, eval_agent_q = [None for i in range(WORKER_NUMBER)], None
 
     #worker_lock = Lock()
     # eval_lock = Lock()
@@ -116,35 +124,37 @@ def main():
             if not eval_proc or not eval_proc.is_alive():
                 if eval_proc:
                     process.remove(eval_proc)
-                eval_agent_q = Queue(maxsize=1)
+                eval_agent_q = manager.Queue(maxsize=1)
+                #eval_agent_q = Queue(maxsize=1)
                 #eval_traj_q = Queue(maxsize=param["minimal_size"])
-                eval_lock = Lock()
+                #eval_lock = Lock()
                 # if eval_agent_q.full():
                 #     eval_agent_q.get(block=True, timeout=None)
                 eval_proc = mp.Process(target=worker_mp, args=
-                                        (eval_lock, traj_q, eval_agent_q, deepcopy(AGENT_PARAM), episode_offset, deepcopy(SAVE_PATH), -1))
+                                        (traj_q, eval_agent_q, deepcopy(AGENT_PARAM), episode_offset, deepcopy(SAVE_PATH), -1))
                 eval_proc.start()
                 with open(os.path.join(SAVE_PATH, 'log_file.txt'),'a') as file:
                     file.write(f"{datetime.datetime.today().strftime('%Y-%m-%d_%H-%M')} evaluator \n")
                 process.append(eval_proc)
-                time.sleep(20)
+                time.sleep(60)
 
             for i in range(WORKER_NUMBER):
                 if not worker_proc[i] or not worker_proc[i].is_alive():
                     if worker_proc[i]:
                         process.remove(worker_proc[i])
-                    worker_agent_q[i] = Queue(maxsize=1)
+                    worker_agent_q[i] = manager.Queue(maxsize=1)
+                    #worker_agent_q[i] = Queue(maxsize=1)
                     #worker_traj_q = Queue(maxsize=param["minimal_size"])
-                    worker_lock[i] = Lock()
+                    #worker_lock[i] = Lock()
                     # if worker_agent_q.full():
                     #     worker_agent_q.get(block=True, timeout=None)
                     worker_proc[i] = mp.Process(target=worker_mp, args=
-                                            (worker_lock[i], traj_q, worker_agent_q[i], deepcopy(AGENT_PARAM), 0, deepcopy(SAVE_PATH), i))
+                                            (traj_q, worker_agent_q[i], deepcopy(AGENT_PARAM), 0, deepcopy(SAVE_PATH), i))
                     worker_proc[i].start()
                     with open(os.path.join(SAVE_PATH, 'log_file.txt'),'a') as file:
                         file.write(f"{datetime.datetime.today().strftime('%Y-%m-%d_%H-%M')} worker_{i} \n")
                     process.append(worker_proc[i])
-                    time.sleep(20)
+                    time.sleep(60)
 
             #alter the batch_size and update times according to the replay buffer size:
             #reference: https://zhuanlan.zhihu.com/p/345353294, https://arxiv.org/abs/1711.00489
@@ -157,17 +167,18 @@ def main():
             #         traj_q = worker_traj_q
             #     else:
             #         traj_q = eval_traj_q
-            if traj_q.qsize() >= learner.batch_size // 4:
-                for _ in range(learner.batch_size // 4):
-                    trajectory=traj_q.get(block=True,timeout=None)
-                    state, next_state, action, saved_action_param, reward, done, truncated, info, offset, eval \
-                        = trajectory[0], trajectory[1], trajectory[2], trajectory[3], trajectory[4], \
-                        trajectory[5], trajectory[6], trajectory[7], trajectory[8], trajectory[9]
-                    if eval:
-                        episode_offset = offset
+            for i in range(WORKER_NUMBER + 1):
+                if traj_q.qsize() >= learner.batch_size // (WORKER_NUMBER * 2):
+                    for _ in range(learner.batch_size // (WORKER_NUMBER * 2)):
+                        trajectory=traj_q.get(block=True,timeout=None)
+                        state, next_state, action, saved_action_param, reward, done, truncated, info, offset, eval \
+                            = trajectory[0], trajectory[1], trajectory[2], trajectory[3], trajectory[4], \
+                            trajectory[5], trajectory[6], trajectory[7], trajectory[8], trajectory[9]
+                        if eval:
+                            episode_offset = offset
 
-                    learner.store_transition(state, action, saved_action_param, reward, next_state,
-                                            truncated, done, info)   
+                        learner.store_transition(state, action, saved_action_param, reward, next_state,
+                                                truncated, done, info)   
             if TRAIN and learner.replay_buffer.size()>=param["minimal_size"]:
                 q_loss = learner.learn()
                 worker_update_count += 1
@@ -179,7 +190,7 @@ def main():
                     try:
                         eval_agent_q.put((deepcopy(learner.learn_time), deepcopy(q_loss)), block=True, timeout=20)
                     except queue.Full as e:
-                        LOG.rl_trainer_logger.exception(f"PDQN Worker process crashed, {e.args}")
+                        logger.exception(f"PDQN put to full agent_q of evaluator, {e.args}")
                         continue
                     #eval_lock.release()
                     eval_update_count %= UPDATE_FREQ
@@ -192,7 +203,7 @@ def main():
                             try:
                                 worker_agent_q[i].put((deepcopy(learner.learn_time), deepcopy(q_loss)), block=True, timeout=20)
                             except queue.Full as e:
-                                LOG.rl_trainer_logger.exception(f"PDQN Worker process crashed, {e.args}")
+                                logger.exception(f"PDQN put to full agnet_q of worker_{i}, {e.args}")
                                 continue
                             #worker_lock[i].release()
                     
@@ -211,20 +222,20 @@ def main():
                 elif learner.learn_time > 20000:
                     learner.save_net(os.path.join(SAVE_PATH, 'ipdqn_20000_net_params.pth'))
                 episode_writer.add_scalar('Q_loss', q_loss, learner.learn_time)
-    except Exception as e:
-        logging.exception(e.args)
-        logging.exception(traceback.format_exc())
     except KeyboardInterrupt:
-        logging.info("Premature Terminated")
+        logger.info("Premature Terminated")
+    except Exception as e:
+        logger.exception(e.args)
+        logger.exception(traceback.format_exc())
     finally:
         [p.join() for p in process]
         episode_writer.close()
+        manager.shutdown()
         learner.save_net(os.path.join(SAVE_PATH, 'ipdqn_final.pth'))
-        logging.info('\nDone.')
+        logger.info('\nDone.')
 
-def worker_mp(lock:Lock, traj_q:Queue, agent_q:Queue, agent_param:dict, episode_offset:int, save_path:str, index:int):
+def worker_mp(traj_q:queue.Queue, agent_q:queue.Queue, param:dict, episode_offset:int, save_path:str, index:int):
     env = gym.make("PDQNHomoNcomIndePoHiwaySAFR2CTWN5-v0")
-    param = deepcopy(agent_param)
     TOTAL_EPISODE = 5000
     if index == -1:
         # This process is evaluator
@@ -232,7 +243,10 @@ def worker_mp(lock:Lock, traj_q:Queue, agent_q:Queue, agent_param:dict, episode_
         episode_writer = SummaryWriter(save_path)
     else:
         eval = False
-        param["device"] = torch.device('cpu')
+        if index != 0:
+            param["device"] = torch.device('cpu')
+    logger = Logger(f"SAC {'evaluator' if eval else 'worker_'+str(index)}", 
+                    os.path.join(save_path, 'logger.txt'), logging.DEBUG, logging.WARNING)
 
     worker = P_DQN(param["s_dim"], param["a_dim"], param["a_bound"], param["gamma"],
                         param["tau"], param["sigma_steer"], param["sigma"], param["sigma_acc"], 
@@ -277,11 +291,16 @@ def worker_mp(lock:Lock, traj_q:Queue, agent_q:Queue, agent_param:dict, episode_
                                 worker.load_net(os.path.join(save_path, 'eval.pth'), map_location=worker.device)
                             else:
                                 worker.load_net(os.path.join(save_path, f'worker_{index}.pth'), map_location=worker.device)
-                            learn_time, q_loss = agent_q.get()
+                            # learn_time, q_loss = agent_q.get(block=True, timeout=20)
+                            try:
+                                learn_time, q_loss = agent_q.get(block=True, timeout=20)
+                            except queue.Empty as e:
+                                logger.exception(f"SAC {'evaluator' if eval else 'worker_'+str(index)} get from empty agent_q, {e.args}")
+                                continue
                             #lock.release()
                             worker.learn_time=learn_time
                             if q_loss is not None:
-                                LOG.rl_trainer_logger.info(f"PDQN LEARN TIME:{learn_time}, Q_loss:{q_loss}")
+                                env.log(f"PDQN LEARN TIME:{learn_time}, Q_loss:{q_loss}", "INFO")
                                 losses_episode.append(q_loss)
 
                         for actor_id in states.keys():
@@ -317,13 +336,19 @@ def worker_mp(lock:Lock, traj_q:Queue, agent_q:Queue, agent_param:dict, episode_
                                     action=2
                                 saved_action_param = fill_action_param(action, info["control_info"]["steer"], throttle_brake,
                                                                     all_action_params[actor_id], modify_change_steer)
-                                LOG.rl_trainer_logger.debug(
-                                    f"\nPDQN Control In Replay Buffer: actor_id: {actor_id} action: {action}, action_parameter: {saved_action_param}")
+                                env.log(
+                                    f"\nPDQN Control In Replay Buffer: actor_id: {actor_id} action: {action}, action_parameter: {saved_action_param}", "DEBUG")
 
-                                traj_q.put((state, next_state, action, saved_action_param,
-                                        reward, done, truncated, info, episodes, eval), block=True, timeout=None)
                                 
-                                LOG.rl_trainer_logger.debug(
+                                try:
+                                    # XXX Do not set timeout=None here, otherwise the process might end in a perpetual blocked state.
+                                    traj_q.put((state, next_state, action, saved_action_param,
+                                        reward, done, truncated, info, episodes, eval), block=True, timeout=20)
+                                except queue.Full as e:
+                                    logger.exception(f"SAC {'evaluator' if eval else 'worker_'+str(index)} put traj to full traj_q, {e.args}")
+                                    continue
+                                
+                                env.log(
                                     f"PDQN\n"
                                     f"actor_id: {actor_id} time_steps: {info['step']}\n"
                                     f"state -- vehicle_info: {state['vehicle_info']}\n"
@@ -341,8 +366,9 @@ def worker_mp(lock:Lock, traj_q:Queue, agent_q:Queue, agent_param:dict, episode_
                                     f"action: {actions[actor_id]}, action_param: {action_params[actor_id]} \n"
                                     f"all_action_param: {all_action_params[actor_id]},\n"
                                     f"saved_action_param: {saved_action_param}\n"
-                                    f"reward: {reward}, truncated: {truncated}, done: {done}, ")
-
+                                    f"reward: {reward}, truncated: {truncated}, done: {done}, ",
+                                    "DEBUG")
+    
                         done = dones["__all__"]
                         truncated = truncateds["__all__"]!=Truncated.FALSE
                         states = next_states
@@ -356,7 +382,7 @@ def worker_mp(lock:Lock, traj_q:Queue, agent_q:Queue, agent_param:dict, episode_
                             param["sigma_steer"] *= param["sigma_decay"]
                             param["sigma_acc"] *= param["sigma_decay"]
                             worker.set_sigma(param["sigma_steer"], param["sigma_acc"])
-                            LOG.rl_trainer_logger.info(f"PDQN Agent Sigma {param['sigma_steer']} {param['sigma_acc']}")
+                            env.log(f"PDQN Agent Sigma {param['sigma_steer']} {param['sigma_acc']}", "INFO")
                     
                     
                     if done or truncated:
@@ -388,7 +414,7 @@ def worker_mp(lock:Lock, traj_q:Queue, agent_q:Queue, agent_param:dict, episode_
                         # rolling_score.append(np.mean(episode_score[max]))
                         # cum_collision_num.append(collision_train)
 
-                    LOG.rl_trainer_logger.info(f"PDQN Total_steps:{env.unwrapped._total_steps} RL_control_steps:{env.unwrapped._rl_control_steps}")
+                    env.log(f"PDQN Total_steps:{env.unwrapped._total_steps} RL_control_steps:{env.unwrapped._rl_control_steps}", "INFO")
 
                     pbar.set_postfix({
                         "episodes": f"{episodes + 1}",
@@ -399,19 +425,15 @@ def worker_mp(lock:Lock, traj_q:Queue, agent_q:Queue, agent_param:dict, episode_
             # restart carla to clear garbage
             env.close()
     except KeyboardInterrupt:
-        LOG.rl_trainer_logger.info("PDQN Premature Terminated")
+        logger.info("PDQN Premature Terminated")
     except CarlaError as e:
-        LOG.rl_trainer_logger.exception(f"PDQN {'evaluator' if eval else 'worker'} error due to Carla failure, terminate process!")
+        logger.exception(f"PDQN {'evaluator' if eval else 'worker'} error due to Carla failure, terminate process!")
     except BaseException:
-        LOG.rl_trainer_logger.exception(f"PDQN {traceback.format_exc()}")
+        logger.exception(f"PDQN {traceback.format_exc()}")
     finally:
         if eval:
             episode_writer.close()
-        traj_q.close()
-        agent_q.close()
-        traj_q.join_thread()
-        agent_q.join_thread()
-        print(f"PDQN Exit {'evaluator' if eval else 'worker_'+str(index)} process")
+        logger.info(f"PDQN Exit {'evaluator' if eval else 'worker_'+str(index)} process")
         sys.exit(1)
 
 def reload_agent(agent, gpu_id=0):
@@ -419,7 +441,7 @@ def reload_agent(agent, gpu_id=0):
         return False
     gpu_mem_total, gpu_mem_used, gpu_mem_free = get_gpu_mem_info(gpu_id=gpu_id)
     if gpu_mem_total > 0 and gpu_mem_free > 2000:
-        LOG.rl_trainer_logger.info(f"PDQN Reload agent of process {os.getpid()}")
+        print(f"PDQN Reload agent of process {os.getpid()}")
         return True
 
     return False
@@ -435,7 +457,6 @@ if __name__ == '__main__':
     except BaseException as e:
         logging.exception(e.args)
         logging.exception(traceback.format_exc())
-        #LOG.rl_trainer_logger.exception(traceback.print_tb(sys.exc_info()[2]))
     finally:
         kill_process()
         del os.environ['PYTHONWARNINGS']

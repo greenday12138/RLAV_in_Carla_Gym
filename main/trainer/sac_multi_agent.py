@@ -60,7 +60,7 @@ def main():
     if not os.path.exists(SAVE_PATH):
         os.makedirs(SAVE_PATH)
     episode_writer = SummaryWriter(SAVE_PATH)
-    logger = Logger('SAC trainer', os.path.join(SAVE_PATH, 'logger.txt'), logging.DEBUG, logging.exception)
+    logger = Logger('SAC trainer', os.path.join(SAVE_PATH, 'logger.txt'), logging.DEBUG, logging.WARNING)
     random.seed(0)
     torch.manual_seed(16)
 
@@ -210,17 +210,17 @@ def main():
                 elif learner.learn_time > 20000:
                     learner.save_net(os.path.join(SAVE_PATH, 'isac_20000_net_params.pth'))
                 episode_writer.add_scalar('Q_loss', q_loss, learner.learn_time)
-    except Exception as e:
-        logging.exception(e.args)
-        logging.exception(traceback.format_exc())
     except KeyboardInterrupt:
-        logging.info("Premature Terminated")
+        logger.info("Premature Terminated")
+    except Exception as e:
+        logger.exception(e.args)
+        logger.exception(traceback.format_exc())
     finally:
         [p.join() for p in process]
         episode_writer.close()
         manager.shutdown()
         learner.save_net(os.path.join(SAVE_PATH, 'isac_final.pth'))
-        logging.info('\nDone.')
+        logger.info('\nDone.')
 
 def worker_mp(traj_q:queue.Queue, agent_q:queue.Queue, param:dict, episode_offset:int, save_path:str, index:int):
     env = gym.make("HomoNcomIndePoHiwaySAFR2CTWN5-v0")
@@ -233,7 +233,8 @@ def worker_mp(traj_q:queue.Queue, agent_q:queue.Queue, param:dict, episode_offse
         eval = False
         if index != 0:
             param["device"] = torch.device('cpu')
-    logger = Logger(f"SAC {'evaluator' if eval else 'worker_'+str(index)}", os.path.join(save_path, 'logger.txt'), logging.DEBUG, logging.exception)
+    logger = Logger(f"SAC {'evaluator' if eval else 'worker_'+str(index)}", 
+                    os.path.join(save_path, 'logger.txt'), logging.DEBUG, logging.WARNING)
 
     worker = SACContinuous(param["s_dim"], param["a_dim"], param["a_bound"], param["gamma"],
                             param["tau"], param["buffer_size"], param["batch_size"], 
@@ -285,7 +286,7 @@ def worker_mp(traj_q:queue.Queue, agent_q:queue.Queue, param:dict, episode_offse
                             #lock.release()
                             worker.learn_time=learn_time
                             if q_loss is not None:
-                                logger.exception(f"SAC LEARN TIME:{learn_time}, Q_loss:{q_loss}")
+                                env.log(f"SAC LEARN TIME:{learn_time}, Q_loss:{q_loss}", "INFO")
                                 losses_episode.append(q_loss)
 
                         for actor_id in states.keys():
@@ -311,8 +312,8 @@ def worker_mp(traj_q:queue.Queue, agent_q:queue.Queue, param:dict, episode_offse
                                     
                                 throttle_brake = -info["control_info"]["brake"] if info["control_info"]["brake"] > 0 else info["control_info"]["throttle"]
                                 action = [[info["control_info"]["steer"], throttle_brake]]
-                                logger.debug(
-                                    f"\nSAC Control In Replay Buffer: actor_id: {actor_id} action: {action}")
+                                env.log(
+                                    f"\nSAC Control In Replay Buffer: actor_id: {actor_id} action: {action}", "DEBUG")
                                 
                                 try:
                                     # XXX Do not set timeout=None here, otherwise the process might end in a perpetual blocked state.
@@ -322,7 +323,7 @@ def worker_mp(traj_q:queue.Queue, agent_q:queue.Queue, param:dict, episode_offse
                                     logger.exception(f"SAC {'evaluator' if eval else 'worker_'+str(index)} put traj to full traj_q, {e.args}")
                                     continue
                                 
-                                logger.debug(
+                                env.log(
                                     f"SAC\n"
                                     f"actor_id: {actor_id} time_steps: {info['step']}\n"
                                     f"state -- vehicle_info: {state['vehicle_info']}\n"
@@ -338,7 +339,8 @@ def worker_mp(traj_q:queue.Queue, agent_q:queue.Queue, param:dict, episode_offse
                                     f"hero_vehicle: {next_state['hero_vehicle']}\n"
                                     f"light info: {next_state['light']}\n"
                                     f"network_action: {actions[actor_id]}, saved_actions: {action} \n"
-                                    f"reward: {reward}, truncated: {truncated}, done: {done}, ")
+                                    f"reward: {reward}, truncated: {truncated}, done: {done}, ",
+                                    "DEBUG")
     
                         done = dones["__all__"]
                         truncated = truncateds["__all__"]!=Truncated.FALSE
@@ -377,7 +379,7 @@ def worker_mp(traj_q:queue.Queue, agent_q:queue.Queue, param:dict, episode_offse
                         # rolling_score.append(np.mean(episode_score[max]))
                         # cum_collision_num.append(collision_train)
 
-                    logger.info(f"SAC Total_steps:{env.unwrapped._total_steps} RL_control_steps:{env.unwrapped._rl_control_steps}")
+                    env.log(f"SAC Total_steps:{env.unwrapped._total_steps} RL_control_steps:{env.unwrapped._rl_control_steps}", "INFO")
 
                     pbar.set_postfix({
                         "episodes": f"{episodes + 1}",
@@ -396,7 +398,7 @@ def worker_mp(traj_q:queue.Queue, agent_q:queue.Queue, param:dict, episode_offse
     finally:
         if eval:
             episode_writer.close()
-        print(f"SAC Exit {'evaluator' if eval else 'worker_'+str(index)} process")
+        logger.info(f"SAC Exit {'evaluator' if eval else 'worker_'+str(index)} process")
         sys.exit(1)
 
 def reload_agent(agent, gpu_id=0):
