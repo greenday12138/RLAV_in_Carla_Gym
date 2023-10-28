@@ -258,9 +258,9 @@ def worker_mp(traj_q:queue.Queue, agent_q:queue.Queue, param:dict, episode_offse
     ttc, efficiency, comfort, lcen, lane_change_reward = {}, {}, {}, {}, {}  # part objective scores
 
     try:
-        for i in range(TOTAL_EPISODE//1000):
-            with tqdm(total=1000, desc="Iteration %d" % i) as pbar:
-                for i_episode in range(1000):
+        for i in range(TOTAL_EPISODE//500):
+            with tqdm(total=500, desc="Iteration %d" % i) as pbar:
+                for i_episode in range(500):
                     episodes = 1000 * i + i_episode + episode_offset
                     states, _ = env.reset()
                     done, truncated = False, False
@@ -279,7 +279,8 @@ def worker_mp(traj_q:queue.Queue, agent_q:queue.Queue, param:dict, episode_offse
                                 worker.load_net(os.path.join(save_path, f'worker_{index}.pth'), map_location=worker.device)
                             # learn_time, q_loss = agent_q.get(block=True, timeout=20)
                             try:
-                                learn_time, q_loss = agent_q.get(block=True, timeout=20)
+                                learn_time, q_loss = agent_q.get_nowait()
+                                #learn_time, q_loss = agent_q.get(block=True, timeout=20)
                             except queue.Empty as e:
                                 logger.exception(f"SAC {'evaluator' if eval else 'worker_'+str(index)} get from empty agent_q, {e.args}")
                                 continue
@@ -317,8 +318,10 @@ def worker_mp(traj_q:queue.Queue, agent_q:queue.Queue, param:dict, episode_offse
                                 
                                 try:
                                     # XXX Do not set timeout=None here, otherwise the process might end in a perpetual blocked state.
-                                    traj_q.put((state, next_state, action,
-                                        reward, done, truncated, info, episodes, eval), block=True, timeout=20)
+                                    traj_q.put_nowait((state, next_state, action, reward, done, 
+                                                       truncated, info, episodes, eval))
+                                    # traj_q.put((state, next_state, action,
+                                    #     reward, done, truncated, info, episodes, eval), block=True, timeout=20)
                                 except queue.Full as e:
                                     logger.exception(f"SAC {'evaluator' if eval else 'worker_'+str(index)} put traj to full traj_q, {e.args}")
                                     continue
