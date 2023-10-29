@@ -109,22 +109,24 @@ def main():
     try:
         while(True):
             # Restart worker process and evaluator process if carla failed
-            if not eval_proc or not eval_proc.is_alive():
-                if eval_proc:
-                    process.remove(eval_proc)
-                eval_agent_q = manager.Queue(maxsize=1)
-                #eval_agent_q = Queue(maxsize=1)
-                #eval_traj_q = Queue(maxsize=param["minimal_size"])
-                #eval_lock = Lock()
-                # if eval_agent_q.full():
-                #     eval_agent_q.get(block=True, timeout=None)
-                eval_proc = mp.Process(target=worker_mp, args=
-                                        (traj_q, eval_agent_q, deepcopy(AGENT_PARAM), episode_offset, deepcopy(SAVE_PATH), -1))
-                eval_proc.start()
-                with open(os.path.join(SAVE_PATH, 'log_file.txt'),'a') as file:
-                    file.write(f"{datetime.datetime.today().strftime('%Y-%m-%d_%H-%M')} evaluator \n")
-                process.append(eval_proc)
-                time.sleep(60)
+            def restart_eval():
+                if not eval_proc or not eval_proc.is_alive():
+                    if eval_proc:
+                        process.remove(eval_proc)
+                    eval_agent_q = manager.Queue(maxsize=1)
+                    #eval_agent_q = Queue(maxsize=1)
+                    #eval_traj_q = Queue(maxsize=param["minimal_size"])
+                    #eval_lock = Lock()
+                    # if eval_agent_q.full():
+                    #     eval_agent_q.get(block=True, timeout=None)
+                    eval_proc = mp.Process(target=worker_mp, args=
+                                            (traj_q, eval_agent_q, deepcopy(AGENT_PARAM), episode_offset, deepcopy(SAVE_PATH), -1))
+                    eval_proc.start()
+                    with open(os.path.join(SAVE_PATH, 'log_file.txt'),'a') as file:
+                        file.write(f"{datetime.datetime.today().strftime('%Y-%m-%d_%H-%M')} evaluator \n")
+                    process.append(eval_proc)
+                    time.sleep(60)
+            restart_eval()
 
             for i in range(WORKER_NUMBER):
                 if not worker_proc[i] or not worker_proc[i].is_alive():
@@ -172,13 +174,17 @@ def main():
                 worker_update_count += 1
                 eval_update_count += 1
 
-                if not eval_agent_q.full() and eval_update_count // UPDATE_FREQ > 0:
+                #if not eval_agent_q.full() and eval_update_count // UPDATE_FREQ > 0:
+                if eval_update_count // UPDATE_FREQ > 0:
                     #eval_lock.acquire()
                     learner.save_net(os.path.join(SAVE_PATH, 'eval.pth'))
+                    #eval_agent_q.put((deepcopy(learner.learn_time), deepcopy(q_loss)), block=True, timeout=None)
                     try:
                         eval_agent_q.put((deepcopy(learner.learn_time), deepcopy(q_loss)), block=True, timeout=20)
                     except queue.Full as e:
                         logger.exception(f"SAC put to full agent_q of evaluator, {e.args}")
+                        
+                        restart_eval()
                         continue
                     #eval_lock.release()
                     eval_update_count %= UPDATE_FREQ
