@@ -99,14 +99,11 @@ class CarlaConnector(object):
         del self._client
         self._client, self._map, self._world, self._traffic_manager = None, None, None, None
 
-        if self.server_pid:
+        if self.server_pid and psutil.pid_exists(self.server_pid):
             if IS_WINDOWS_PLATFORM:
-                if psutil.pid_exists(self.server_pid):
                     subprocess.call(
-                        ["taskkill", "/F", "/T", "/PID", str(self.server_pid)]
-                    )
+                        ["taskkill", "/F", "/T", "/PID", str(self.server_pid)])
             else:
-                if psutil.pid_exists(self.server_pid):
                     os.killpg(self.server_pid, signal.SIGKILL)
 
             CarlaConnector.live_carla_processes.remove(self.server_pid)

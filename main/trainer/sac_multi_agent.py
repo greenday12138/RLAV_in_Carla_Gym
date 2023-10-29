@@ -16,7 +16,8 @@ from multiprocessing import Process, Queue, Lock
 from multiprocessing.managers import SyncManager
 sys.path.append(os.getcwd())
 from main.util.process import kill_process
-from main.util.utils import get_gpu_info, get_gpu_mem_info
+from main.util.utils import (get_gpu_info, get_gpu_mem_info,
+        get_child_processes, kill_process_and_children)
 from macad_gym.viz.logger import Logger
 from macad_gym.core.simulator.carla_provider import CarlaError
 from macad_gym.core.utils.wrapper import (SpeedState, Truncated)
@@ -183,7 +184,7 @@ def main():
                         eval_agent_q.put((deepcopy(learner.learn_time), deepcopy(q_loss)), block=True, timeout=20)
                     except queue.Full as e:
                         logger.exception(f"SAC put to full agent_q of evaluator, {e.args}")
-                        
+                        kill_process_and_children(eval_proc.pid)
                         restart_eval()
                         continue
                     #eval_lock.release()
