@@ -15,9 +15,9 @@ from tensorboardX import SummaryWriter
 from multiprocessing import Process, Queue, Lock
 from multiprocessing.managers import SyncManager
 sys.path.append(os.getcwd())
-from main.util.process import kill_process
-from main.util.utils import (get_gpu_info, get_gpu_mem_info,
-        get_child_processes, kill_process_and_children)
+from main.util.process import (kill_process, get_child_processes, 
+                               kill_process_and_children)
+from main.util.utils import (get_gpu_info, get_gpu_mem_info)
 from macad_gym.viz.logger import Logger
 from macad_gym.core.simulator.carla_provider import CarlaError
 from macad_gym.core.utils.wrapper import (SpeedState, Truncated)
