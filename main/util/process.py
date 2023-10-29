@@ -44,7 +44,7 @@ def start_process():
     subprocess.Popen(get_exec_command()[1],cwd=CARLA_PATH, shell=True)
     time.sleep(5)
 
-def get_child_processes(parent_pid):
+def get_child_processes(logger, parent_pid):
     child_processes = set()
     try:
         # 使用ps命令获取父进程及其所有子进程的PID列表
@@ -56,38 +56,39 @@ def get_child_processes(parent_pid):
         for line in ps_lines:
             parts = line.split()
             pid, ppid = int(parts[0]), int(parts[1])
-            if ppid == parent_pid:
+            if ppid == parent_pid and psutil.pid_exists(pid):
                 child_processes.add(pid)
         
     except Exception as e:
-        print(f"获取子进程时发生错误：{str(e)}")
+        logger.log(f"获取子进程时发生错误：{str(e)}", "EXCEPTION")
     
     return child_processes
 
-def kill_process_and_children(parent_pid):
+def kill_process_and_children(logger, parent_pid):
     try:
-        # 获取子进程列表
-        child_processes = get_child_processes(parent_pid)
-        
-        # 杀死所有子进程
-        for child_pid in child_processes:
-            if operating_system == 'windows':
-                subprocess.call(
-                    ["taskkill", "/F", "/T", "/PID", str(child_pid)])
-            else:
-                name = psutil.Process(child_pid).name()
-                if name.find('CarlaUE4') != -1:
-                    os.killpg(child_pid, signal.SIGKILL)
+        if psutil.pid_exists(parent_pid):
+            # 获取子进程列表
+            child_processes = get_child_processes(logger, parent_pid)
+            
+            # 杀死所有子进程
+            for child_pid in child_processes:
+                if operating_system == 'windows':
+                    subprocess.call(
+                        ["taskkill", "/F", "/T", "/PID", str(child_pid)])
                 else:
-                    os.kill(child_pid, signal.SIGKILL)
+                    name = psutil.Process(child_pid).name()
+                    if name.find('CarlaUE4') != -1:
+                        os.killpg(child_pid, signal.SIGKILL)
+                    else:
+                        os.kill(child_pid, signal.SIGKILL)
+            
+            # 杀死父进程
+            os.kill(parent_pid, signal.SIGKILL)
         
-        # 杀死父进程
-        os.kill(parent_pid, signal.SIGKILL)
-        
-        print(f"进程 {parent_pid} 及其子进程已被终止。")
+        logger.log(f"进程 {parent_pid} 及其子进程已被终止。", "INFO")
     except ProcessLookupError:
-        print(f"进程 {parent_pid} 不存在。")
+        logger.log(f"进程 {parent_pid} 不存在。", "EXCEPTION")
     except PermissionError:
-        print(f"没有足够的权限来终止进程 {parent_pid} 及其子进程。")
+        logger.log(f"没有足够的权限来终止进程 {parent_pid} 及其子进程。", "EXCEPTION")
     except Exception as e:
-        print(f"发生错误：{str(e)}")
+        logger.log(f"发生错误：{str(e)}", "EXCEPTION")
