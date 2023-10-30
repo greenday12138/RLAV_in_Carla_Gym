@@ -60,7 +60,7 @@ def get_child_processes(logger, parent_pid):
                 child_processes.add(pid)
         
     except Exception as e:
-        logger.log(f"获取子进程时发生错误：{str(e)}", "EXCEPTION")
+        logger.exception(f"获取子进程时发生错误：{str(e)}")
     
     return child_processes
 
@@ -85,10 +85,10 @@ def kill_process_and_children(logger, parent_pid):
             # 杀死父进程
             os.kill(parent_pid, signal.SIGKILL)
         
-        logger.log(f"进程 {parent_pid} 及其子进程已被终止。", "INFO")
+        logger.info(f"进程 {parent_pid} 及其子进程已被终止。")
     except ProcessLookupError:
-        logger.log(f"进程 {parent_pid} 不存在。", "EXCEPTION")
+        logger.exception(f"进程 {parent_pid} 不存在。")
     except PermissionError:
-        logger.log(f"没有足够的权限来终止进程 {parent_pid} 及其子进程。", "EXCEPTION")
+        logger.exception(f"没有足够的权限来终止进程 {parent_pid} 及其子进程。")
     except Exception as e:
-        logger.log(f"发生错误：{str(e)}", "EXCEPTION")
+        logger.exception(f"发生错误：{str(e)}")
