@@ -1472,7 +1472,7 @@ class PDQNMultiCarlaEnv(*MultiAgentEnvBases):
                                  f"last_action:{self.last_action[actor_id].value}, current_action:{self.current_action[actor_id].value}") 
         elif self._speed_state[actor_id] == SpeedState.STOP:
             #Hero vehicle reaches destination, properly stop hero vehicle
-            self._carla._traffic_manager.vehicle_percentage_speed_difference(self._actors[actor_id], 100)
+            self._carla._traffic_manager.vehicle_percentage_speed_difference(self._actors[actor_id], 90)
             control = None
         else:
             LOG.multi_env_logger.error('CODE LOGIC ERROR')
