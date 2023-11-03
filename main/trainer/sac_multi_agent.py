@@ -216,16 +216,8 @@ def main():
                     
                     worker_update_count %= UPDATE_FREQ * 2
 
-                if learner.learn_time > 250000:
-                    learner.save_net(os.path.join(SAVE_PATH, 'isac_250000_net_params.pth'))
-                elif learner.learn_time > 200000:
-                    learner.save_net(os.path.join(SAVE_PATH, 'isac_200000_net_params.pth'))
-                elif learner.learn_time > 150000:
-                    learner.save_net(os.path.join(SAVE_PATH, 'isac_150000_net_params.pth'))
-                elif learner.learn_time > 100000:
-                    learner.save_net(os.path.join(SAVE_PATH, 'isac_100000_net_params.pth'))
-                elif learner.learn_time > 50000:
-                    learner.save_net(os.path.join(SAVE_PATH, 'isac_50000_net_params.pth'))
+                if learner.learn_time >= 50000 and learner.learn_time % 50000 == 0:
+                    learner.save_net(os.path.join(SAVE_PATH, f'isac_{learner.learn_time}_net_params.pth'))
                 elif learner.learn_time > 20000:
                     learner.save_net(os.path.join(SAVE_PATH, 'isac_20000_net_params.pth'))
                 episode_writer.add_scalar('Q_loss', q_loss, learner.learn_time)
@@ -243,7 +235,7 @@ def main():
 
 def worker_mp(traj_q:queue.Queue, agent_q:queue.Queue, param:dict, episode_offset:int, save_path:str, index:int):
     env = gym.make("HomoNcomIndePoHiwaySAFR2CTWN5-v0")
-    TOTAL_EPISODE = 5000
+    TOTAL_EPISODE = 500
     if index == -1:
         # This process is evaluator
         eval = True
