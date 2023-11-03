@@ -89,24 +89,6 @@ def main():
     #traj_q = [manager.Queue(maxsize=param["minimal_size"]) for i in range(WORKER_NUMBER + 1)]
     worker_agent_q, eval_agent_q = [None for i in range(WORKER_NUMBER)], None
 
-    #worker_lock = Lock()
-    # eval_lock = Lock()
-    # eval_traj_q = Queue(maxsize=param["minimal_size"])
-    #worker_traj_q = Queue(maxsize=param["minimal_size"])
-    # eval_agent_q = Queue(maxsize=1)
-    #worker_agent_q = Queue(maxsize=1)
-    # eval_proc = mp.Process(target=worker_mp, args=
-    #                          (eval_lock, eval_traj_q, eval_agent_q, deepcopy(AGENT_PARAM), 0, deepcopy(SAVE_PATH), True))
-    #worker_proc = mp.Process(target=worker_mp, args=
-    #                         (worker_lock, worker_traj_q, worker_agent_q, deepcopy(AGENT_PARAM), 0, deepcopy(SAVE_PATH), False))
-    #worker_proc.start()
-    # eval_proc.start()
-    #time.sleep(20)
-    #process.append(worker_proc)
-    # process.append(eval_proc)
-    #[p.start() for p in process]
-    # with open(os.path.join(SAVE_PATH, 'log_file.txt'),'a') as file:
-    #     file.write(datetime.datetime.today().strftime('%Y-%m-%d_%H-%M') + '\n')
     try:
         while(True):
             # Restart worker process and evaluator process if carla failed
@@ -116,11 +98,6 @@ def main():
                     if eval_proc:
                         process.remove(eval_proc)
                     agent_q = manager.Queue(maxsize=1)
-                    #eval_agent_q = Queue(maxsize=1)
-                    #eval_traj_q = Queue(maxsize=param["minimal_size"])
-                    #eval_lock = Lock()
-                    # if eval_agent_q.full():
-                    #     eval_agent_q.get(block=True, timeout=None)
                     eval_proc = mp.Process(target=worker_mp, args=
                                             (traj_q, agent_q, deepcopy(AGENT_PARAM), episode_offset, deepcopy(SAVE_PATH), -1))
                     eval_proc.start()
@@ -137,11 +114,6 @@ def main():
                     if worker_proc:
                         process.remove(worker_proc)
                     agent_q = manager.Queue(maxsize=1)
-                    #worker_agent_q[i] = Queue(maxsize=1)
-                    #worker_traj_q = Queue(maxsize=param["minimal_size"])
-                    #worker_lock[i] = Lock()
-                    # if worker_agent_q.full():
-                    #     worker_agent_q.get(block=True, timeout=None)
                     worker_proc = mp.Process(target=worker_mp, args=
                                             (traj_q, agent_q, deepcopy(AGENT_PARAM), 0, deepcopy(SAVE_PATH), index))
                     worker_proc.start()
@@ -161,13 +133,6 @@ def main():
             #reference: https://zhuanlan.zhihu.com/p/345353294, https://arxiv.org/abs/1711.00489
             k = max(learner.replay_buffer.size()// param["minimal_size"], 1)
             learner.batch_size = k * param["batch_size"]
-            # if not traj_q:
-            #     traj_q = eval_traj_q
-            # else:
-            #     if traj_q is eval_traj_q:
-            #         traj_q = worker_traj_q
-            #     else:
-            #         traj_q = eval_traj_q
             for i in range(WORKER_NUMBER + 1):
                 if traj_q.qsize() >= learner.batch_size // (WORKER_NUMBER * 2):
                     for _ in range(learner.batch_size // (WORKER_NUMBER * 2)):
@@ -185,12 +150,9 @@ def main():
                 worker_update_count += 1
                 eval_update_count += 1
 
-                #if not eval_agent_q.full() and eval_update_count // UPDATE_FREQ > 0:
                 if eval_update_count // UPDATE_FREQ > 0:
-                    #eval_lock.acquire()
                     if not eval_agent_q.full():
                         learner.save_net(os.path.join(SAVE_PATH, 'eval.pth'))
-                    #eval_agent_q.put((deepcopy(learner.learn_time), deepcopy(q_loss)), block=True, timeout=None)
                     try:
                         eval_agent_q.put((deepcopy(learner.learn_time), deepcopy(q_loss)), block=True, timeout=10)
                     except queue.Full as e:
@@ -205,7 +167,6 @@ def main():
                     for i in range(WORKER_NUMBER):
                         if not worker_agent_q[i].full():
                             learner.save_net(os.path.join(SAVE_PATH, f'worker_{i}.pth'))
-                        
                         try:
                             worker_agent_q[i].put((deepcopy(learner.learn_time), deepcopy(q_loss)), block=True, timeout=10)
                         except queue.Full as e:
@@ -289,10 +250,8 @@ def worker_mp(traj_q:queue.Queue, agent_q:queue.Queue, param:dict, episode_offse
                                 worker.load_net(os.path.join(save_path, 'eval.pth'), map_location=worker.device)
                             else:
                                 worker.load_net(os.path.join(save_path, f'worker_{index}.pth'), map_location=worker.device)
-                            # learn_time, q_loss = agent_q.get(block=True, timeout=10)
                             try:
                                 learn_time, q_loss = agent_q.get_nowait()
-                                #learn_time, q_loss = agent_q.get(block=True, timeout=10)
                             except queue.Empty as e:
                                 logger.exception(f"SAC {'evaluator' if eval else 'worker_'+str(index)} get from empty agent_q, {e.args}")
                                 continue
@@ -332,8 +291,6 @@ def worker_mp(traj_q:queue.Queue, agent_q:queue.Queue, param:dict, episode_offse
                                     # XXX Do not set timeout=None here, otherwise the process might end in a perpetual blocked state.
                                     traj_q.put_nowait((state, next_state, action, reward, done, 
                                                        truncated, info, episodes, eval))
-                                    # traj_q.put((state, next_state, action,
-                                    #     reward, done, truncated, info, episodes, eval), block=True, timeout=10)
                                 except queue.Full as e:
                                     logger.exception(f"SAC {'evaluator' if eval else 'worker_'+str(index)} put traj to full traj_q, {e.args}")
                                     continue
