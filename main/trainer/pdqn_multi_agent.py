@@ -216,7 +216,7 @@ def worker_mp(traj_q:queue.Queue, agent_q:queue.Queue, param:dict, episode_offse
         episode_writer = SummaryWriter(save_path)
     else:
         eval = False
-        if index != 0:
+        if index != 0 and index != 1:
             param["device"] = torch.device('cpu')
     logger = Logger(f"SAC {'evaluator' if eval else 'worker_'+str(index)}", 
                     os.path.join(save_path, 'logger.txt'), logging.DEBUG, logging.WARNING)
