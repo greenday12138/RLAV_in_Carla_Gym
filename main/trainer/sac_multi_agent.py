@@ -196,7 +196,7 @@ def main():
 
 def worker_mp(traj_q:queue.Queue, agent_q:queue.Queue, param:dict, episode_offset:int, save_path:str, index:int):
     env = gym.make("HomoNcomIndePoHiwaySAFR2CTWN5-v0")
-    TOTAL_EPISODE = 500
+    TOTAL_EPISODE = 1000
     if index == -1:
         # This process is evaluator
         eval = True
