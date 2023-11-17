@@ -213,6 +213,7 @@ def worker_mp(traj_q:queue.Queue, agent_q:queue.Queue, param:dict, episode_offse
         # This process is evaluator
         eval = True
         env.unwrapped.pre_train_steps = 0
+        param["sigma_acc"], param["sigma_steer"] = 0, 0
         episode_writer = SummaryWriter(save_path)
     else:
         eval = False
