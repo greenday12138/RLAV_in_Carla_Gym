@@ -227,6 +227,9 @@ def worker_mp(traj_q:queue.Queue, agent_q:queue.Queue, param:dict, episode_offse
                         param["theta"], param["epsilon"], param["buffer_size"], param["batch_size"], 
                         param["lr_actor"], param["lr_critic"], param["clip_grad"], param["zero_index_gradients"],
                         param["inverting_gradients"], param["per_flag"], param["device"])
+    if eval and os.path.exists(os.path.join(save_path, 'eval.pth')):
+        # make sure the evaluator excute the newest model
+        worker.load_net(os.path.join(save_path, 'eval.pth'), map_location=worker.device)
     if TRAIN and os.path.exists(MODEL_PATH):
         worker.load_net(MODEL_PATH, map_location=worker.device)
 
